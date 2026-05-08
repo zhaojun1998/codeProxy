@@ -217,7 +217,7 @@ export function RequestLogsPage() {
       notify({
         type: "success",
         message: t("request_logs.clear_database_logs_success", {
-          count: result.deleted_logs.toLocaleString(),
+          count: result.deleted_logs,
         }),
       });
     } catch (err) {
