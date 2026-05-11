@@ -1707,7 +1707,7 @@
     "routes_desc": "Route specific request paths into a target group.",
     "table_group": "Group",
     "table_channel_count": "Count",
-    "table_model_count": "Models",
+    "table_capabilities": "Capabilities",
     "table_status": "Status",
     "table_channels": "Channels",
     "table_priority_mode": "Scheduling",

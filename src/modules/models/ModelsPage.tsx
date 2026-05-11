@@ -34,9 +34,12 @@ import {
   formatModelPrice,
   hasModelPricing,
   loadConfiguredModelAvailability,
+  loadModelPathAvailability,
   type ConfiguredModelAvailability,
   type ModelAvailabilityItem,
   type ModelConfigMetadataItem,
+  type ModelPathAvailabilityItem,
+  type ModelPathItem,
   type ModelPricing,
   type ModelPricingMode,
   normalizeModelConfigMetadataRows,
@@ -263,17 +266,71 @@ function availabilityItemToModel(item: ModelAvailabilityItem): ModelItem {
 function mergeConfiguredModelAvailability(
   data: ModelItem[],
   availability: ConfiguredModelAvailability | null,
+  pathItems: ModelPathAvailabilityItem[] = [],
 ): ModelItem[] {
-  if (!availability?.scoped) return data;
-  const visible = filterByConfiguredModelAvailability(data, availability);
+  const visible = availability?.scoped
+    ? filterByConfiguredModelAvailability(data, availability)
+    : [...data];
   const seen = new Set(visible.map((model) => model.id.toLowerCase()));
-  for (const item of availability.items) {
+  for (const item of availability?.items ?? []) {
     const key = item.id.toLowerCase();
     if (seen.has(key)) continue;
     visible.push(availabilityItemToModel(item));
     seen.add(key);
   }
+  for (const item of pathItems) {
+    const key = item.id.toLowerCase();
+    if (seen.has(key)) continue;
+    visible.push(
+      availabilityItemToModel({
+        id: item.id,
+        owned_by: item.owned_by,
+        source: item.kind || "path",
+      }),
+    );
+    seen.add(key);
+  }
   return visible.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function compactPathLabel(path: ModelPathItem): string {
+  if (path.scope === "root") {
+    return `root:${path.path}`;
+  }
+  return `group:${path.path}`;
+}
+
+function ModelPathBadges({ paths }: { paths: ModelPathItem[] }) {
+  if (paths.length === 0) {
+    return <span className="text-xs text-slate-400 dark:text-white/35">-</span>;
+  }
+  const visible = paths.slice(0, 3);
+  const hidden = paths.slice(3);
+  return (
+    <div className="flex min-w-0 flex-wrap gap-1.5">
+      {visible.map((path) => (
+        <OverflowTooltip
+          key={`${path.method}-${path.path}-${path.family}`}
+          content={`${path.method} ${path.path}`}
+          className="min-w-0"
+        >
+          <span className="inline-flex max-w-[12rem] items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-[11px] font-medium text-slate-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white/75">
+            <span className="truncate">{compactPathLabel(path)}</span>
+          </span>
+        </OverflowTooltip>
+      ))}
+      {hidden.length > 0 ? (
+        <OverflowTooltip
+          content={hidden.map((path) => `${path.method} ${path.path}`).join("\n")}
+          className="min-w-0"
+        >
+          <span className="inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white/55">
+            +{hidden.length}
+          </span>
+        </OverflowTooltip>
+      ) : null}
+    </div>
+  );
 }
 
 function toFormState(model: ModelItem): ModelFormState {
@@ -486,6 +543,7 @@ export function ModelsPage() {
   const { notify } = useToast();
 
   const [models, setModels] = useState<ModelItem[]>([]);
+  const [modelPathItems, setModelPathItems] = useState<ModelPathAvailabilityItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchFilter, setSearchFilter] = useState("");
   const [totalCost, setTotalCost] = useState(0);
@@ -520,13 +578,16 @@ export function ModelsPage() {
   const loadModels = useCallback(async () => {
     setLoading(true);
     try {
-      const [data, presets, availability] = await Promise.all([
+      const [data, presets, availability, pathAvailability] = await Promise.all([
         fetchModelConfigs(modelScope),
         fetchOwnerPresets(),
         modelScope === "active" ? loadConfiguredModelAvailability() : Promise.resolve(null),
+        loadModelPathAvailability().catch(() => null),
       ]);
-      const visibleData = mergeConfiguredModelAvailability(data, availability);
+      const pathItems = pathAvailability?.items ?? [];
+      const visibleData = mergeConfiguredModelAvailability(data, availability, pathItems);
       setModels(visibleData);
+      setModelPathItems(pathItems);
       setOwnerPresets(presets);
       setOwnerFilter((current) => {
         if (!current) return "";
@@ -590,6 +651,14 @@ export function ModelsPage() {
   }, [activeTab, models, ownerFilter, searchFilter]);
 
   const filteredModelIds = useMemo(() => filteredModels.map((model) => model.id), [filteredModels]);
+
+  const modelPathsById = useMemo(() => {
+    const map = new Map<string, ModelPathItem[]>();
+    for (const item of modelPathItems) {
+      map.set(item.id.toLowerCase(), item.paths);
+    }
+    return map;
+  }, [modelPathItems]);
 
   const selectedModels = useMemo(
     () => models.filter((model) => selectedModelIds.has(model.id)),
@@ -1026,6 +1095,13 @@ export function ModelsPage() {
         render: (row) => row.owned_by || "-",
       },
       {
+        key: "paths",
+        label: t("models_page.col_paths"),
+        width: "w-[28rem]",
+        cellClassName: "min-w-0",
+        render: (row) => <ModelPathBadges paths={modelPathsById.get(row.id.toLowerCase()) ?? []} />,
+      },
+      {
         key: "mode",
         label: t("models_page.col_pricing_mode"),
         width: "w-36",
@@ -1100,6 +1176,7 @@ export function ModelsPage() {
       allVisibleModelsSelected,
       canDeleteModels,
       filteredModelIds.length,
+      modelPathsById,
       openEditModel,
       selectedModelIds,
       someVisibleModelsSelected,
@@ -1461,7 +1538,7 @@ export function ModelsPage() {
                 emptyText={
                   searchFilter ? t("models_page.no_results") : t("models_page.no_model_data")
                 }
-                minWidth="min-w-[1160px]"
+                minWidth="min-w-[1440px]"
                 height="h-full"
                 minHeight="min-h-0"
               />
@@ -1514,7 +1591,7 @@ export function ModelsPage() {
             rowHeight={52}
             caption={t("models_page.table_caption")}
             emptyText={searchFilter ? t("models_page.no_results") : t("models_page.no_model_data")}
-            minWidth="min-w-[1160px]"
+            minWidth="min-w-[1440px]"
             height="h-[calc(100vh-430px)]"
           />
         </Card>
