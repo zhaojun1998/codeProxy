@@ -46,6 +46,27 @@ export type RoutingModelOption = {
 
 type RoutingModelLoadResult = string | RoutingModelOption;
 
+const RESERVED_ROUTE_PREFIXES = new Set([
+  "manage",
+  "management.html",
+  "v0",
+  "v1",
+  "v1beta",
+  "api",
+  "anthropic",
+  "codex",
+]);
+
+const PATH_CAPABILITIES = [
+  { label: "models", method: "GET", suffix: "/v1/models" },
+  { label: "chat", method: "POST", suffix: "/v1/chat/completions" },
+  { label: "completions", method: "POST", suffix: "/v1/completions" },
+  { label: "responses", method: "POST", suffix: "/v1/responses" },
+  { label: "messages", method: "POST", suffix: "/v1/messages" },
+  { label: "images", method: "POST", suffix: "/v1/images/generations" },
+  { label: "v1beta", method: "GET", suffix: "/v1beta/models" },
+] as const;
+
 const createEmptyGroupDraft = (): GroupDraft => ({
   name: "",
   description: "",
@@ -158,6 +179,57 @@ function normalizeRoutePathInput(value: string): string {
   }
 
   return `/${trimmed}`;
+}
+
+function routePathInputIsRoot(value: string): boolean {
+  let trimmed = value.trim();
+  if (!trimmed) return false;
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol && parsed.host) {
+      trimmed = decodeURIComponent(parsed.pathname || "");
+    }
+  } catch {
+    // Keep non-URL inputs as-is.
+  }
+
+  const queryIndex = trimmed.search(/[?#]/);
+  if (queryIndex >= 0) {
+    trimmed = trimmed.slice(0, queryIndex);
+  }
+  return trimmed.replace(/^\/+|\/+$/g, "") === "";
+}
+
+function routePathUsesReservedPrefix(path: string): boolean {
+  const firstSegment = path.replace(/^\/+/, "").split("/")[0]?.toLowerCase() ?? "";
+  return RESERVED_ROUTE_PREFIXES.has(firstSegment);
+}
+
+function joinRouteCapabilityPath(routePath: string, suffix: string): string {
+  const normalized = routePath === "/" ? "" : routePath.replace(/\/+$/g, "");
+  return `${normalized}${suffix}`;
+}
+
+function PathCapabilityTags({ routePath }: { routePath: string }) {
+  return (
+    <div className="flex min-w-0 flex-wrap gap-1.5">
+      {PATH_CAPABILITIES.map((capability) => {
+        const fullPath = joinRouteCapabilityPath(routePath, capability.suffix);
+        return (
+          <HoverTooltip
+            key={`${capability.method}-${capability.suffix}`}
+            content={`${capability.method} ${fullPath}`}
+            placement="bottom"
+          >
+            <span className="inline-flex items-center rounded-md border border-slate-200/70 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:border-neutral-700/50 dark:bg-neutral-800/70 dark:text-white/75">
+              {capability.label}
+            </span>
+          </HoverTooltip>
+        );
+      })}
+    </div>
+  );
 }
 
 function summarizeList(values: string[], moreLabel: string): string {
@@ -384,7 +456,27 @@ export function RoutingConfigEditor({
   const groupDraftError = useMemo(() => {
     if (!groupDraft.name.trim()) return t("channel_groups_page.group_name_required");
     if (!primaryRoute.path.trim()) return t("channel_groups_page.route_path_required");
+    if (routePathInputIsRoot(primaryRoute.path)) {
+      return t("channel_groups_page.route_path_root_reserved");
+    }
     if (!normalizedPrimaryRoutePath) return t("channel_groups_page.route_path_invalid");
+    if (routePathUsesReservedPrefix(normalizedPrimaryRoutePath)) {
+      return t("channel_groups_page.route_path_reserved");
+    }
+    const previousGroup = groupEditorId
+      ? values.routingChannelGroups.find((group) => group.id === groupEditorId)
+      : null;
+    const previousGroupName = previousGroup?.name.trim().toLowerCase() ?? "";
+    const duplicateRoute = values.routingPathRoutes.some((route) => {
+      if (
+        normalizeRoutePathInput(route.path).toLowerCase() !==
+        normalizedPrimaryRoutePath.toLowerCase()
+      ) {
+        return false;
+      }
+      return route.group.trim().toLowerCase() !== previousGroupName;
+    });
+    if (duplicateRoute) return t("channel_groups_page.route_path_duplicate");
     if (groupDraft.channels.length === 0) return t("channel_groups_page.group_channels_required");
     if (draftStaleChannels.length > 0) {
       return t("channel_groups_page.stale_channels_required_cleanup", {
@@ -396,9 +488,12 @@ export function RoutingConfigEditor({
     draftStaleChannels.length,
     groupDraft.channels.length,
     groupDraft.name,
+    groupEditorId,
     normalizedPrimaryRoutePath,
     primaryRoute.path,
     t,
+    values.routingChannelGroups,
+    values.routingPathRoutes,
   ]);
 
   const openCreateGroup = useCallback(() => {
@@ -656,21 +751,15 @@ export function RoutingConfigEditor({
         ),
       },
       {
-        key: "modelCount",
-        label: t("channel_groups_page.table_model_count"),
-        width: "w-[104px] min-w-[104px]",
-        headerClassName: "text-center",
-        cellClassName: "whitespace-nowrap text-center",
-        render: (group) =>
-          group.allowedModels.length > 0 ? (
-            <span className="inline-flex h-5 min-w-[24px] items-center justify-center rounded-md bg-violet-50 px-1.5 text-xs font-semibold tabular-nums text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
-              {group.allowedModels.length}
-            </span>
-          ) : (
-            <span className="text-xs text-slate-400 dark:text-white/35">
-              {t("channel_groups_page.all_models")}
-            </span>
-          ),
+        key: "capabilities",
+        label: t("channel_groups_page.table_capabilities"),
+        width: "w-[300px] min-w-[300px]",
+        cellClassName: "min-w-0",
+        render: (group) => {
+          const routes = routesByGroup.get(group.name.trim().toLowerCase()) ?? [];
+          const routePath = routes[0]?.path.trim() || `/${group.name.trim()}`;
+          return <PathCapabilityTags routePath={routePath} />;
+        },
       },
       {
         key: "status",
@@ -1086,6 +1175,21 @@ export function RoutingConfigEditor({
             <Plus size={14} />
             {t("channel_groups_page.add_group")}
           </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2.5 dark:border-neutral-800 dark:bg-neutral-900/45">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-200">
+              {t("channel_groups_page.system_default_route")}
+            </span>
+            <span className="font-mono text-sm font-semibold text-slate-900 dark:text-white">
+              /
+            </span>
+            <span className="text-xs text-slate-500 dark:text-white/45">
+              {t("channel_groups_page.system_route_readonly")}
+            </span>
+          </div>
+          <PathCapabilityTags routePath="/" />
         </div>
 
         <VirtualTable<RoutingChannelGroupEntry>

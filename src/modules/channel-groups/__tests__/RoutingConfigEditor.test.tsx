@@ -323,7 +323,7 @@ describe("RoutingConfigEditor", () => {
     await user.type(screen.getByPlaceholderText("pro"), "team-url");
     await user.type(
       screen.getByPlaceholderText("/pro"),
-      "https://relay.07230805.xyz/openai/team-url",
+      "https://relay.example.test/openai/team-url",
     );
     await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
     await user.click(screen.getByRole("option", { name: "Main Codex" }));
@@ -372,6 +372,36 @@ describe("RoutingConfigEditor", () => {
     expect(screen.getByRole("button", { name: "添加" })).toBeDisabled();
   });
 
+  test("shows the system root route capabilities instead of model counts", async () => {
+    await i18n.changeLanguage("zh-CN");
+
+    render(<Harness />);
+
+    expect(screen.queryByText("模型数")).not.toBeInTheDocument();
+    expect(screen.getByText("系统默认")).toBeInTheDocument();
+    expect(screen.getByText("/")).toBeInTheDocument();
+    expect(screen.getByText("models")).toBeInTheDocument();
+    expect(screen.getByText("chat")).toBeInTheDocument();
+    expect(screen.getByText("images")).toBeInTheDocument();
+  });
+
+  test("rejects the system root path for custom groups", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const user = userEvent.setup();
+
+    render(<Harness />);
+
+    await user.click(screen.getByRole("button", { name: "新增分组" }));
+    await user.type(screen.getByPlaceholderText("pro"), "team-root");
+    await user.type(screen.getByPlaceholderText("/pro"), "/");
+    await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
+    await user.click(screen.getByRole("option", { name: "Main Codex" }));
+    await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
+
+    expect(screen.getByText("访问路径不能使用系统默认根路径 /。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "添加" })).toBeDisabled();
+  });
+
   test("rejects invalid paths that contain empty segments", async () => {
     await i18n.changeLanguage("zh-CN");
     const user = userEvent.setup();
@@ -380,7 +410,7 @@ describe("RoutingConfigEditor", () => {
 
     await user.click(screen.getByRole("button", { name: "新增分组" }));
     await user.type(screen.getByPlaceholderText("pro"), "team-invalid");
-    await user.type(screen.getByPlaceholderText("/pro"), "https://relay.07230805.xyz/openai//pro");
+    await user.type(screen.getByPlaceholderText("/pro"), "https://relay.example.test/openai//pro");
     await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
     await user.click(screen.getByRole("option", { name: "Main Codex" }));
     await user.click(screen.getByRole("combobox", { name: "选择渠道" }));
