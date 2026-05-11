@@ -709,7 +709,7 @@ export const buildLast7DayAxis = () => {
 };
 
 export const readAuthFileChannelName = (file: AuthFileItem): string => {
-  const candidates = [file.label, file.email, file.provider, file.type];
+  const candidates = [file.label, file.email];
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
   }
@@ -721,9 +721,12 @@ export const isOauthAuthFile = (file: AuthFileItem): boolean =>
     .trim()
     .toLowerCase() === "oauth";
 
+export const canRenameAuthFileChannel = (file: AuthFileItem): boolean =>
+  isOauthAuthFile(file) || normalizeProviderKey(resolveFileType(file)) === "kimi";
+
 export const resolveAuthFileDisplayName = (file: AuthFileItem): string => {
   const channelName = readAuthFileChannelName(file);
-  if (isOauthAuthFile(file) && channelName) return channelName;
+  if (canRenameAuthFileChannel(file) && channelName) return channelName;
   return String(file.name || "");
 };
 
