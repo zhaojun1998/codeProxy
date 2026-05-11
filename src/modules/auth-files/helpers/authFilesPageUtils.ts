@@ -709,7 +709,7 @@ export const buildLast7DayAxis = () => {
 };
 
 export const readAuthFileChannelName = (file: AuthFileItem): string => {
-  const candidates = [file.label, file.email, file.provider, file.type];
+  const candidates = [file.label, file.email];
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
   }
