@@ -37,6 +37,7 @@ interface UseAuthFilesQuotaStateOptions {
   loading: boolean;
   setFiles: Dispatch<SetStateAction<AuthFileItem[]>>;
   setDetailFile: Dispatch<SetStateAction<AuthFileItem | null>>;
+  refreshUsageData?: () => Promise<unknown>;
 }
 
 export function useAuthFilesQuotaState({
@@ -45,6 +46,7 @@ export function useAuthFilesQuotaState({
   loading,
   setFiles,
   setDetailFile,
+  refreshUsageData,
 }: UseAuthFilesQuotaStateOptions) {
   const { t } = useTranslation();
   const initialDataCache = useMemo(() => readAuthFilesDataCache(), []);
@@ -58,6 +60,7 @@ export function useAuthFilesQuotaState({
   const quotaInFlightRef = useRef<Set<string>>(new Set());
   const quotaAutoRefreshingRef = useRef<Set<string>>(new Set());
   const quotaByFileNameRef = useRef<Record<string, QuotaState>>(quotaByFileName);
+  const usageRefreshInFlightRef = useRef<Promise<unknown> | null>(null);
   const quotaWarmupAttemptRef = useRef<Map<string, number>>(new Map());
   const visiblePageSignatureRef = useRef<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -111,6 +114,16 @@ export function useAuthFilesQuotaState({
     },
     [setDetailFile, setFiles],
   );
+
+  const refreshUsageDataAfterQuota = useCallback(async () => {
+    if (!refreshUsageData) return;
+    if (!usageRefreshInFlightRef.current) {
+      usageRefreshInFlightRef.current = refreshUsageData().finally(() => {
+        usageRefreshInFlightRef.current = null;
+      });
+    }
+    await usageRefreshInFlightRef.current.catch(() => undefined);
+  }, [refreshUsageData]);
 
   const resolveQuotaCardSlots = useCallback(
     (provider: QuotaProvider, items: QuotaItem[]) => {
@@ -308,6 +321,7 @@ export function useAuthFilesQuotaState({
             updatedAt: Date.now(),
           },
         }));
+        await refreshUsageDataAfterQuota();
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : t("auth_files.unknown_error");
         setQuotaByFileName((prev) => ({
@@ -324,7 +338,7 @@ export function useAuthFilesQuotaState({
         quotaInFlightRef.current.delete(name);
       }
     },
-    [patchAuthFileByName, resolveQuotaCardSlots, t],
+    [patchAuthFileByName, refreshUsageDataAfterQuota, resolveQuotaCardSlots, t],
   );
 
   const checkAuthFileConnectivity = useCallback(

@@ -524,6 +524,91 @@ describe("AuthFilesPage files table", () => {
     expect(within(card as HTMLElement).queryByText(/^pro$/i)).not.toBeInTheDocument();
   });
 
+  test("refreshes usage stats after a single auth-file card quota refresh", async () => {
+    const now = Date.now();
+    window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
+    window.sessionStorage.setItem(
+      AUTH_FILES_DATA_CACHE_KEY,
+      JSON.stringify({
+        savedAtMs: now,
+        files: [
+          {
+            name: "codex-pro.json",
+            label: "A_GptPro",
+            account_type: "oauth",
+            type: "codex",
+            auth_index: "77",
+            size: 1024,
+            modified: now,
+            disabled: false,
+          },
+        ],
+        quotaByFileName: {
+          "codex-pro.json": {
+            status: "success",
+            updatedAt: now,
+            items: [{ key: "code_5h", label: "m_quota.code_5h", percent: 80 }],
+          },
+        },
+      }),
+    );
+    mocks.list.mockImplementation(async () => ({
+      files: [
+        {
+          name: "codex-pro.json",
+          label: "A_GptPro",
+          account_type: "oauth",
+          type: "codex",
+          auth_index: "77",
+          size: 1024,
+          modified: now,
+          disabled: false,
+        },
+      ],
+    }));
+    mocks.getEntityStats
+      .mockResolvedValueOnce({
+        source: [],
+        auth_index: [
+          { entity_name: "77", requests: 1, failed: 0, avg_latency: 0, total_tokens: 0 },
+        ],
+      } as any)
+      .mockResolvedValueOnce({
+        source: [],
+        auth_index: [
+          { entity_name: "77", requests: 4, failed: 1, avg_latency: 0, total_tokens: 0 },
+        ],
+      } as any);
+    mocks.fetchQuota.mockImplementation(async () => [
+      { key: "code_5h", label: "m_quota.code_5h", percent: 60 },
+    ]);
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    const title = await screen.findByText("A_GptPro");
+    const card = title.closest("section");
+    expect(card).not.toBeNull();
+    expect(await within(card as HTMLElement).findByText("1 calls")).toBeInTheDocument();
+
+    fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "Refresh" }));
+
+    await waitFor(() => {
+      expect(mocks.fetchQuota).toHaveBeenCalledTimes(1);
+      expect(mocks.getEntityStats).toHaveBeenCalledTimes(2);
+      expect(within(card as HTMLElement).getByText("4 calls")).toBeInTheDocument();
+    });
+  });
+
   test("cards view hides default auth-file badges when display tags are empty", async () => {
     window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
     mocks.list.mockImplementation(async () => ({

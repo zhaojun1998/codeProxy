@@ -54,6 +54,16 @@ export function useAuthFilesDataState() {
     }
   }, [notify, t]);
 
+  const refreshUsageData = useCallback(async (): Promise<EntityStatsResponse | null> => {
+    try {
+      const nextUsageData = await usageApi.getEntityStats(30, "all");
+      setUsageData(nextUsageData);
+      return nextUsageData;
+    } catch {
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
@@ -97,5 +107,6 @@ export function useAuthFilesDataState() {
     usageData,
     usageIndex,
     loadAll,
+    refreshUsageData,
   };
 }
