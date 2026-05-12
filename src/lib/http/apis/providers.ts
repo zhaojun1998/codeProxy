@@ -321,11 +321,13 @@ export const providersApi = {
         const priority =
           typeof priorityRaw === "number" && Number.isFinite(priorityRaw) ? priorityRaw : undefined;
         const testModel = normalizeString(item["test-model"] ?? item.testModel) ?? undefined;
+        const disabled = item.disabled === true ? true : undefined;
         return {
           name,
           ...(disabled ? { disabled } : {}),
           ...(baseUrl ? { baseUrl } : {}),
           ...(prefix ? { prefix } : {}),
+          ...(disabled !== undefined ? { disabled } : {}),
           ...(headers ? { headers } : {}),
           ...(models ? { models } : {}),
           ...(apiKeyEntries ? { apiKeyEntries } : {}),
@@ -344,4 +346,7 @@ export const providersApi = {
 
   deleteOpenAIProvider: (name: string) =>
     apiClient.delete("/openai-compatibility", undefined, { params: { name } }),
+
+  patchOpenAIProviderDisabled: (index: number, disabled: boolean) =>
+    apiClient.patch("/openai-compatibility", { index, value: { disabled } }),
 };
