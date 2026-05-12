@@ -106,8 +106,17 @@ export function AuthFilesPage() {
     applyImport,
   } = useAuthFilesOAuthConfig(tab);
 
-  const { files, setFiles, loading, refreshingAll, usageLoading, usageData, usageIndex, loadAll } =
-    useAuthFilesDataState();
+  const {
+    files,
+    setFiles,
+    loading,
+    refreshingAll,
+    usageLoading,
+    usageData,
+    usageIndex,
+    loadAll,
+    refreshUsageData,
+  } = useAuthFilesDataState();
 
   const [confirm, setConfirm] = useState<null | { type: "deleteSelection"; names: string[] }>(null);
 
@@ -297,6 +306,7 @@ export function AuthFilesPage() {
     loading,
     setFiles,
     setDetailFile,
+    refreshUsageData,
   });
 
   const openDetailWithQuotaRefresh = useCallback(
