@@ -538,7 +538,7 @@ export function AuthFilesFilesTab({
                 rowHeight={84}
                 caption={t("auth_files.table_caption")}
                 emptyText={t("auth_files_page.no_files_desc")}
-                minWidth="min-w-[1720px]"
+                minWidth="min-w-[1840px]"
                 height="h-[calc(100dvh-452px)]"
                 rowClassName={(row) => {
                   const runtimeOnly = isRuntimeOnlyAuthFile(row);

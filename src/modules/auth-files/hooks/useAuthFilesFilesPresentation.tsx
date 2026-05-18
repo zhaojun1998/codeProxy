@@ -807,7 +807,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "actions",
         label: t("common.action"),
-        width: "w-40",
+        width: "w-48",
         headerClassName: "text-center",
         cellClassName: "text-center",
         render: (file) => {
@@ -825,7 +825,7 @@ export function useAuthFilesFilesPresentation({
             : false;
 
           return (
-            <div className="inline-flex flex-wrap items-center justify-center gap-1">
+            <div className="inline-flex min-w-max items-center justify-center gap-1 whitespace-nowrap">
               {quotaProvider ? (
                 <HoverTooltip content={t("common.refresh")}>
                   <Button
