@@ -201,6 +201,43 @@ describe("AuthFilesPage files table", () => {
     expect(screen.getByRole("switch", { name: "Enable/Disable" })).toBeInTheDocument();
   });
 
+  test("keeps table action buttons on a single row", async () => {
+    mocks.list.mockImplementation(async () => ({
+      files: [
+        {
+          name: "codex-pro.json",
+          type: "codex",
+          account_type: "oauth",
+          size: 1024,
+          modified: Date.now(),
+          disabled: false,
+        },
+      ],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    const row = await screen.findByRole("row", { name: /codex-pro\.json/ });
+    const actionGroup = within(row).getByRole("button", { name: "Refresh" }).closest("div");
+    const actionHeader = screen.getByRole("columnheader", { name: "Action" });
+
+    expect(actionGroup).not.toBeNull();
+    expect(actionGroup).toHaveClass("inline-flex");
+    expect(actionGroup).toHaveClass("whitespace-nowrap");
+    expect(actionGroup).not.toHaveClass("flex-wrap");
+    expect(actionHeader).toHaveClass("w-48");
+  });
+
   test("loads initial usage stats only for listed auth files", async () => {
     const now = Date.now();
     mocks.list.mockImplementationOnce(async () => ({
