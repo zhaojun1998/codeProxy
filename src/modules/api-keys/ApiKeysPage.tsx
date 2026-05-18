@@ -38,6 +38,7 @@ import {
   deriveCcSwitchImportSettingsFromConfigList,
   type CcSwitchImportConfigListItem,
 } from "@/modules/ccswitch/ccswitchImportConfigList";
+import { ccSwitchConfigMatchesApiKeyPermissions } from "@/modules/ccswitch/ccswitchImportCompatibility";
 import { LogContentModal } from "@/modules/monitor/LogContentModal";
 import { ErrorDetailModal } from "@/modules/monitor/ErrorDetailModal";
 import type { ApiKeyFormValues } from "@/modules/api-keys/types";
@@ -416,17 +417,9 @@ export function ApiKeysPage() {
 
   const compatibleConfigs = useMemo(() => {
     if (!ccSwitchImportEntry) return [];
-    const entryGroups = (ccSwitchImportEntry["allowed-channel-groups"] ?? [])
-      .map((g) =>
-        String(g ?? "")
-          .trim()
-          .toLowerCase(),
-      )
-      .filter(Boolean);
-    return ccSwitchImportConfigs.filter((config) => {
-      if (entryGroups.length === 0) return true;
-      return config.allowedChannelGroups.some((g) => entryGroups.includes(g));
-    });
+    return ccSwitchImportConfigs.filter((config) =>
+      ccSwitchConfigMatchesApiKeyPermissions(config, ccSwitchImportEntry),
+    );
   }, [ccSwitchImportEntry, ccSwitchImportConfigs]);
 
   const handleOpenCcSwitchImport = useCallback((entry: ApiKeyEntry) => {
