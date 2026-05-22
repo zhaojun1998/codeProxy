@@ -1157,6 +1157,118 @@ describe("AuthFilesPage files table", () => {
     expect(screen.getByText("Total 1 · Page 1 / 1")).toBeInTheDocument();
   });
 
+  test("keeps custom tag filter options stable while searching", async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    window.localStorage.setItem(AUTH_FILES_QUOTA_AUTO_REFRESH_KEY, JSON.stringify(0));
+    mocks.list.mockImplementation(async () => ({
+      files: [
+        {
+          name: "codex-tagged.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: false,
+          custom_tags: ["vip-team"],
+          display_tags: ["vip-team"],
+        },
+        {
+          name: "codex-plain.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: false,
+        },
+        {
+          name: "qwen-plain.json",
+          type: "qwen",
+          size: 1024,
+          modified: now,
+          disabled: false,
+        },
+      ],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("codex-tagged.json")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Custom tag" })).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("Filename / provider / type"), "plain");
+
+    expect(screen.queryByText("codex-tagged.json")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Custom tag" })).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "Custom tag" }));
+    expect(screen.getByRole("option", { name: "vip-team" })).toBeInTheDocument();
+  });
+
+  test("keeps type filter counts stable while searching", async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    window.localStorage.setItem(AUTH_FILES_QUOTA_AUTO_REFRESH_KEY, JSON.stringify(0));
+    mocks.list.mockImplementation(async () => ({
+      files: [
+        {
+          name: "codex-alpha.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: false,
+        },
+        {
+          name: "codex-beta.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: false,
+        },
+        {
+          name: "qwen-lab.json",
+          type: "qwen",
+          size: 1024,
+          modified: now,
+          disabled: false,
+        },
+      ],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("codex-alpha.json")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /All3/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /codex2/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /qwen1/i })).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("Filename / provider / type"), "alpha");
+
+    expect(screen.getByText("codex-alpha.json")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("codex-beta.json")).not.toBeInTheDocument());
+    expect(screen.queryByText("qwen-lab.json")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /All3/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /codex2/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /qwen1/i })).toBeInTheDocument();
+  });
+
   test("refreshes only the clicked auth-file card usage stats after quota refresh", async () => {
     const now = Date.now();
     const files = [
