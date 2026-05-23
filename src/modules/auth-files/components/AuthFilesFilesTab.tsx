@@ -1,19 +1,24 @@
-import { useEffect, useMemo, useState, type RefObject, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type RefObject, type ReactNode } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useTranslation } from "react-i18next";
 import {
   BarChart3,
   CircleHelp,
+  ClipboardPaste,
   Download,
+  Ellipsis,
   Eye,
+  ListChecks,
   Plus,
   RefreshCw,
   Search,
   Settings2,
+  SlidersHorizontal,
   Tags,
   Upload,
 } from "lucide-react";
 import type { AuthFileItem } from "@/lib/http/types";
-import { Button } from "@/modules/ui/Button";
+import { Button, buttonClassName } from "@/modules/ui/Button";
 import { Card } from "@/modules/ui/Card";
 import { EmptyState } from "@/modules/ui/EmptyState";
 import { TextInput } from "@/modules/ui/Input";
@@ -26,12 +31,14 @@ import { VirtualTable, type VirtualTableColumn } from "@/modules/ui/VirtualTable
 import { ToggleSwitch } from "@/modules/ui/ToggleSwitch";
 import type {
   AuthFileModelOwnerGroup,
+  AuthFileStatusFilter,
   FilesViewMode,
   OAuthDialogTab,
   QuotaAutoRefreshMs,
   UsageIndex,
 } from "@/modules/auth-files/helpers/authFilesPageUtils";
 import {
+  AUTH_FILE_STATUS_FILTERS,
   TYPE_BADGE_CLASSES,
   isRuntimeOnlyAuthFile,
   normalizeProviderKey,
@@ -41,8 +48,417 @@ import {
   resolveFileType,
   shouldShowAuthFileDisplayTag,
 } from "@/modules/auth-files/helpers/authFilesPageUtils";
-import type { QuotaItem, QuotaState } from "@/modules/quota/quota-helpers";
+import {
+  parseIdTokenPayload,
+  type QuotaItem,
+  type QuotaState,
+} from "@/modules/quota/quota-helpers";
 import type { QuotaProvider } from "@/modules/quota/quota-fetch";
+
+const MAX_FILENAME_PART_LENGTH = 72;
+const ACTION_MENU_CONTENT_CLASS =
+  "z-[220] min-w-44 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-900/10 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-black/35";
+const ACTION_MENU_ITEM_CLASS =
+  "flex w-full cursor-default select-none items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 outline-none transition-colors focus:bg-slate-100 data-[highlighted]:bg-slate-100 data-[disabled]:pointer-events-none data-[disabled]:opacity-45 dark:text-white/75 dark:focus:bg-white/10 dark:data-[highlighted]:bg-white/10";
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const sanitizeFilenamePart = (value: unknown): string => {
+  const text = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return text.slice(0, MAX_FILENAME_PART_LENGTH).replace(/^-+|-+$/g, "");
+};
+
+const sanitizeCodexFilenamePart = (value: unknown): string =>
+  Array.from(
+    String(value ?? "")
+      .trim()
+      .toLowerCase(),
+  )
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      return code < 32 || char === "/" || char === "\\" ? "-" : char;
+    })
+    .join("")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, MAX_FILENAME_PART_LENGTH)
+    .replace(/^-+|-+$/g, "");
+
+const readStringField = (record: Record<string, unknown>, keys: string[]): string => {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return "";
+};
+
+const readNestedStringField = (
+  records: readonly (Record<string, unknown> | undefined)[],
+  keys: string[],
+): string => {
+  for (const record of records) {
+    if (!record) continue;
+    const value = readStringField(record, keys);
+    if (value) return value;
+  }
+  return "";
+};
+
+const normalizeDedupKeyPart = (value: unknown): string =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+const codexFilenamePlanSuffixes = new Set([
+  "plus",
+  "pro",
+  "free",
+  "team",
+  "premium",
+  "business",
+  "enterprise",
+]);
+
+const parseCodexFilenameIdentity = (fileName: string): { accountId?: string; email?: string } => {
+  const normalized = String(fileName ?? "")
+    .trim()
+    .toLowerCase();
+  const base = normalized.replace(/\.json$/u, "");
+  if (!base.startsWith("codex-")) return {};
+  const rest = base.slice("codex-".length);
+  if (!rest) return {};
+  const parts = rest.split("-").filter(Boolean);
+  if (parts.length === 0) return {};
+
+  const emailIndex = parts.findIndex((part) => part.includes("@"));
+  if (emailIndex >= 0) {
+    const email = parts[emailIndex] ?? "";
+    const accountId = parts.slice(0, emailIndex).join("-");
+    return {
+      ...(accountId ? { accountId } : {}),
+      ...(email ? { email } : {}),
+    };
+  }
+
+  const lastPart = parts.at(-1) ?? "";
+  if (codexFilenamePlanSuffixes.has(lastPart) && parts.length > 1) {
+    return { email: parts.slice(0, -1).join("-") };
+  }
+
+  return { accountId: rest };
+};
+
+const collectAuthIdentityKeys = (record: Record<string, unknown>): string[] => {
+  const credentials = isPlainObject(record.credentials) ? record.credentials : undefined;
+  const metadata = isPlainObject(record.metadata) ? record.metadata : undefined;
+  const attributes = isPlainObject(record.attributes) ? record.attributes : undefined;
+  const provider =
+    normalizeProviderKey(
+      readNestedStringField([credentials, metadata, attributes, record], ["type", "provider"]),
+    ) || "auth";
+  const idTokenCandidate =
+    credentials?.id_token ?? metadata?.id_token ?? attributes?.id_token ?? record.id_token;
+  const parsedIdToken = parseIdTokenPayload(idTokenCandidate);
+  const nestedIdToken = isPlainObject(parsedIdToken?.["https://api.openai.com/auth"])
+    ? (parsedIdToken?.["https://api.openai.com/auth"] as Record<string, unknown>)
+    : undefined;
+
+  const accountId = readNestedStringField(
+    [credentials, metadata, attributes, nestedIdToken, parsedIdToken ?? undefined, record],
+    ["chatgpt_account_id", "chatgptAccountId", "account_id", "accountId"],
+  );
+  const email = readNestedStringField([credentials, metadata, attributes, record], ["email"]);
+  const label = readNestedStringField([credentials, metadata, attributes, record], ["label"]);
+  const fileName = readNestedStringField([record], ["name"]);
+  const filenameIdentity =
+    provider === "codex" && fileName ? parseCodexFilenameIdentity(fileName) : {};
+
+  return [
+    ...(accountId ? [`${provider}:account:${normalizeDedupKeyPart(accountId)}`] : []),
+    ...(email ? [`${provider}:email:${normalizeDedupKeyPart(email)}`] : []),
+    ...(label ? [`${provider}:label:${normalizeDedupKeyPart(label)}`] : []),
+    ...(filenameIdentity.accountId
+      ? [`${provider}:account:${normalizeDedupKeyPart(filenameIdentity.accountId)}`]
+      : []),
+    ...(filenameIdentity.email
+      ? [`${provider}:email:${normalizeDedupKeyPart(filenameIdentity.email)}`]
+      : []),
+    ...(fileName ? [`${provider}:file:${normalizeDedupKeyPart(fileName)}`] : []),
+  ];
+};
+
+const findJsonValueEnd = (input: string, start: number): number => {
+  let depth = 0;
+  let inString = false;
+  let escaping = false;
+
+  for (let index = start; index < input.length; index += 1) {
+    const char = input[index];
+    if (inString) {
+      if (escaping) {
+        escaping = false;
+      } else if (char === "\\") {
+        escaping = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{" || char === "[") {
+      depth += 1;
+      continue;
+    }
+    if (char === "}" || char === "]") {
+      depth -= 1;
+      if (depth === 0) return index + 1;
+    }
+  }
+
+  throw new Error("incomplete json");
+};
+
+const findNextJsonValueStart = (input: string, start: number): number => {
+  for (let index = start; index < input.length; index += 1) {
+    const char = input[index];
+    if (char === "{" || char === "[") {
+      return index;
+    }
+  }
+  return -1;
+};
+
+const parsePastedJsonValues = (input: string): unknown[] => {
+  const values: unknown[] = [];
+  let index = 0;
+
+  while (index < input.length) {
+    while (index < input.length && (/[\s,]/u.test(input[index]) || input[index] === "\uFEFF")) {
+      index += 1;
+    }
+    if (index >= input.length) break;
+    const startChar = input[index];
+    if (startChar !== "{" && startChar !== "[") {
+      const nextIndex = findNextJsonValueStart(input, index + 1);
+      if (nextIndex === -1) break;
+      index = nextIndex;
+      continue;
+    }
+    const end = findJsonValueEnd(input, index);
+    values.push(JSON.parse(input.slice(index, end)) as unknown);
+    index = end;
+  }
+
+  return values;
+};
+
+const parsePastedAuthJsonRecords = (input: string): Record<string, unknown>[] => {
+  const values = parsePastedJsonValues(input);
+  const records: Record<string, unknown>[] = [];
+
+  values.forEach((value) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (!isPlainObject(item)) throw new Error("json array item is not object");
+        records.push(item);
+      });
+      return;
+    }
+    if (!isPlainObject(value)) throw new Error("json value is not object");
+    records.push(value);
+  });
+
+  return records;
+};
+
+const normalizeCodexPlanType = (value: unknown): string =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+const encodeBase64UrlJson = (value: unknown): string => {
+  const raw = JSON.stringify(value);
+  if (typeof btoa === "function") {
+    return btoa(raw).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
+  }
+  const buffer = (globalThis as { Buffer?: { from: (input: string, encoding: string) => unknown } })
+    .Buffer;
+  if (buffer?.from) {
+    const bytes = buffer.from(raw, "utf-8") as { toString: (encoding: string) => string };
+    return bytes.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
+  }
+  throw new Error("base64url encoder is unavailable");
+};
+
+const buildSyntheticCodexIdToken = (input: {
+  accountId: string;
+  email: string;
+  expiresAt: Date;
+  issuedAt: Date;
+  planType: string;
+  userId: string;
+}): string => {
+  const header = { alg: "none", typ: "JWT", cpa_synthetic: true };
+  const payload = {
+    iat: Math.floor(input.issuedAt.getTime() / 1000),
+    exp: Math.floor(input.expiresAt.getTime() / 1000),
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: input.accountId,
+      chatgpt_plan_type: input.planType,
+      chatgpt_user_id: input.userId,
+      user_id: input.userId,
+    },
+    email: input.email,
+  };
+  return `${encodeBase64UrlJson(header)}.${encodeBase64UrlJson(payload)}.synthetic`;
+};
+
+const buildSyntheticCodexAuthRecord = (
+  account: Record<string, unknown>,
+  issuedAt: Date,
+): Record<string, unknown> | null => {
+  const credentials = isPlainObject(account.credentials) ? account.credentials : undefined;
+  const email = readNestedStringField([credentials, account], ["email", "name"]);
+  const accountId = readNestedStringField(
+    [credentials, account],
+    ["chatgpt_account_id", "account_id"],
+  );
+  const userId = readNestedStringField([credentials, account], ["chatgpt_user_id", "user_id"]);
+  const planType = normalizeCodexPlanType(
+    readNestedStringField([credentials, account], ["plan_type", "chatgpt_plan_type"]),
+  );
+  const accessToken = readNestedStringField([credentials, account], ["access_token"]);
+  const refreshToken = readNestedStringField([credentials, account], ["refresh_token"]);
+  const expired = readNestedStringField([credentials, account], ["expires_at", "expired"]);
+  if (!email || !accountId || !accessToken || !expired || !userId) {
+    return null;
+  }
+
+  const expiresAt = new Date(expired);
+  if (Number.isNaN(expiresAt.getTime())) return null;
+
+  const normalizedPlanType = planType || "plus";
+  return {
+    type: "codex",
+    account_id: accountId,
+    chatgpt_account_id: accountId,
+    email,
+    name: email,
+    plan_type: normalizedPlanType,
+    chatgpt_plan_type: normalizedPlanType,
+    id_token: buildSyntheticCodexIdToken({
+      accountId,
+      email,
+      expiresAt,
+      issuedAt,
+      planType: normalizedPlanType,
+      userId,
+    }),
+    id_token_synthetic: true,
+    access_token: accessToken,
+    refresh_token: refreshToken,
+    last_refresh: issuedAt.toISOString(),
+    expired,
+  };
+};
+
+const buildPastedAuthBundleRecords = (
+  record: Record<string, unknown>,
+  issuedAt: Date,
+): Record<string, unknown>[] | null => {
+  const accounts = record.accounts;
+  if (!Array.isArray(accounts)) return null;
+
+  return accounts.map((account, accountIndex) => {
+    if (!isPlainObject(account)) {
+      throw new Error(`bundle account ${accountIndex + 1} is not object`);
+    }
+    const synthesized = buildSyntheticCodexAuthRecord(account, issuedAt);
+    if (!synthesized) {
+      throw new Error(`bundle account ${accountIndex + 1} is not a supported Codex export`);
+    }
+    return synthesized;
+  });
+};
+
+const buildPastedAuthFileName = (
+  record: Record<string, unknown>,
+  index: number,
+  usedNames: Set<string>,
+): string => {
+  const provider = sanitizeFilenamePart(readStringField(record, ["type", "provider"])) || "auth";
+  const email = readStringField(record, ["email", "name"]);
+  const planType = normalizeCodexPlanType(
+    readStringField(record, ["plan_type", "chatgpt_plan_type"]),
+  );
+  const identifier =
+    provider === "codex" && email
+      ? `codex-${sanitizeCodexFilenamePart(email)}${planType ? `-${planType}` : ""}`
+      : sanitizeFilenamePart(
+          readStringField(record, [
+            "account_id",
+            "chatgpt_account_id",
+            "auth_index",
+            "authIndex",
+            "id",
+          ]),
+        ) || `import-${index + 1}`;
+  const base =
+    provider === "codex" && email
+      ? identifier
+      : `${provider}-${identifier}`.replace(/^-+|-+$/g, "") || `auth-import-${index + 1}`;
+  let name = `${base}.json`;
+  let suffix = 2;
+  while (usedNames.has(name)) {
+    name = `${base}-${suffix}.json`;
+    suffix += 1;
+  }
+  usedNames.add(name);
+  return name;
+};
+
+const buildPastedAuthFiles = (input: string, existingFiles: AuthFileItem[] = []): File[] => {
+  const records = parsePastedAuthJsonRecords(input);
+  if (records.length === 0) return [];
+  const issuedAt = new Date();
+  const normalizedRecords: Record<string, unknown>[] = [];
+  records.forEach((record) => {
+    const bundledRecords = buildPastedAuthBundleRecords(record, issuedAt);
+    if (bundledRecords) {
+      normalizedRecords.push(...bundledRecords);
+      return;
+    }
+    normalizedRecords.push(record);
+  });
+  const usedNames = new Set<string>();
+  const usedIdentityKeys = new Set<string>();
+  existingFiles.forEach((file) => {
+    collectAuthIdentityKeys(file).forEach((key) => usedIdentityKeys.add(key));
+  });
+
+  const files: File[] = [];
+  normalizedRecords.forEach((record, index) => {
+    const identityKeys = collectAuthIdentityKeys(record);
+    if (identityKeys.some((key) => usedIdentityKeys.has(key))) {
+      return;
+    }
+    identityKeys.forEach((key) => usedIdentityKeys.add(key));
+    const name = buildPastedAuthFileName(record, index, usedNames);
+    files.push(new File([JSON.stringify(record, null, 2)], name, { type: "application/json" }));
+  });
+
+  return files;
+};
 
 interface AuthFilesFilesTabProps {
   fileInputRef: RefObject<HTMLInputElement | null>;
@@ -54,6 +470,9 @@ interface AuthFilesFilesTabProps {
   tagFilter: string;
   setTagFilter: (value: string) => void;
   customTagOptions: string[];
+  statusFilter: AuthFileStatusFilter;
+  setStatusFilter: (value: AuthFileStatusFilter) => void;
+  statusFilterCounts: Partial<Record<AuthFileStatusFilter, number>>;
   modelOwnerGroupsLoading: boolean;
   modelOwnerGroups: AuthFileModelOwnerGroup[];
   selectedModelOwner: string;
@@ -62,6 +481,7 @@ interface AuthFilesFilesTabProps {
   setSearch: (value: string) => void;
   quotaLastUpdatedText: string;
   loading: boolean;
+  files: AuthFileItem[];
   filesLength: number;
   renderFilesViewModeTabs: ReactNode;
   quotaAutoRefreshMs: QuotaAutoRefreshMs;
@@ -130,6 +550,9 @@ export function AuthFilesFilesTab({
   tagFilter,
   setTagFilter,
   customTagOptions,
+  statusFilter,
+  setStatusFilter,
+  statusFilterCounts,
   modelOwnerGroupsLoading,
   modelOwnerGroups,
   selectedModelOwner,
@@ -138,6 +561,7 @@ export function AuthFilesFilesTab({
   setSearch,
   quotaLastUpdatedText,
   loading,
+  files,
   filesLength,
   renderFilesViewModeTabs,
   quotaAutoRefreshMs,
@@ -192,8 +616,19 @@ export function AuthFilesFilesTab({
   const { t } = useTranslation();
   const [modelOwnerDialogOpen, setModelOwnerDialogOpen] = useState(false);
   const [draftModelOwner, setDraftModelOwner] = useState(selectedModelOwner);
+  const [jsonImportOpen, setJsonImportOpen] = useState(false);
+  const [jsonImportText, setJsonImportText] = useState("");
+  const [jsonImportError, setJsonImportError] = useState("");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const normalizedFilter = normalizeProviderKey(filter);
   const canSetModelOwnerGroup = normalizedFilter !== "all";
+  const activeFilterCount = [
+    normalizedFilter !== "all",
+    customTagOptions.length > 0 && tagFilter.trim() !== "",
+    statusFilter !== "all",
+    search.trim() !== "",
+    canSetModelOwnerGroup && selectedModelOwner.trim() !== "",
+  ].filter(Boolean).length;
   const draftModelOwnerGroup =
     draftModelOwner === ""
       ? null
@@ -228,12 +663,61 @@ export function AuthFilesFilesTab({
     ],
     [customTagOptions, t],
   );
+  const statusFilterOptions = useMemo(
+    () =>
+      AUTH_FILE_STATUS_FILTERS.filter((value) => {
+        if (value === "all" || value === statusFilter) return true;
+        return (statusFilterCounts[value] ?? 0) > 0;
+      }).map((value) => {
+        const count = statusFilterCounts[value] ?? 0;
+        const label = t(`auth_files.status_filter_${value}`);
+        return {
+          value,
+          label: (
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="min-w-0 truncate">{label}</span>
+              <span className="ml-auto inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-slate-100 px-1 text-[10px] font-semibold tabular-nums text-slate-700 dark:bg-white/10 dark:text-white/70">
+                {count}
+              </span>
+            </span>
+          ),
+          triggerLabel: `${label} (${count})`,
+        };
+      }),
+    [statusFilter, statusFilterCounts, t],
+  );
 
   useEffect(() => {
     if (!modelOwnerDialogOpen) {
       setDraftModelOwner(selectedModelOwner);
     }
   }, [modelOwnerDialogOpen, selectedModelOwner]);
+
+  const closeJsonImport = useCallback(() => {
+    if (uploading) return;
+    setJsonImportOpen(false);
+    setJsonImportError("");
+  }, [uploading]);
+
+  const submitJsonImport = useCallback(async () => {
+    setJsonImportError("");
+    let uploadFiles: File[];
+    try {
+      uploadFiles = buildPastedAuthFiles(jsonImportText, files);
+    } catch {
+      setJsonImportError(t("auth_files.paste_json_invalid"));
+      return;
+    }
+
+    if (uploadFiles.length === 0) {
+      setJsonImportError(t("auth_files.paste_json_empty"));
+      return;
+    }
+
+    await handleUpload(uploadFiles);
+    setJsonImportText("");
+    setJsonImportOpen(false);
+  }, [files, handleUpload, jsonImportText, t]);
 
   return (
     <div className="mt-3 space-y-3">
@@ -248,9 +732,38 @@ export function AuthFilesFilesTab({
 
       <Card padding="compact">
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div className="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-end">
-              <div className="w-fit max-w-full space-y-1.5">
+          <div className="flex items-center justify-between gap-2 md:hidden">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-full justify-between px-3"
+              aria-controls="auth-files-mobile-filter-panel"
+              aria-expanded={mobileFiltersOpen}
+              data-testid="auth-files-mobile-filter-toggle"
+              onClick={() => setMobileFiltersOpen((open) => !open)}
+            >
+              <span className="inline-flex min-w-0 items-center gap-2">
+                <SlidersHorizontal size={15} />
+                <span className="truncate">{t("auth_files.filters")}</span>
+              </span>
+              {activeFilterCount > 0 ? (
+                <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-slate-900 px-1.5 text-[10px] font-semibold tabular-nums text-white dark:bg-white dark:text-neutral-950">
+                  {activeFilterCount}
+                </span>
+              ) : null}
+            </Button>
+          </div>
+
+          <div
+            id="auth-files-mobile-filter-panel"
+            data-testid="auth-files-mobile-filter-panel"
+            className={[
+              mobileFiltersOpen ? "grid" : "hidden",
+              "gap-3 md:grid xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] xl:items-start",
+            ].join(" ")}
+          >
+            <div className="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+              <div className="min-w-0 space-y-1.5">
                 <div className="flex items-center gap-2">
                   <p className="text-[11px] font-semibold text-slate-600 dark:text-white/65">
                     {t("auth_files.type_filter")}
@@ -319,9 +832,19 @@ export function AuthFilesFilesTab({
                   </HoverTooltip>
                 </div>
               ) : null}
+            </div>
 
+            <div
+              className={[
+                "grid min-w-0 gap-3",
+                customTagOptions.length > 0
+                  ? "sm:grid-cols-2 xl:grid-cols-[minmax(0,180px)_minmax(0,170px)_minmax(0,1fr)]"
+                  : "sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)]",
+                "xl:items-end",
+              ].join(" ")}
+            >
               {customTagOptions.length > 0 ? (
-                <div className="w-full max-w-[220px] space-y-1.5">
+                <div className="min-w-0 space-y-1.5">
                   <p className="text-[11px] font-semibold text-slate-600 dark:text-white/65">
                     {t("auth_files.tag_filter")}
                   </p>
@@ -336,7 +859,22 @@ export function AuthFilesFilesTab({
                 </div>
               ) : null}
 
-              <div className="w-full max-w-[560px] space-y-1.5">
+              <div className="min-w-0 space-y-1.5">
+                <p className="text-[11px] font-semibold text-slate-600 dark:text-white/65">
+                  {t("auth_files.status_filter")}
+                </p>
+                <Select
+                  value={statusFilter}
+                  onChange={(value) => setStatusFilter(value as AuthFileStatusFilter)}
+                  options={statusFilterOptions}
+                  placeholder={t("auth_files.status_filter")}
+                  aria-label={t("auth_files.status_filter")}
+                  disabled={statusFilterOptions.length <= 1 && statusFilter === "all"}
+                  className="h-9"
+                />
+              </div>
+
+              <div className="min-w-0 space-y-1.5">
                 <p className="text-[11px] font-semibold text-slate-600 dark:text-white/65">
                   {t("auth_files.search")}
                 </p>
@@ -350,7 +888,7 @@ export function AuthFilesFilesTab({
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex items-center gap-2 text-xs text-slate-500 dark:text-white/45">
                 <span className="font-medium">{t("auth_files.quota_updated_at")}</span>
@@ -388,122 +926,168 @@ export function AuthFilesFilesTab({
                   />
                 </div>
               </div>
-
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="!h-8 px-2 text-xs"
-                  onClick={openGroupOverview}
-                  disabled={loading || groupOverviewLoading || filteredFiles.length === 0}
-                >
-                  <BarChart3 size={14} className={groupOverviewLoading ? "animate-pulse" : ""} />
-                  {t("auth_files.group_overview_button")}
-                </Button>
-                <HoverTooltip content={t("auth_files.refresh")}>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => void refreshFilesAndQuota()}
-                    disabled={loading || usageLoading || refreshingAll}
-                    aria-label={t("auth_files.refresh")}
-                    title={t("auth_files.refresh")}
-                  >
-                    <RefreshCw
-                      size={15}
-                      className={loading || usageLoading || refreshingAll ? "animate-spin" : ""}
-                    />
-                  </Button>
-                </HoverTooltip>
-                <HoverTooltip content={t("auth_files.upload")}>
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    aria-label={t("auth_files.upload")}
-                    title={t("auth_files.upload")}
-                  >
-                    <Upload size={15} />
-                  </Button>
-                </HoverTooltip>
-                <HoverTooltip content={t("auth_files_page.add_oauth")}>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => {
-                      const normalized = normalizeProviderKey(filter);
-                      const oauthTab =
-                        normalized === "codex" ||
-                        normalized === "anthropic" ||
-                        normalized === "antigravity" ||
-                        normalized === "gemini-cli" ||
-                        normalized === "kimi" ||
-                        normalized === "qwen"
-                          ? (normalized as OAuthDialogTab)
-                          : "codex";
-                      setOauthDialogDefaultTab(oauthTab);
-                      setOauthDialogOpen(true);
-                    }}
-                    aria-label={t("auth_files_page.add_oauth")}
-                    title={t("auth_files_page.add_oauth")}
-                  >
-                    <Plus size={15} />
-                  </Button>
-                </HoverTooltip>
-              </div>
             </div>
 
-            {selectableFilteredFiles.length > 0 || selectedCount > 0 ? (
-              <div className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-slate-50/80 px-2 py-1.5 transition-colors duration-200 ease-out dark:bg-white/[0.03]">
+            <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
+              <Button
+                variant="secondary"
+                size="sm"
+                className="!h-8 px-2 text-xs"
+                onClick={openGroupOverview}
+                disabled={loading || groupOverviewLoading || filteredFiles.length === 0}
+              >
+                <BarChart3 size={14} className={groupOverviewLoading ? "animate-pulse" : ""} />
+                {t("auth_files.group_overview_button")}
+              </Button>
+              <HoverTooltip content={t("auth_files.refresh")}>
                 <Button
                   variant="secondary"
                   size="sm"
-                  className="!h-8 px-2 text-xs"
-                  onClick={() => selectCurrentPage(!allPageSelected)}
-                  disabled={selectablePageNames.length === 0}
+                  onClick={() => void refreshFilesAndQuota()}
+                  disabled={loading || usageLoading || refreshingAll}
+                  aria-label={t("auth_files.refresh")}
+                  title={t("auth_files.refresh")}
                 >
-                  {allPageSelected
-                    ? t("auth_files.batch_deselect_page")
-                    : t("auth_files.batch_select_page")}
+                  <RefreshCw
+                    size={15}
+                    className={loading || usageLoading || refreshingAll ? "animate-spin" : ""}
+                  />
                 </Button>
+              </HoverTooltip>
+              <HoverTooltip content={t("auth_files.upload")}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  aria-label={t("auth_files.upload")}
+                  title={t("auth_files.upload")}
+                >
+                  <Upload size={15} />
+                </Button>
+              </HoverTooltip>
+              <HoverTooltip content={t("auth_files.paste_json")}>
                 <Button
                   variant="secondary"
                   size="sm"
-                  className="!h-8 px-2 text-xs"
-                  onClick={() => selectFilteredFiles(!allFilteredSelected)}
-                  disabled={selectableFilteredFiles.length === 0}
+                  onClick={() => {
+                    setJsonImportError("");
+                    setJsonImportOpen(true);
+                  }}
+                  disabled={uploading}
+                  aria-label={t("auth_files.paste_json")}
+                  title={t("auth_files.paste_json")}
                 >
-                  {allFilteredSelected
-                    ? t("auth_files.batch_deselect_filtered")
-                    : t("auth_files.batch_select_filtered")}
+                  <ClipboardPaste size={15} />
                 </Button>
-                <span className="ml-1 text-xs font-medium text-slate-600 dark:text-white/65">
-                  {t("auth_files.batch_selected", { count: selectedCount })}
-                </span>
+              </HoverTooltip>
+              <HoverTooltip content={t("auth_files_page.add_oauth")}>
                 <Button
-                  variant="ghost"
+                  variant="secondary"
                   size="sm"
-                  className="!h-8 px-2 text-xs"
-                  onClick={() => setSelectedFileNames([])}
-                  disabled={selectedCount === 0}
+                  onClick={() => {
+                    const normalized = normalizeProviderKey(filter);
+                    const oauthTab =
+                      normalized === "codex" ||
+                      normalized === "anthropic" ||
+                      normalized === "antigravity" ||
+                      normalized === "gemini-cli" ||
+                      normalized === "kimi" ||
+                      normalized === "qwen"
+                        ? (normalized as OAuthDialogTab)
+                        : "codex";
+                    setOauthDialogDefaultTab(oauthTab);
+                    setOauthDialogOpen(true);
+                  }}
+                  aria-label={t("auth_files_page.add_oauth")}
+                  title={t("auth_files_page.add_oauth")}
                 >
-                  {t("auth_files.batch_clear")}
+                  <Plus size={15} />
                 </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  className="!h-8 px-2 text-xs"
-                  onClick={() =>
-                    setConfirm({ type: "deleteSelection", names: [...selectedFileNames] })
-                  }
-                  disabled={selectedCount === 0 || deletingAll}
-                >
-                  {t("auth_files.batch_delete_action", { count: selectedCount })}
-                </Button>
-              </div>
-            ) : null}
+              </HoverTooltip>
+            </div>
           </div>
+
+          {selectableFilteredFiles.length > 0 || selectedCount > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-slate-50/80 px-2 py-1.5 transition-colors duration-200 ease-out dark:bg-white/[0.03]">
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <button
+                    type="button"
+                    className={buttonClassName({
+                      variant: "secondary",
+                      size: "sm",
+                      iconOnly: true,
+                      className: "!h-8 !w-8",
+                    })}
+                    aria-label={t("auth_files.selection_actions")}
+                    title={t("auth_files.selection_actions")}
+                    data-tooltip-placement="top"
+                  >
+                    <ListChecks size={15} />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    align="end"
+                    sideOffset={8}
+                    className={ACTION_MENU_CONTENT_CLASS}
+                  >
+                    <DropdownMenu.Item
+                      className={ACTION_MENU_ITEM_CLASS}
+                      disabled={selectablePageNames.length === 0}
+                      onSelect={() => selectCurrentPage(!allPageSelected)}
+                    >
+                      <ListChecks size={15} />
+                      <span>
+                        {allPageSelected
+                          ? t("auth_files.batch_deselect_page")
+                          : t("auth_files.batch_select_page")}
+                      </span>
+                    </DropdownMenu.Item>
+                    <DropdownMenu.Item
+                      className={ACTION_MENU_ITEM_CLASS}
+                      disabled={selectableFilteredFiles.length === 0}
+                      onSelect={() => selectFilteredFiles(!allFilteredSelected)}
+                    >
+                      <ListChecks size={15} />
+                      <span>
+                        {allFilteredSelected
+                          ? t("auth_files.batch_deselect_filtered")
+                          : t("auth_files.batch_select_filtered")}
+                      </span>
+                    </DropdownMenu.Item>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+              {selectedCount > 0 ? (
+                <>
+                  <span className="ml-1 text-xs font-medium text-slate-600 dark:text-white/65">
+                    {t("auth_files.batch_selected", { count: selectedCount })}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="!h-8 px-2 text-xs"
+                    onClick={() => setSelectedFileNames([])}
+                  >
+                    {t("auth_files.batch_clear")}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    className="!h-8 px-2 text-xs"
+                    onClick={() =>
+                      setConfirm({ type: "deleteSelection", names: [...selectedFileNames] })
+                    }
+                    disabled={deletingAll}
+                  >
+                    {t("auth_files.batch_delete_action", { count: selectedCount })}
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </Card>
 
@@ -745,18 +1329,6 @@ export function AuthFilesFilesTab({
                             </HoverTooltip>
                           ) : null}
 
-                          <HoverTooltip content={t("auth_files.edit_tags")}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => openTagsEditor(file)}
-                              title={t("auth_files.edit_tags")}
-                              aria-label={t("auth_files.edit_tags")}
-                            >
-                              <Tags size={16} />
-                            </Button>
-                          </HoverTooltip>
-
                           <HoverTooltip content={t("auth_files.view")}>
                             <Button
                               variant="ghost"
@@ -769,17 +1341,45 @@ export function AuthFilesFilesTab({
                             </Button>
                           </HoverTooltip>
 
-                          <HoverTooltip content={t("auth_files.download")}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => void downloadAuthFile(file)}
-                              title={t("auth_files.download")}
-                              aria-label={t("auth_files.download")}
-                            >
-                              <Download size={16} />
-                            </Button>
-                          </HoverTooltip>
+                          <DropdownMenu.Root>
+                            <DropdownMenu.Trigger asChild>
+                              <button
+                                type="button"
+                                className={buttonClassName({
+                                  variant: "ghost",
+                                  size: "sm",
+                                  iconOnly: true,
+                                })}
+                                aria-label={t("auth_files.more_actions")}
+                                title={t("auth_files.more_actions")}
+                                data-tooltip-placement="top"
+                              >
+                                <Ellipsis size={16} />
+                              </button>
+                            </DropdownMenu.Trigger>
+                            <DropdownMenu.Portal>
+                              <DropdownMenu.Content
+                                align="end"
+                                sideOffset={8}
+                                className={ACTION_MENU_CONTENT_CLASS}
+                              >
+                                <DropdownMenu.Item
+                                  className={ACTION_MENU_ITEM_CLASS}
+                                  onSelect={() => openTagsEditor(file)}
+                                >
+                                  <Tags size={15} />
+                                  <span>{t("auth_files.edit_tags")}</span>
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Item
+                                  className={ACTION_MENU_ITEM_CLASS}
+                                  onSelect={() => void downloadAuthFile(file)}
+                                >
+                                  <Download size={15} />
+                                  <span>{t("auth_files.download")}</span>
+                                </DropdownMenu.Item>
+                              </DropdownMenu.Content>
+                            </DropdownMenu.Portal>
+                          </DropdownMenu.Root>
                         </div>
                       </div>
                     </Card>
@@ -824,6 +1424,60 @@ export function AuthFilesFilesTab({
           {t("auth_files.usage_stats_warning")}
         </p>
       )}
+
+      <Modal
+        open={jsonImportOpen}
+        title={t("auth_files.paste_json_title")}
+        description={t("auth_files.paste_json_description")}
+        maxWidth="max-w-3xl"
+        bodyHeightClassName="max-h-[72vh]"
+        onClose={closeJsonImport}
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={closeJsonImport} disabled={uploading}>
+              {t("auth_files.cancel")}
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => void submitJsonImport()}
+              disabled={uploading || jsonImportText.trim().length === 0}
+            >
+              {uploading ? t("auth_files.upload") : t("auth_files.paste_json_upload")}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <label
+            htmlFor="auth-files-json-import"
+            className="text-xs font-semibold text-slate-600 dark:text-white/65"
+          >
+            {t("auth_files.paste_json_label")}
+          </label>
+          <textarea
+            id="auth-files-json-import"
+            value={jsonImportText}
+            onChange={(event) => {
+              setJsonImportText(event.currentTarget.value);
+              if (jsonImportError) setJsonImportError("");
+            }}
+            spellCheck={false}
+            className="min-h-[320px] w-full resize-y rounded-2xl border border-black/[0.06] bg-white px-3.5 py-3 font-mono text-xs leading-5 text-slate-900 shadow-[2px_2px_8px_rgb(0_0_0_/_0.055)] outline-none transition-colors placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-black/10 dark:border-transparent dark:bg-[#27272A] dark:text-white dark:shadow-[0_8px_24px_rgb(0_0_0_/_0.24)] dark:placeholder:text-white/35 dark:focus-visible:ring-white/15"
+            placeholder={t("auth_files.paste_json_placeholder")}
+            aria-invalid={jsonImportError ? "true" : "false"}
+          />
+          {jsonImportError ? (
+            <p className="text-xs font-medium text-rose-600 dark:text-rose-300">
+              {jsonImportError}
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500 dark:text-white/45">
+              {t("auth_files.paste_json_hint")}
+            </p>
+          )}
+        </div>
+      </Modal>
 
       <Modal
         open={modelOwnerDialogOpen}

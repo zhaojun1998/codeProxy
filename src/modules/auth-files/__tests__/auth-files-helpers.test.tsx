@@ -9,6 +9,7 @@ import {
   pickQuotaPreviewItem,
   readAuthFilesDataCache,
   readAuthFilesUiState,
+  resolveAuthFileDisplayName,
   resolveAuthFileRestrictionBadges,
   resolveAuthFileDisplayTags,
   resolveAuthFilePlanType,
@@ -204,6 +205,18 @@ describe("Auth Files helper coverage", () => {
     });
   });
 
+  test("shows codex channel emails as the display name without requiring oauth account type", () => {
+    const file = {
+      name: "codex-alpha@example.test-plus.json",
+      type: "codex",
+      provider: "codex",
+      email: "alpha@example.test",
+      label: "",
+    } satisfies AuthFileItem;
+
+    expect(resolveAuthFileDisplayName(file)).toBe("alpha@example.test");
+  });
+
   test("treats an explicit empty display tag list as hiding every tag", () => {
     const file = {
       name: "codex.json",
@@ -326,9 +339,9 @@ describe("Auth Files helper coverage", () => {
       ],
     } as AuthFileItem;
 
-    expect(
-      resolveAuthFileRestrictionBadges(file, Date.parse("2026-05-06T08:00:00.000Z")),
-    ).toEqual([]);
+    expect(resolveAuthFileRestrictionBadges(file, Date.parse("2026-05-06T08:00:00.000Z"))).toEqual(
+      [],
+    );
   });
 
   test("shows auth-level quota recovery records as 429 restriction badges", () => {
@@ -504,6 +517,7 @@ describe("Auth Files helper coverage", () => {
           files,
           filter: "codex",
           tagFilter: "",
+          statusFilter: "all",
           search: ".json",
           page,
           setPage,

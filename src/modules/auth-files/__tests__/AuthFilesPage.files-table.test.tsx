@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/modules/ui/ThemeProvider";
 import { AuthFilesPage } from "@/modules/auth-files/AuthFilesPage";
 import {
   AUTH_FILES_DATA_CACHE_KEY,
+  AUTH_FILES_QUOTA_AUTO_REFRESH_KEY,
   AUTH_FILES_UI_STATE_KEY,
 } from "@/modules/auth-files/helpers/authFilesPageUtils";
 import i18n from "@/i18n";
@@ -31,6 +32,7 @@ const mocks = vi.hoisted(() => ({
     group: "all",
     points: [{ date: new Date().toISOString().slice(0, 10), requests: 9 }],
   })),
+  recordAuthFileQuotaSnapshot: vi.fn(async () => ({})),
   fetchQuota: vi.fn((_provider?: unknown, _file?: { name?: string }) => new Promise(() => {})),
   deleteFile: vi.fn(async () => ({})),
   downloadText: vi.fn(async () => "{}"),
@@ -45,6 +47,9 @@ const mocks = vi.hoisted(() => ({
     { value: "anthropic", label: "Anthropic", description: "Anthropic models", enabled: true },
   ]),
   upload: vi.fn(async () => ({})),
+  submitCallback: vi.fn(async () => ({})),
+  getAuthStatus: vi.fn(async () => ({ status: "pending" })),
+  startAuth: vi.fn(async () => ({ url: "https://example.test/oauth", state: "state-1" })),
   reconcile: vi.fn(async () => ({})),
 }));
 
@@ -61,6 +66,12 @@ vi.mock("@/lib/http/apis", async (importOriginal) => {
       getModelsForAuthFile: mocks.getModelsForAuthFile,
       upload: mocks.upload,
     },
+    oauthApi: {
+      ...mod.oauthApi,
+      submitCallback: mocks.submitCallback,
+      getAuthStatus: mocks.getAuthStatus,
+      startAuth: mocks.startAuth,
+    },
     modelsApi: {
       ...mod.modelsApi,
       getModelConfigs: mocks.getModelConfigs,
@@ -72,6 +83,7 @@ vi.mock("@/lib/http/apis", async (importOriginal) => {
       getEntityStats: mocks.getEntityStats,
       getUsageLogs: mocks.getUsageLogs,
       getAuthFileGroupTrend: mocks.getAuthFileGroupTrend,
+      recordAuthFileQuotaSnapshot: mocks.recordAuthFileQuotaSnapshot,
     },
   };
 });
@@ -100,6 +112,9 @@ const toDateTimeLocalInput = (date: Date): string =>
     padDatePart(date.getMinutes()),
   ].join("");
 
+const decodeBase64UrlJson = (part: string): Record<string, unknown> =>
+  JSON.parse(Buffer.from(part, "base64url").toString("utf8")) as Record<string, unknown>;
+
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -109,6 +124,10 @@ function createDeferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+const useTableFilesView = () => {
+  window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("table"));
+};
 
 describe("AuthFilesPage files table", () => {
   beforeEach(async () => {
@@ -142,6 +161,8 @@ describe("AuthFilesPage files table", () => {
       group: "all",
       points: [{ date: new Date().toISOString().slice(0, 10), requests: 9 }],
     }));
+    mocks.recordAuthFileQuotaSnapshot.mockReset();
+    mocks.recordAuthFileQuotaSnapshot.mockImplementation(async () => ({}));
     mocks.fetchQuota.mockReset();
     mocks.fetchQuota.mockImplementation(() => new Promise(() => {}));
     mocks.deleteFile.mockReset();
@@ -166,6 +187,15 @@ describe("AuthFilesPage files table", () => {
     ]);
     mocks.upload.mockReset();
     mocks.upload.mockImplementation(async () => ({}));
+    mocks.submitCallback.mockReset();
+    mocks.submitCallback.mockImplementation(async () => ({}));
+    mocks.getAuthStatus.mockReset();
+    mocks.getAuthStatus.mockImplementation(async () => ({ status: "pending" }));
+    mocks.startAuth.mockReset();
+    mocks.startAuth.mockImplementation(async () => ({
+      url: "https://example.test/oauth",
+      state: "state-1",
+    }));
     mocks.reconcile.mockReset();
     mocks.reconcile.mockImplementation(async () => ({}));
   });
@@ -177,7 +207,7 @@ describe("AuthFilesPage files table", () => {
     window.sessionStorage.clear();
   });
 
-  test("renders VirtualTable for auth files and keeps actions available", async () => {
+  test("defaults to card view for auth files and keeps actions available", async () => {
     render(
       <MemoryRouter initialEntries={["/auth-files"]}>
         <ThemeProvider>
@@ -191,17 +221,551 @@ describe("AuthFilesPage files table", () => {
     );
 
     expect(await screen.findByText("qwen.json")).toBeInTheDocument();
-    expect(screen.getByRole("table")).toBeInTheDocument();
-    expect(screen.getByText("Quota")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Quota" })).toBeInTheDocument();
-    expect(screen.getByText("5h")).toBeInTheDocument();
+    expect(screen.getByTestId("auth-files-cards")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Status" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add OAuth Login" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Select current page" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Selection actions" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Select current page" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete All" })).not.toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Enable/Disable" })).toBeInTheDocument();
   });
 
+  test("collapses filters behind a single mobile filter control", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("qwen.json")).toBeInTheDocument();
+
+    const mobileToggle = screen.getByTestId("auth-files-mobile-filter-toggle");
+    const mobilePanel = screen.getByTestId("auth-files-mobile-filter-panel");
+    expect(mobileToggle).toHaveAttribute("aria-expanded", "false");
+    expect(mobilePanel).toHaveClass("hidden");
+
+    await user.click(mobileToggle);
+
+    expect(mobileToggle).toHaveAttribute("aria-expanded", "true");
+    expect(mobilePanel).not.toHaveClass("hidden");
+  });
+
+  test("filters auth file cards by status buckets", async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    mocks.list.mockImplementation(async () => ({
+      files: [
+        {
+          name: "codex-limited.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: false,
+          restrictions: [
+            {
+              scope: "auth",
+              http_status: 429,
+              quota_exceeded: true,
+              status: "error",
+              status_message: "usage limit",
+            },
+          ],
+        },
+        {
+          name: "codex-other-error.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: false,
+          status: "error",
+          status_message: "bad token",
+          unavailable: true,
+        },
+        {
+          name: "codex-disabled.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: true,
+        },
+        {
+          name: "qwen-ok.json",
+          type: "qwen",
+          size: 1024,
+          modified: now,
+          disabled: false,
+        },
+      ],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("codex-limited.json")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "Status" }));
+    expect(screen.getByRole("option", { name: /429/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Other errors/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Disabled/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: /429/ }));
+
+    expect(screen.getByText("codex-limited.json")).toBeInTheDocument();
+    expect(screen.queryByText("codex-other-error.json")).not.toBeInTheDocument();
+    expect(screen.queryByText("codex-disabled.json")).not.toBeInTheDocument();
+    expect(screen.queryByText("qwen-ok.json")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "Status" }));
+    await user.click(screen.getByRole("option", { name: /Other errors/ }));
+
+    expect(screen.queryByText("codex-limited.json")).not.toBeInTheDocument();
+    expect(screen.getByText("codex-other-error.json")).toBeInTheDocument();
+    expect(screen.queryByText("codex-disabled.json")).not.toBeInTheDocument();
+    expect(screen.queryByText("qwen-ok.json")).not.toBeInTheDocument();
+  });
+
+  test("keeps bulk selection collapsed until files are selected", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("qwen.json")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Selection actions" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Select current page" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear selection" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Selection actions" }));
+
+    expect(screen.getByRole("menuitem", { name: "Select current page" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Select filtered results" })).toBeInTheDocument();
+  });
+
+  test("uploads multiple auth files from pasted JSON objects", async () => {
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("qwen.json")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Paste JSON" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Paste Auth JSON" });
+    fireEvent.change(within(dialog).getByLabelText("Auth file JSON"), {
+      target: {
+        value: [
+          JSON.stringify({ type: "codex", account_id: "acct-one", access_token: "token-one" }),
+          JSON.stringify({ type: "kimi", account_id: "acct-two", refresh_token: "token-two" }),
+        ].join("\n"),
+      },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Upload JSON" }));
+
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(2));
+    const uploadCalls = mocks.upload.mock.calls as unknown as [[File], [File]];
+    expect(uploadCalls.map(([file]) => file.name)).toEqual([
+      "codex-acct-one.json",
+      "kimi-acct-two.json",
+    ]);
+    const uploadedJson = await Promise.all(
+      uploadCalls.map(async ([file]) => JSON.parse(await file.text()) as Record<string, unknown>),
+    );
+    expect(uploadedJson).toEqual([
+      { type: "codex", account_id: "acct-one", access_token: "token-one" },
+      { type: "kimi", account_id: "acct-two", refresh_token: "token-two" },
+    ]);
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Paste Auth JSON" })).not.toBeInTheDocument(),
+    );
+  });
+
+  test("expands pasted codex export bundles into synthesized auth files", async () => {
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("qwen.json")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Paste JSON" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Paste Auth JSON" });
+    fireEvent.change(within(dialog).getByLabelText("Auth file JSON"), {
+      target: {
+        value: [
+          "=== 卡密内容 ===",
+          JSON.stringify({
+            exported_at: "2026-05-22T19:59:51.483Z",
+            proxies: [],
+            accounts: [
+              {
+                name: "alpha@example.test",
+                platform: "openai",
+                type: "oauth",
+                credentials: {
+                  access_token: "access-token-one",
+                  chatgpt_account_id: "acct-111",
+                  chatgpt_user_id: "user-111",
+                  email: "alpha@example.test",
+                  expires_at: "2026-06-01T17:08:08.000Z",
+                  plan_type: "plus",
+                },
+                extra: {
+                  email: "alpha@example.test",
+                  last_refresh: "2026-05-22T19:59:51.483Z",
+                },
+              },
+            ],
+          }),
+          JSON.stringify({
+            exported_at: "2026-05-22T20:02:43.650Z",
+            proxies: [],
+            accounts: [
+              {
+                name: "beta@example.test",
+                platform: "openai",
+                type: "oauth",
+                credentials: {
+                  access_token: "access-token-two",
+                  chatgpt_account_id: "acct-222",
+                  chatgpt_user_id: "user-222",
+                  email: "beta@example.test",
+                  expires_at: "2026-06-01T17:08:08.000Z",
+                  plan_type: "plus",
+                },
+                extra: {
+                  email: "beta@example.test",
+                  last_refresh: "2026-05-22T20:02:43.650Z",
+                },
+              },
+            ],
+          }),
+        ].join("\n"),
+      },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Upload JSON" }));
+
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(2));
+    const uploadCalls = mocks.upload.mock.calls as unknown as [[File], [File]];
+    expect(uploadCalls.map(([file]) => file.name)).toEqual([
+      "codex-alpha@example.test-plus.json",
+      "codex-beta@example.test-plus.json",
+    ]);
+
+    const uploadedJson = await Promise.all(
+      uploadCalls.map(async ([file]) => JSON.parse(await file.text()) as Record<string, unknown>),
+    );
+    const firstLastRefresh = String(uploadedJson[0]?.last_refresh ?? "");
+    const secondLastRefresh = String(uploadedJson[1]?.last_refresh ?? "");
+    expect(firstLastRefresh).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u);
+    expect(secondLastRefresh).toBe(firstLastRefresh);
+
+    expect(uploadedJson).toEqual([
+      expect.objectContaining({
+        type: "codex",
+        account_id: "acct-111",
+        chatgpt_account_id: "acct-111",
+        email: "alpha@example.test",
+        name: "alpha@example.test",
+        plan_type: "plus",
+        chatgpt_plan_type: "plus",
+        id_token_synthetic: true,
+        access_token: "access-token-one",
+        refresh_token: "",
+        last_refresh: firstLastRefresh,
+        expired: "2026-06-01T17:08:08.000Z",
+      }),
+      expect.objectContaining({
+        type: "codex",
+        account_id: "acct-222",
+        chatgpt_account_id: "acct-222",
+        email: "beta@example.test",
+        name: "beta@example.test",
+        plan_type: "plus",
+        chatgpt_plan_type: "plus",
+        id_token_synthetic: true,
+        access_token: "access-token-two",
+        refresh_token: "",
+        last_refresh: firstLastRefresh,
+        expired: "2026-06-01T17:08:08.000Z",
+      }),
+    ]);
+
+    const firstToken = String(uploadedJson[0]?.id_token ?? "");
+    const [firstHeaderPart, firstPayloadPart, firstSignaturePart] = firstToken.split(".");
+    expect(firstSignaturePart).toBe("synthetic");
+    expect(decodeBase64UrlJson(firstHeaderPart)).toMatchObject({
+      alg: "none",
+      typ: "JWT",
+      cpa_synthetic: true,
+    });
+    expect(decodeBase64UrlJson(firstPayloadPart)).toMatchObject({
+      iat: Math.floor(Date.parse(firstLastRefresh) / 1000),
+      exp: Math.floor(Date.parse("2026-06-01T17:08:08.000Z") / 1000),
+      email: "alpha@example.test",
+      "https://api.openai.com/auth": {
+        chatgpt_account_id: "acct-111",
+        chatgpt_plan_type: "plus",
+        chatgpt_user_id: "user-111",
+        user_id: "user-111",
+      },
+    });
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Paste Auth JSON" })).not.toBeInTheDocument(),
+    );
+  });
+
+  test("skips duplicate codex accounts that are already in the list or repeated in the pasted bundle", async () => {
+    const existingAlpha = {
+      name: "codex-alpha@example.test-plus.json",
+      type: "codex",
+      provider: "codex",
+      account_type: "oauth",
+      email: "alpha@example.test",
+      label: "alpha@example.test",
+      account_id: "acct-111",
+      chatgpt_account_id: "acct-111",
+      auth_index: "auth-alpha",
+      size: 1024,
+      modified: Date.now(),
+      disabled: false,
+    };
+    mocks.list.mockImplementation(async () => ({
+      files: [
+        {
+          name: "qwen.json",
+          type: "qwen",
+          size: 1024,
+          modified: Date.now(),
+          disabled: false,
+        },
+        existingAlpha,
+      ],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("qwen.json")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Paste JSON" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Paste Auth JSON" });
+    fireEvent.change(within(dialog).getByLabelText("Auth file JSON"), {
+      target: {
+        value: [
+          "=== 卡密内容 ===",
+          JSON.stringify({
+            exported_at: "2026-05-22T20:11:27.181Z",
+            proxies: [],
+            accounts: [
+              {
+                name: "alpha@example.test",
+                platform: "openai",
+                type: "oauth",
+                credentials: {
+                  access_token: "access-token-one",
+                  chatgpt_account_id: "acct-111",
+                  chatgpt_user_id: "user-111",
+                  email: "alpha@example.test",
+                  expires_at: "2026-06-01T17:08:08.000Z",
+                  plan_type: "plus",
+                },
+                extra: {
+                  email: "alpha@example.test",
+                  last_refresh: "2026-05-22T20:11:27.181Z",
+                },
+              },
+              {
+                name: "beta@example.test",
+                platform: "openai",
+                type: "oauth",
+                credentials: {
+                  access_token: "access-token-two",
+                  chatgpt_account_id: "acct-222",
+                  chatgpt_user_id: "user-222",
+                  email: "beta@example.test",
+                  expires_at: "2026-06-01T17:08:08.000Z",
+                  plan_type: "plus",
+                },
+                extra: {
+                  email: "beta@example.test",
+                  last_refresh: "2026-05-22T20:11:27.181Z",
+                },
+              },
+              {
+                name: "alpha@example.test",
+                platform: "openai",
+                type: "oauth",
+                credentials: {
+                  access_token: "access-token-three",
+                  chatgpt_account_id: "acct-111",
+                  chatgpt_user_id: "user-111",
+                  email: "alpha@example.test",
+                  expires_at: "2026-06-01T17:08:08.000Z",
+                  plan_type: "plus",
+                },
+                extra: {
+                  email: "alpha@example.test",
+                  last_refresh: "2026-05-22T20:11:27.181Z",
+                },
+              },
+            ],
+          }),
+        ].join("\n"),
+      },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Upload JSON" }));
+
+    await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(1));
+    const uploadCalls = mocks.upload.mock.calls as unknown as [[File]];
+    expect(uploadCalls.map(([file]) => file.name)).toEqual(["codex-beta@example.test-plus.json"]);
+  });
+
+  test("refreshes pasted auth files and quotas from the latest uploaded list", async () => {
+    window.localStorage.setItem(AUTH_FILES_QUOTA_AUTO_REFRESH_KEY, JSON.stringify(0));
+    const now = Date.now();
+    const initialFile = {
+      name: "qwen.json",
+      type: "qwen",
+      size: 1024,
+      modified: now,
+      disabled: false,
+    };
+    const uploadedFile = {
+      name: "auth-server-renamed.json",
+      type: "codex",
+      provider: "codex",
+      account_type: "oauth",
+      auth_index: "auth-codex",
+      chatgpt_account_id: "acct-123",
+      size: 2048,
+      modified: now + 1,
+      disabled: false,
+    };
+    mocks.list
+      .mockImplementationOnce(async () => ({ files: [initialFile] }))
+      .mockImplementationOnce(async () => ({ files: [initialFile, uploadedFile] }));
+    mocks.fetchQuota.mockImplementation(async () => ({ items: [] }));
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("qwen.json")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Paste JSON" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Paste Auth JSON" });
+    fireEvent.change(within(dialog).getByLabelText("Auth file JSON"), {
+      target: {
+        value: JSON.stringify({
+          chatgpt_account_id: "acct-123",
+          client_id: "app_test",
+          access_token: "token",
+          id_token: "id-token",
+        }),
+      },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Upload JSON" }));
+
+    expect(await screen.findByText("auth-server-renamed.json")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mocks.fetchQuota).toHaveBeenCalledWith(
+        "codex",
+        expect.objectContaining({
+          name: "auth-server-renamed.json",
+          chatgpt_account_id: "acct-123",
+        }),
+      ),
+    );
+  });
+
+  test("shows an error for invalid pasted auth JSON", async () => {
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("qwen.json")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Paste JSON" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Paste Auth JSON" });
+    fireEvent.change(within(dialog).getByLabelText("Auth file JSON"), {
+      target: { value: '{"type":"codex"' },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Upload JSON" }));
+
+    expect(
+      await within(dialog).findByText(
+        "Please paste valid JSON objects or a JSON array of objects.",
+      ),
+    ).toBeInTheDocument();
+    expect(mocks.upload).not.toHaveBeenCalled();
+  });
+
   test("keeps table action buttons on a single row", async () => {
+    useTableFilesView();
     mocks.list.mockImplementation(async () => ({
       files: [
         {
@@ -327,6 +891,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("hides model-scoped transport errors from table restriction badges", async () => {
+    useTableFilesView();
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(80);
     vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(640);
 
@@ -578,7 +1143,132 @@ describe("AuthFilesPage files table", () => {
     expect(screen.getByText("qwen.json")).toBeInTheDocument();
   });
 
+  test("refreshes visible quota when entering auth files from another route with auto-refresh off", async () => {
+    const now = Date.now();
+    const file = {
+      name: "codex-visible.json",
+      type: "codex",
+      provider: "codex",
+      account_type: "oauth",
+      auth_index: "auth-codex-visible",
+      chatgpt_account_id: "acct-visible",
+      size: 1024,
+      modified: now,
+      disabled: false,
+    };
+
+    mocks.list.mockImplementation(async () => ({ files: [file] }));
+    mocks.fetchQuota.mockResolvedValue({
+      items: [{ key: "code_5h", label: "m_quota.code_5h", percent: 88 }],
+    });
+    window.localStorage.setItem(AUTH_FILES_QUOTA_AUTO_REFRESH_KEY, JSON.stringify(0));
+    window.sessionStorage.setItem(
+      AUTH_FILES_DATA_CACHE_KEY,
+      JSON.stringify({
+        savedAtMs: now,
+        files: [file],
+        usageData: { source: [], auth_index: [] },
+        quotaByFileName: {
+          "codex-visible.json": {
+            status: "success",
+            updatedAt: now,
+            items: [{ key: "code_5h", label: "m_quota.code_5h", percent: 22 }],
+          },
+        },
+      }),
+    );
+
+    const wrap = (node: ReactNode) => (
+      <ThemeProvider>
+        <ToastProvider>{node}</ToastProvider>
+      </ThemeProvider>
+    );
+    const router = createMemoryRouter(
+      [
+        { path: "/auth-files", element: wrap(<AuthFilesPage />) },
+        { path: "/api-keys", element: wrap(<div>api keys</div>) },
+      ],
+      { initialEntries: ["/api-keys"] },
+    );
+
+    render(<RouterProvider router={router} />);
+
+    expect(await screen.findByText("api keys")).toBeInTheDocument();
+    await act(async () => {
+      await router.navigate("/auth-files");
+    });
+
+    expect(await screen.findByText("codex-visible.json")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.fetchQuota).toHaveBeenCalledTimes(1));
+    expect(mocks.fetchQuota).toHaveBeenCalledWith(
+      "codex",
+      expect.objectContaining({ name: file.name }),
+    );
+  });
+
+  test("refreshes quota for a newly authorized auth file", async () => {
+    const now = Date.now();
+    const initialFile = {
+      name: "qwen.json",
+      type: "qwen",
+      size: 1024,
+      modified: now,
+      disabled: false,
+    };
+    const authorizedFile = {
+      name: "codex-authorized.json",
+      type: "codex",
+      provider: "codex",
+      account_type: "oauth",
+      auth_index: "auth-codex-authorized",
+      chatgpt_account_id: "acct-authorized",
+      size: 2048,
+      modified: now + 1,
+      disabled: false,
+    };
+
+    window.localStorage.setItem(AUTH_FILES_QUOTA_AUTO_REFRESH_KEY, JSON.stringify(0));
+    mocks.list
+      .mockImplementationOnce(async () => ({ files: [initialFile] }))
+      .mockImplementation(async () => ({ files: [initialFile, authorizedFile] }));
+    mocks.fetchQuota.mockResolvedValue({
+      items: [{ key: "code_5h", label: "m_quota.code_5h", percent: 91 }],
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("qwen.json")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add OAuth Login" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Add OAuth Login" });
+    fireEvent.change(
+      within(dialog).getByPlaceholderText("Paste the full callback URL from browser"),
+      {
+        target: { value: "http://localhost:1455/auth/callback?code=ok" },
+      },
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Submit callback" }));
+
+    expect(await screen.findByText("codex-authorized.json")).toBeInTheDocument();
+    await waitFor(() => expect(mocks.fetchQuota).toHaveBeenCalledTimes(1));
+    expect(mocks.fetchQuota).toHaveBeenCalledWith(
+      "codex",
+      expect.objectContaining({ name: "codex-authorized.json" }),
+    );
+  });
+
   test("reads quota preview setting from localStorage", async () => {
+    useTableFilesView();
     window.localStorage.setItem("authFilesPage.quotaPreview.v1", JSON.stringify("week"));
 
     render(
@@ -677,12 +1367,15 @@ describe("AuthFilesPage files table", () => {
         },
       ],
     }));
-    mocks.getEntityStats.mockImplementation(async () => ({
-      source: [],
-      auth_index: [
-        { entity_name: "77", requests: 5, failed: 1, avg_latency: 0, total_tokens: 0 },
-      ],
-    }) as any);
+    mocks.getEntityStats.mockImplementation(
+      async () =>
+        ({
+          source: [],
+          auth_index: [
+            { entity_name: "77", requests: 5, failed: 1, avg_latency: 0, total_tokens: 0 },
+          ],
+        }) as any,
+    );
 
     render(
       <MemoryRouter initialEntries={["/auth-files"]}>
@@ -750,6 +1443,118 @@ describe("AuthFilesPage files table", () => {
     expect(screen.getByText("codex-vip.json")).toBeInTheDocument();
     expect(screen.queryByText("qwen-lab.json")).not.toBeInTheDocument();
     expect(screen.getByText("Total 1 · Page 1 / 1")).toBeInTheDocument();
+  });
+
+  test("keeps custom tag filter options stable while searching", async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    window.localStorage.setItem(AUTH_FILES_QUOTA_AUTO_REFRESH_KEY, JSON.stringify(0));
+    mocks.list.mockImplementation(async () => ({
+      files: [
+        {
+          name: "codex-tagged.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: false,
+          custom_tags: ["vip-team"],
+          display_tags: ["vip-team"],
+        },
+        {
+          name: "codex-plain.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: false,
+        },
+        {
+          name: "qwen-plain.json",
+          type: "qwen",
+          size: 1024,
+          modified: now,
+          disabled: false,
+        },
+      ],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("codex-tagged.json")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Custom tag" })).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("Filename / provider / type"), "plain");
+
+    expect(screen.queryByText("codex-tagged.json")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Custom tag" })).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "Custom tag" }));
+    expect(screen.getByRole("option", { name: "vip-team" })).toBeInTheDocument();
+  });
+
+  test("keeps type filter counts stable while searching", async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    window.localStorage.setItem(AUTH_FILES_QUOTA_AUTO_REFRESH_KEY, JSON.stringify(0));
+    mocks.list.mockImplementation(async () => ({
+      files: [
+        {
+          name: "codex-alpha.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: false,
+        },
+        {
+          name: "codex-beta.json",
+          type: "codex",
+          size: 1024,
+          modified: now,
+          disabled: false,
+        },
+        {
+          name: "qwen-lab.json",
+          type: "qwen",
+          size: 1024,
+          modified: now,
+          disabled: false,
+        },
+      ],
+    }));
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("codex-alpha.json")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /All3/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /codex2/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /qwen1/i })).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("Filename / provider / type"), "alpha");
+
+    expect(screen.getByText("codex-alpha.json")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("codex-beta.json")).not.toBeInTheDocument());
+    expect(screen.queryByText("qwen-lab.json")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /All3/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /codex2/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /qwen1/i })).toBeInTheDocument();
   });
 
   test("refreshes only the clicked auth-file card usage stats after quota refresh", async () => {
@@ -850,6 +1655,101 @@ describe("AuthFilesPage files table", () => {
       expect(within(otherCard as HTMLElement).getByText("10 calls")).toBeInTheDocument();
       expect(within(otherCard as HTMLElement).queryByText("99 calls")).not.toBeInTheDocument();
     });
+  });
+
+  test("keeps the refresh button spinning and refreshes auth files in batches of two", async () => {
+    const now = Date.now();
+    const files = Array.from({ length: 9 }, (_, index) => ({
+      name: `codex-${index + 1}.json`,
+      type: "codex",
+      provider: "codex",
+      account_type: "oauth",
+      chatgpt_account_id: `acct-${index + 1}`,
+      size: 1024,
+      modified: now,
+      disabled: false,
+    }));
+    type QuotaRefreshDeferred = {
+      promise: Promise<{ items: Array<{ label: string; percent: number }> }>;
+      resolve: (value: { items: Array<{ label: string; percent: number }> }) => void;
+      reject: (reason?: unknown) => void;
+    };
+    const deferredQueue = Array.from({ length: files.length }, () =>
+      createDeferred<{ items: Array<{ label: string; percent: number }> }>(),
+    );
+    const startedDeferreds: QuotaRefreshDeferred[] = [];
+    let activeFetches = 0;
+    let maxActiveFetches = 0;
+
+    window.localStorage.setItem(AUTH_FILES_QUOTA_AUTO_REFRESH_KEY, JSON.stringify(0));
+    window.sessionStorage.setItem(
+      AUTH_FILES_DATA_CACHE_KEY,
+      JSON.stringify({
+        savedAtMs: now,
+        files,
+        usageData: { source: [], auth_index: [] },
+        quotaByFileName: Object.fromEntries(
+          files.map((file) => [
+            file.name,
+            {
+              status: "success",
+              updatedAt: now,
+              items: [{ label: "m_quota.code_5h", percent: 22 }],
+            },
+          ]),
+        ),
+      }),
+    );
+
+    mocks.list.mockImplementation(async () => ({ files }));
+    mocks.fetchQuota.mockImplementation(() => {
+      const deferred = deferredQueue.shift();
+      if (!deferred) throw new Error("unexpected fetchQuota call");
+      startedDeferreds.push(deferred);
+      activeFetches += 1;
+      maxActiveFetches = Math.max(maxActiveFetches, activeFetches);
+      return deferred.promise.finally(() => {
+        activeFetches -= 1;
+      });
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("codex-1.json")).toBeInTheDocument();
+    const refreshButton = screen.getAllByRole("button", { name: "Refresh" })[0];
+    expect(refreshButton).toBeEnabled();
+
+    fireEvent.click(refreshButton);
+
+    await waitFor(() => expect(mocks.fetchQuota).toHaveBeenCalledTimes(2));
+    expect(refreshButton.querySelector("svg")).toHaveClass("animate-spin");
+    expect(maxActiveFetches).toBe(2);
+
+    for (let index = 0; index < files.length; index += 2) {
+      const batch = startedDeferreds.slice(index, index + 2);
+      await act(async () => {
+        batch.forEach((deferred) =>
+          deferred.resolve({ items: [{ label: "m_quota.code_5h", percent: 60 }] }),
+        );
+      });
+
+      await waitFor(() =>
+        expect(mocks.fetchQuota).toHaveBeenCalledTimes(Math.min(files.length, index + 4)),
+      );
+    }
+
+    await waitFor(() => expect(refreshButton.querySelector("svg")).not.toHaveClass("animate-spin"));
+    expect(maxActiveFetches).toBeLessThanOrEqual(2);
   });
 
   test("switching to all refreshes the visible page even when file names stay the same", async () => {
@@ -1054,6 +1954,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("table view hides default auth-file badges when display tags are empty", async () => {
+    useTableFilesView();
     mocks.list.mockImplementation(async () => ({
       files: [
         {
@@ -1124,8 +2025,10 @@ describe("AuthFilesPage files table", () => {
       </MemoryRouter>,
     );
 
+    const user = userEvent.setup();
     expect(await screen.findByText("A_GptPro")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Edit Tags" }));
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Edit Tags" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Auth File Tags" });
     fireEvent.change(within(dialog).getByLabelText("Custom tag"), { target: { value: "vip" } });
@@ -1268,6 +2171,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("shows derived subscription days remaining in table and cards", async () => {
+    useTableFilesView();
     const expiresAt = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
     const startedAt = new Date(expiresAt);
     startedAt.setFullYear(startedAt.getFullYear() - 1);
@@ -1945,6 +2849,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("table quota hover does not show cached antigravity model metadata", async () => {
+    useTableFilesView();
     const now = Date.now();
     const file = {
       name: "antigravity.json",
@@ -2015,6 +2920,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("table quota hover opens only the quota details tooltip", async () => {
+    useTableFilesView();
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(80);
     vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(320);
 
@@ -2097,6 +3003,8 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("table quota preview and hover hide cached antigravity models skipped by the reference implementation", async () => {
+    useTableFilesView();
+
     const now = Date.now();
     const file = {
       name: "antigravity.json",
@@ -2425,6 +3333,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("toolbar refresh immediately spins the visible table quota refresh action", async () => {
+    useTableFilesView();
     const now = Date.now();
     const file = {
       name: "codex-table.json",
@@ -2649,6 +3558,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("table refresh action only refreshes the clicked auth file", async () => {
+    useTableFilesView();
     const now = Date.now();
     const files = [
       {
@@ -2853,6 +3763,57 @@ describe("AuthFilesPage files table", () => {
     expect(actions).toHaveClass("mt-auto");
   });
 
+  test("cards keep secondary actions inside a more actions menu", async () => {
+    const user = userEvent.setup();
+    const now = Date.now();
+    const file = {
+      name: "codex.json",
+      type: "codex",
+      size: 1024,
+      modified: now,
+      disabled: false,
+      auth_index: "1",
+    } as any;
+
+    mocks.list.mockImplementation(async () => ({ files: [file] }));
+    window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
+    window.sessionStorage.setItem(
+      AUTH_FILES_DATA_CACHE_KEY,
+      JSON.stringify({
+        savedAtMs: now,
+        files: [file],
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    const cards = await screen.findByTestId("auth-files-cards");
+    const card = within(cards).getByText("codex.json").closest("section");
+    expect(card).not.toBeNull();
+    const cardView = within(card as HTMLElement);
+
+    expect(cardView.getByRole("button", { name: "Refresh" })).toBeInTheDocument();
+    expect(cardView.getByRole("button", { name: "View" })).toBeInTheDocument();
+    expect(cardView.getByRole("button", { name: "More actions" })).toBeInTheDocument();
+    expect(cardView.queryByRole("button", { name: "Edit Tags" })).not.toBeInTheDocument();
+    expect(cardView.queryByRole("button", { name: "Download" })).not.toBeInTheDocument();
+
+    await user.click(cardView.getByRole("button", { name: "More actions" }));
+
+    expect(screen.getByRole("menuitem", { name: "Edit Tags" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Download" })).toBeInTheDocument();
+  });
+
   test("cards localize codex additional quota window labels in Chinese", async () => {
     await act(async () => {
       await i18n.changeLanguage("zh-CN");
@@ -2961,6 +3922,7 @@ describe("AuthFilesPage files table", () => {
   });
 
   test("table preview and hover mark depleted codex quotas red", async () => {
+    useTableFilesView();
     const now = Date.now();
     const file = {
       name: "codex-table.json",

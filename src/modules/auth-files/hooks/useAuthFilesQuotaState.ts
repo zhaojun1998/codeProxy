@@ -35,6 +35,7 @@ interface UseAuthFilesQuotaStateOptions {
   tab: "files" | "excluded" | "alias";
   pageItems: AuthFileItem[];
   visibleScopeKey: string;
+  navigationType: "POP" | "PUSH" | "REPLACE";
   loading: boolean;
   setFiles: Dispatch<SetStateAction<AuthFileItem[]>>;
   setDetailFile: Dispatch<SetStateAction<AuthFileItem | null>>;
@@ -45,6 +46,7 @@ export function useAuthFilesQuotaState({
   tab,
   pageItems,
   visibleScopeKey,
+  navigationType,
   loading,
   setFiles,
   setDetailFile,
@@ -76,7 +78,7 @@ export function useAuthFilesQuotaState({
   );
   const [filesViewMode, setFilesViewMode] = useLocalStorage<FilesViewMode>(
     AUTH_FILES_FILES_VIEW_MODE_KEY,
-    "table",
+    "cards",
   );
   const quotaAutoRefreshMs = useMemo(
     () => normalizeQuotaAutoRefreshMs(quotaAutoRefreshMsRaw),
@@ -448,20 +450,16 @@ export function useAuthFilesQuotaState({
   const runQuotaRefreshBatch = useCallback(
     async (
       targets: { file: AuthFileItem; provider: QuotaProvider }[],
-      options?: { markAsAutoRefreshing?: boolean; showLoading?: boolean },
+      options?: { markAsAutoRefreshing?: boolean; showLoading?: boolean; refreshUsage?: boolean },
     ) => {
       if (!targets.length) return;
 
       const markAsAutoRefreshing = Boolean(options?.markAsAutoRefreshing);
-      const concurrency = 3;
-      let index = 0;
 
-      const workers = Array.from({ length: Math.min(concurrency, targets.length) }).map(
-        async () => {
-          for (;;) {
-            const current = targets[index];
-            index += 1;
-            if (!current) return;
+      for (let index = 0; index < targets.length; index += 2) {
+        const batch = targets.slice(index, index + 2);
+        await Promise.allSettled(
+          batch.map(async (current) => {
             quotaWarmupAttemptRef.current.set(current.file.name, Date.now());
             if (markAsAutoRefreshing) {
               quotaAutoRefreshingRef.current.add(current.file.name);
@@ -476,12 +474,13 @@ export function useAuthFilesQuotaState({
                 quotaAutoRefreshingRef.current.delete(current.file.name);
               }
             }
-          }
-        },
-      );
+          }),
+        );
+      }
 
-      await Promise.allSettled(workers);
-      await refreshUsageDataAfterQuota(targets.map((target) => target.file));
+      if (options?.refreshUsage !== false) {
+        await refreshUsageDataAfterQuota(targets.map((target) => target.file));
+      }
     },
     [refreshQuota, refreshUsageDataAfterQuota],
   );
@@ -493,16 +492,18 @@ export function useAuthFilesQuotaState({
     const previousVisibleScopeKey = visibleScopeKeyRef.current;
     visibleScopeKeyRef.current = visibleScopeKey;
 
-    const switchedVisibleScope =
-      previousVisibleScopeKey !== null && previousVisibleScopeKey !== visibleScopeKey;
-    if (!switchedVisibleScope && quotaAutoRefreshMs <= 0) return;
+    const firstVisibleScope = previousVisibleScopeKey === null;
+    const initialVisibleScope = firstVisibleScope && navigationType !== "POP";
+    const switchedVisibleScope = !firstVisibleScope && previousVisibleScopeKey !== visibleScopeKey;
+    if (!initialVisibleScope && !switchedVisibleScope && quotaAutoRefreshMs <= 0) return;
 
-    const toFetch = switchedVisibleScope
-      ? resolveQuotaTargets(pageItems)
-      : collectQuotaFetchTargets(pageItems);
+    const toFetch =
+      initialVisibleScope || switchedVisibleScope
+        ? resolveQuotaTargets(pageItems)
+        : collectQuotaFetchTargets(pageItems);
     if (!toFetch.length) return;
 
-    if (switchedVisibleScope) {
+    if (initialVisibleScope || switchedVisibleScope) {
       markQuotaTargetsLoading(toFetch);
     }
 
@@ -511,7 +512,8 @@ export function useAuthFilesQuotaState({
       if (!cancelled) {
         await runQuotaRefreshBatch(toFetch, {
           markAsAutoRefreshing: true,
-          showLoading: switchedVisibleScope,
+          showLoading: initialVisibleScope || switchedVisibleScope,
+          refreshUsage: false,
         });
       }
     })();
@@ -524,6 +526,7 @@ export function useAuthFilesQuotaState({
     loading,
     markQuotaTargetsLoading,
     pageItems,
+    navigationType,
     quotaAutoRefreshMs,
     resolveQuotaTargets,
     runQuotaRefreshBatch,

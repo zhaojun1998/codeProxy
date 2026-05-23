@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { useNavigationType, useSearchParams } from "react-router-dom";
 import { ConfirmModal } from "@/modules/ui/ConfirmModal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/modules/ui/Tabs";
 import type { AuthFileItem } from "@/lib/http/types";
@@ -15,7 +15,10 @@ import { ImportModelsModal } from "@/modules/auth-files/components/ImportModelsM
 import { GroupOverviewModal } from "@/modules/auth-files/components/GroupOverviewModal";
 import { useAuthFilesDataState } from "@/modules/auth-files/hooks/useAuthFilesDataState";
 import { useAuthFilesDetailEditors } from "@/modules/auth-files/hooks/useAuthFilesDetailEditors";
-import { useAuthFilesFileActions } from "@/modules/auth-files/hooks/useAuthFilesFileActions";
+import {
+  useAuthFilesFileActions,
+  type AuthFilesUploadResult,
+} from "@/modules/auth-files/hooks/useAuthFilesFileActions";
 import { useAuthFilesFilesPresentation } from "@/modules/auth-files/hooks/useAuthFilesFilesPresentation";
 import { useAuthFilesListState } from "@/modules/auth-files/hooks/useAuthFilesListState";
 import { useAuthFilesModelOwnerGroups } from "@/modules/auth-files/hooks/useAuthFilesModelOwnerGroups";
@@ -24,6 +27,7 @@ import { useAuthFilesGroupOverview } from "@/modules/auth-files/hooks/useAuthFil
 import { useAuthFilesOAuthConfig } from "@/modules/auth-files/hooks/useAuthFilesOAuthConfig";
 import { resolveQuotaProvider } from "@/modules/quota/quota-fetch";
 import {
+  AUTH_FILE_STATUS_FILTERS,
   normalizeProviderKey,
   normalizeQuotaAutoRefreshMs,
   readAuthFilesUiState,
@@ -31,6 +35,7 @@ import {
   resolveFileType,
   resolveProviderLabel,
   writeAuthFilesUiState,
+  type AuthFileStatusFilter,
   type OAuthDialogTab,
 } from "@/modules/auth-files/helpers/authFilesPageUtils";
 
@@ -67,6 +72,7 @@ const buildAuthFilesSignature = (items: AuthFileItem[]): string =>
 export function AuthFilesPage() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
+  const navigationType = useNavigationType();
 
   const [tab, setTab] = useState<"files" | "excluded" | "alias">("files");
   const {
@@ -126,11 +132,15 @@ export function AuthFilesPage() {
 
   const [filter, setFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<AuthFileStatusFilter>("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selectedFileNames, setSelectedFileNames] = useState<string[]>([]);
   const [proxyPoolEntries, setProxyPoolEntries] = useState<ProxyPoolEntry[]>([]);
   const [tagsEditorFileName, setTagsEditorFileName] = useState<string | null>(null);
+  const [refreshingCurrentPage, setRefreshingCurrentPage] = useState(false);
+  const isMountedRef = useRef(true);
+  const refreshingFilesAndQuotaRef = useRef(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const filesRef = useRef<AuthFileItem[]>(files);
@@ -141,6 +151,12 @@ export function AuthFilesPage() {
     filesRef.current = files;
   }, [files]);
 
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const setOAuthDialogOpenWithBaseline = useCallback((open: boolean) => {
     if (open) {
       oauthBaselineSignatureRef.current = buildAuthFilesSignature(filesRef.current);
@@ -148,21 +164,24 @@ export function AuthFilesPage() {
     setOauthDialogOpen(open);
   }, []);
 
-  const refreshAfterOAuthAuthorized = useCallback(async () => {
+  const waitForAuthFilesChanged = useCallback(async (): Promise<{
+    files: AuthFileItem[];
+    changed: boolean;
+  }> => {
     const previousSignature =
       oauthBaselineSignatureRef.current || buildAuthFilesSignature(filesRef.current);
     const deadline = Date.now() + OAUTH_AUTH_FILES_REFRESH_TIMEOUT_MS;
 
     while (true) {
       if (buildAuthFilesSignature(filesRef.current) !== previousSignature) {
-        return;
+        return { files: filesRef.current, changed: true };
       }
       const nextFiles = await loadAll();
       if (buildAuthFilesSignature(nextFiles) !== previousSignature) {
-        return;
+        return { files: nextFiles, changed: true };
       }
       if (Date.now() >= deadline) {
-        return;
+        return { files: nextFiles, changed: false };
       }
       await wait(OAUTH_AUTH_FILES_REFRESH_INTERVAL_MS);
     }
@@ -232,6 +251,12 @@ export function AuthFilesPage() {
     if (state.tab) setTab(state.tab);
     if (typeof state.filter === "string") setFilter(state.filter);
     if (typeof state.tagFilter === "string") setTagFilter(state.tagFilter);
+    if (
+      typeof state.statusFilter === "string" &&
+      AUTH_FILE_STATUS_FILTERS.includes(state.statusFilter)
+    ) {
+      setStatusFilter(state.statusFilter);
+    }
     if (typeof state.search === "string") setSearch(state.search);
     if (typeof state.page === "number" && Number.isFinite(state.page))
       setPage(Math.max(1, Math.round(state.page)));
@@ -252,8 +277,8 @@ export function AuthFilesPage() {
   }, []);
 
   useEffect(() => {
-    writeAuthFilesUiState({ tab, filter, tagFilter, search, page });
-  }, [filter, page, search, tab, tagFilter]);
+    writeAuthFilesUiState({ tab, filter, tagFilter, statusFilter, search, page });
+  }, [filter, page, search, statusFilter, tab, tagFilter]);
 
   useEffect(() => {
     if (tab !== "files") return;
@@ -275,10 +300,16 @@ export function AuthFilesPage() {
     setPage(1);
   }, []);
 
+  const updateStatusFilter = useCallback((value: AuthFileStatusFilter) => {
+    setStatusFilter(value);
+    setPage(1);
+  }, []);
+
   const {
     providerOptions,
     filterCounts,
     customTagOptions,
+    statusFilterCounts,
     filteredFiles,
     totalPages,
     safePage,
@@ -297,6 +328,7 @@ export function AuthFilesPage() {
     files,
     filter,
     tagFilter,
+    statusFilter,
     search,
     page,
     setPage,
@@ -323,12 +355,58 @@ export function AuthFilesPage() {
   } = useAuthFilesQuotaState({
     tab,
     pageItems,
-    visibleScopeKey: `${filter}\n${search}`,
+    visibleScopeKey: [
+      filter,
+      tagFilter,
+      statusFilter,
+      search,
+      safePage,
+      ...pageItems.map((file) => file.name),
+    ].join("\n"),
+    navigationType,
     loading,
     setFiles,
     setDetailFile,
     refreshUsageDataForFiles,
   });
+
+  const refreshQuotaForFiles = useCallback(
+    async (targetFiles: AuthFileItem[]) => {
+      if (tab !== "files") return;
+      const targets = targetFiles.flatMap((file) => {
+        const provider = resolveQuotaProvider(file);
+        return provider ? [{ file, provider }] : [];
+      });
+      if (!targets.length) return;
+      await runQuotaRefreshBatch(targets, { markAsAutoRefreshing: true, showLoading: true });
+    },
+    [runQuotaRefreshBatch, tab],
+  );
+
+  const refreshQuotaForUploadedFiles = useCallback(
+    async (result: AuthFilesUploadResult | null, previousNames: Set<string>) => {
+      if (!result || tab !== "files") return;
+      const uploadedNames = new Set(result.uploadedNames);
+      const targetFiles = result.files.filter(
+        (file) => uploadedNames.has(file.name) || !previousNames.has(file.name),
+      );
+      await refreshQuotaForFiles(targetFiles);
+    },
+    [refreshQuotaForFiles, tab],
+  );
+
+  const refreshAfterOAuthAuthorized = useCallback(async () => {
+    await waitForAuthFilesChanged();
+  }, [waitForAuthFilesChanged]);
+
+  const handleUploadAndRefreshQuota = useCallback(
+    async (input: FileList | File[] | null) => {
+      const previousNames = new Set(filesRef.current.map((file) => file.name));
+      const result = await handleUpload(input);
+      void refreshQuotaForUploadedFiles(result, previousNames);
+    },
+    [handleUpload, refreshQuotaForUploadedFiles],
+  );
 
   const openDetailWithQuotaRefresh = useCallback(
     (file: Parameters<typeof openDetail>[0]) => {
@@ -345,11 +423,21 @@ export function AuthFilesPage() {
   );
 
   const refreshFilesAndQuota = useCallback(async () => {
+    if (refreshingFilesAndQuotaRef.current || loading || usageLoading || refreshingAll) return;
+    refreshingFilesAndQuotaRef.current = true;
+    setRefreshingCurrentPage(true);
     const currentPageItems = pageItems;
-    const quotaRefreshPromise = forceRefreshPage();
-    const filesRefreshPromise = refreshFilesForItems(currentPageItems);
-    await Promise.all([filesRefreshPromise, quotaRefreshPromise]);
-  }, [forceRefreshPage, pageItems, refreshFilesForItems]);
+    try {
+      const quotaRefreshPromise = forceRefreshPage();
+      const filesRefreshPromise = refreshFilesForItems(currentPageItems);
+      await Promise.all([filesRefreshPromise, quotaRefreshPromise]);
+    } finally {
+      refreshingFilesAndQuotaRef.current = false;
+      if (isMountedRef.current) {
+        setRefreshingCurrentPage(false);
+      }
+    }
+  }, [forceRefreshPage, loading, pageItems, refreshFilesForItems, refreshingAll, usageLoading]);
 
   useEffect(() => {
     const previousTab = previousTabRef.current;
@@ -450,7 +538,7 @@ export function AuthFilesPage() {
         <TabsContent value="files">
           <AuthFilesFilesTab
             fileInputRef={fileInputRef}
-            handleUpload={handleUpload}
+            handleUpload={handleUploadAndRefreshQuota}
             filterChips={filterChips}
             filter={filter}
             setFilter={updateFilter}
@@ -458,6 +546,9 @@ export function AuthFilesPage() {
             tagFilter={tagFilter}
             setTagFilter={updateTagFilter}
             customTagOptions={customTagOptions}
+            statusFilter={statusFilter}
+            setStatusFilter={updateStatusFilter}
+            statusFilterCounts={statusFilterCounts}
             modelOwnerGroupsLoading={modelOwnerGroupsLoading}
             modelOwnerGroups={modelOwnerGroups}
             selectedModelOwner={selectedModelOwner}
@@ -466,6 +557,7 @@ export function AuthFilesPage() {
             setSearch={updateSearch}
             quotaLastUpdatedText={quotaLastUpdatedText}
             loading={loading}
+            files={files}
             filesLength={files.length}
             renderFilesViewModeTabs={renderFilesViewModeTabs}
             quotaAutoRefreshMs={quotaAutoRefreshMs}
@@ -476,7 +568,7 @@ export function AuthFilesPage() {
             filteredFiles={filteredFiles}
             refreshFilesAndQuota={refreshFilesAndQuota}
             usageLoading={usageLoading}
-            refreshingAll={refreshingAll}
+            refreshingAll={refreshingAll || refreshingCurrentPage}
             uploading={uploading}
             setOauthDialogDefaultTab={setOauthDialogDefaultTab}
             setOauthDialogOpen={setOAuthDialogOpenWithBaseline}
