@@ -24,7 +24,7 @@ import { Card } from "@/modules/ui/Card";
 import { Button } from "@/modules/ui/Button";
 import { EmptyState } from "@/modules/ui/EmptyState";
 import { useToast } from "@/modules/ui/ToastProvider";
-import { VirtualTable } from "@/modules/ui/VirtualTable";
+import { DataTable } from "@/modules/ui/DataTable";
 import { ApiKeyFormModal } from "@/modules/api-keys/components/ApiKeyFormModal";
 import { ApiKeyUsageModal } from "@/modules/api-keys/components/ApiKeyUsageModal";
 import { useApiKeyPermissionOptions } from "@/modules/api-keys/hooks/useApiKeyPermissionOptions";
@@ -533,7 +533,8 @@ export function ApiKeysPage() {
             icon={<KeyRound size={32} className="text-slate-400" />}
           />
         ) : (
-          <VirtualTable<ApiKeyEntry>
+          <DataTable<ApiKeyEntry>
+            tableId="api-keys"
             rows={entries}
             columns={apiKeyColumns}
             rowKey={(row) => row.key}

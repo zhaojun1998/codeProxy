@@ -1,13 +1,13 @@
 import { createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
-import { VirtualTable, type VirtualTableColumn } from "@/modules/ui/VirtualTable";
+import { DataTable, type DataTableColumn } from "@/modules/ui/DataTable";
 
 interface DemoRow {
   id: string;
   name: string;
 }
 
-const columns: VirtualTableColumn<DemoRow>[] = [
+const columns: DataTableColumn<DemoRow>[] = [
   { key: "name", label: "Name", width: "w-40", render: (row) => row.name },
 ];
 
@@ -45,12 +45,162 @@ function setElementOverflow(
   });
 }
 
-describe("VirtualTable scrollbar wrapper", () => {
+describe("DataTable scrollbar wrapper", () => {
+  test("renders subtle resizers between columns but not after the last column", () => {
+    const twoColumns: DataTableColumn<DemoRow>[] = [
+      { key: "name", label: "Name", width: "w-40", render: (row) => row.name },
+      { key: "id", label: "ID", width: "w-24", render: (row) => row.id },
+    ];
+
+    const { container } = render(
+      <DataTable
+        tableId="test-resizer-render"
+        rows={[{ id: "1", name: "Row 1" }]}
+        columns={twoColumns}
+        rowKey={(row) => row.id}
+        height="h-[160px]"
+        minHeight="min-h-0"
+        virtualize={false}
+      />,
+    );
+
+    const resizers = container.querySelectorAll("[data-vt-column-resizer]");
+    expect(resizers).toHaveLength(1);
+    expect(resizers[0]).toHaveAttribute("title", "Drag to resize Name column");
+    expect(resizers[0]).toHaveClass("cursor-col-resize");
+  });
+
+  test("does not render a resizer for selection columns", () => {
+    const selectionColumns: DataTableColumn<DemoRow>[] = [
+      { key: "select", label: "Select", width: "w-12", render: () => "x" },
+      { key: "name", label: "Name", width: "w-40", render: (row) => row.name },
+      { key: "id", label: "ID", width: "w-24", render: (row) => row.id },
+    ];
+
+    const { container } = render(
+      <DataTable
+        rows={[{ id: "1", name: "Row 1" }]}
+        columns={selectionColumns}
+        rowKey={(row) => row.id}
+        height="h-[160px]"
+        minHeight="min-h-0"
+        virtualize={false}
+      />,
+    );
+
+    expect(container.querySelectorAll("[data-vt-column-resizer]")).toHaveLength(1);
+    expect(container.querySelector("[title='Drag to resize Select column']")).toBeNull();
+  });
+
+  test("persists resized column widths by table id", async () => {
+    window.localStorage.clear();
+    const twoColumns: DataTableColumn<DemoRow>[] = [
+      { key: "name", label: "Name", width: "w-40", minWidthPx: 90, render: (row) => row.name },
+      { key: "id", label: "ID", width: "w-24", render: (row) => row.id },
+    ];
+
+    const { container, unmount } = render(
+      <DataTable
+        tableId="test-column-widths"
+        rows={[{ id: "1", name: "Row 1" }]}
+        columns={twoColumns}
+        rowKey={(row) => row.id}
+        height="h-[160px]"
+        minHeight="min-h-0"
+        virtualize={false}
+      />,
+    );
+
+    const nameHeader = screen.getByRole("columnheader", { name: /Name/ });
+    Object.defineProperty(nameHeader, "getBoundingClientRect", {
+      configurable: true,
+      value: () =>
+        ({
+          x: 0,
+          y: 0,
+          top: 0,
+          left: 0,
+          right: 160,
+          bottom: 40,
+          width: 160,
+          height: 40,
+          toJSON: () => ({}),
+        }) as DOMRect,
+    });
+
+    const resizer = container.querySelector("[data-vt-column-resizer]") as HTMLButtonElement | null;
+    expect(resizer).not.toBeNull();
+
+    fireEvent.pointerDown(resizer!, { button: 0, pointerId: 1, clientX: 160 });
+    window.dispatchEvent(new PointerEvent("pointermove", { pointerId: 1, clientX: 212 }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("Width: 212 px");
+    });
+
+    window.dispatchEvent(new PointerEvent("pointerup", { pointerId: 1, clientX: 212 }));
+
+    await waitFor(() => {
+      expect(
+        window.localStorage.getItem("codeProxy.dataTable.columnWidths.v1.test-column-widths"),
+      ).toBe(JSON.stringify({ name: 212 }));
+    });
+
+    unmount();
+
+    const { container: secondContainer } = render(
+      <DataTable
+        tableId="test-column-widths"
+        rows={[{ id: "1", name: "Row 1" }]}
+        columns={twoColumns}
+        rowKey={(row) => row.id}
+        height="h-[160px]"
+        minHeight="min-h-0"
+        virtualize={false}
+      />,
+    );
+
+    const storedCol = secondContainer.querySelector("col") as HTMLTableColElement | null;
+    expect(storedCol).not.toBeNull();
+    expect(storedCol!.style.width).toBe("212px");
+  });
+
+  test("keeps column width caches isolated between table ids", () => {
+    window.localStorage.clear();
+    window.localStorage.setItem(
+      "codeProxy.dataTable.columnWidths.v1.first-table",
+      JSON.stringify({ name: 240 }),
+    );
+    window.localStorage.setItem(
+      "codeProxy.dataTable.columnWidths.v1.second-table",
+      JSON.stringify({ name: 120 }),
+    );
+
+    const { container } = render(
+      <DataTable
+        tableId="second-table"
+        rows={[{ id: "1", name: "Row 1" }]}
+        columns={[
+          { key: "name", label: "Name", width: "w-40", render: (row) => row.name },
+          { key: "id", label: "ID", width: "w-24", render: (row) => row.id },
+        ]}
+        rowKey={(row) => row.id}
+        height="h-[160px]"
+        minHeight="min-h-0"
+        virtualize={false}
+      />,
+    );
+
+    const firstCol = container.querySelector("col") as HTMLTableColElement | null;
+    expect(firstCol).not.toBeNull();
+    expect(firstCol!.style.width).toBe("120px");
+  });
+
   test("truncates primitive cell content and shows the full value on overflow hover", () => {
     const longName = "Very long table cell value that should be visible in the tooltip";
 
     render(
-      <VirtualTable
+      <DataTable
         rows={[{ id: "1", name: longName }]}
         columns={columns}
         rowKey={(row) => row.id}
@@ -74,7 +224,7 @@ describe("VirtualTable scrollbar wrapper", () => {
 
   test("does not show a primitive cell tooltip when the content fits", () => {
     render(
-      <VirtualTable
+      <DataTable
         rows={[{ id: "1", name: "Short" }]}
         columns={columns}
         rowKey={(row) => row.id}
@@ -97,7 +247,7 @@ describe("VirtualTable scrollbar wrapper", () => {
 
   test("uses column-provided overflow tooltip text for complex cell content", () => {
     const fullValue = "Complex rendered value with supporting markup";
-    const complexColumns: VirtualTableColumn<DemoRow>[] = [
+    const complexColumns: DataTableColumn<DemoRow>[] = [
       {
         key: "name",
         label: "Name",
@@ -112,7 +262,7 @@ describe("VirtualTable scrollbar wrapper", () => {
     ];
 
     render(
-      <VirtualTable
+      <DataTable
         rows={[{ id: "1", name: fullValue }]}
         columns={complexColumns}
         rowKey={(row) => row.id}
@@ -135,7 +285,7 @@ describe("VirtualTable scrollbar wrapper", () => {
 
   test("infers overflow tooltip text from JSX cell content", () => {
     const fullValue = "JSX-rendered table cell value";
-    const jsxColumns: VirtualTableColumn<DemoRow>[] = [
+    const jsxColumns: DataTableColumn<DemoRow>[] = [
       {
         key: "name",
         label: "Name",
@@ -149,7 +299,7 @@ describe("VirtualTable scrollbar wrapper", () => {
     ];
 
     render(
-      <VirtualTable
+      <DataTable
         rows={[{ id: "1", name: fullValue }]}
         columns={jsxColumns}
         rowKey={(row) => row.id}
@@ -175,7 +325,7 @@ describe("VirtualTable scrollbar wrapper", () => {
 
   test("uses a focusable scroll container with hover-reveal metadata", () => {
     const { container } = render(
-      <VirtualTable
+      <DataTable
         rows={[
           { id: "1", name: "Row 1" },
           { id: "2", name: "Row 2" },
@@ -204,7 +354,7 @@ describe("VirtualTable scrollbar wrapper", () => {
 
   test("renders an in-table initial loading state", () => {
     render(
-      <VirtualTable
+      <DataTable
         rows={[]}
         columns={columns}
         rowKey={(row) => row.id}
@@ -222,7 +372,7 @@ describe("VirtualTable scrollbar wrapper", () => {
 
   test("renders DOM scrollbars only when overflow exists", async () => {
     const { container } = render(
-      <VirtualTable
+      <DataTable
         rows={Array.from({ length: 60 }, (_, i) => ({ id: String(i), name: `Row ${i}` }))}
         columns={columns}
         rowKey={(row) => row.id}
@@ -258,7 +408,7 @@ describe("VirtualTable scrollbar wrapper", () => {
 
   test("reveals scrollbars from their hover zones and marks thumbs as draggable", async () => {
     const { container } = render(
-      <VirtualTable
+      <DataTable
         rows={Array.from({ length: 60 }, (_, i) => ({ id: String(i), name: `Row ${i}` }))}
         columns={columns}
         rowKey={(row) => row.id}
@@ -297,7 +447,7 @@ describe("VirtualTable scrollbar wrapper", () => {
 
   test("keeps custom scrollbar layers above row content badges", async () => {
     const { container } = render(
-      <VirtualTable
+      <DataTable
         rows={Array.from({ length: 60 }, (_, i) => ({ id: String(i), name: `Row ${i}` }))}
         columns={columns}
         rowKey={(row) => row.id}
@@ -335,7 +485,7 @@ describe("VirtualTable scrollbar wrapper", () => {
 
   test("keeps the vertical scrollbar in a gutter outside the table viewport", async () => {
     const { container } = render(
-      <VirtualTable
+      <DataTable
         rows={Array.from({ length: 60 }, (_, i) => ({ id: String(i), name: `Row ${i}` }))}
         columns={columns}
         rowKey={(row) => row.id}
@@ -396,13 +546,13 @@ describe("VirtualTable scrollbar wrapper", () => {
   });
 
   test("keeps the header corner fixed to the viewport instead of scrolling cells", () => {
-    const wideColumns: VirtualTableColumn<DemoRow>[] = [
+    const wideColumns: DataTableColumn<DemoRow>[] = [
       { key: "name", label: "Name", width: "w-40", render: (row) => row.name },
       { key: "id", label: "ID", width: "w-40", render: (row) => row.id },
     ];
 
     const { container } = render(
-      <VirtualTable
+      <DataTable
         rows={[{ id: "1", name: "Row 1" }]}
         columns={wideColumns}
         rowKey={(row) => row.id}
@@ -427,7 +577,7 @@ describe("VirtualTable scrollbar wrapper", () => {
 
   test("prevents vertical wheel bounce when already at a scroll boundary", () => {
     const { container } = render(
-      <VirtualTable
+      <DataTable
         rows={Array.from({ length: 60 }, (_, i) => ({ id: String(i), name: `Row ${i}` }))}
         columns={columns}
         rowKey={(row) => row.id}
@@ -465,7 +615,7 @@ describe("VirtualTable scrollbar wrapper", () => {
     const addEventListener = vi.spyOn(HTMLDivElement.prototype, "addEventListener");
 
     render(
-      <VirtualTable
+      <DataTable
         rows={Array.from({ length: 60 }, (_, i) => ({ id: String(i), name: `Row ${i}` }))}
         columns={columns}
         rowKey={(row) => row.id}
@@ -485,7 +635,7 @@ describe("VirtualTable scrollbar wrapper", () => {
 
   test("shows vertical scrollbar after data change without requiring a user scroll", async () => {
     const { container, rerender } = render(
-      <VirtualTable
+      <DataTable
         rows={[{ id: "1", name: "Row 1" }]}
         columns={columns}
         rowKey={(row) => row.id}
@@ -514,7 +664,7 @@ describe("VirtualTable scrollbar wrapper", () => {
     });
 
     rerender(
-      <VirtualTable
+      <DataTable
         rows={Array.from({ length: 60 }, (_, i) => ({ id: String(i), name: `Row ${i}` }))}
         columns={columns}
         rowKey={(row) => row.id}
@@ -540,7 +690,7 @@ describe("VirtualTable scrollbar wrapper", () => {
 
   test("thumb aligns to track edges at scroll start/end", async () => {
     const { container } = render(
-      <VirtualTable
+      <DataTable
         rows={Array.from({ length: 60 }, (_, i) => ({ id: String(i), name: `Row ${i}` }))}
         columns={columns}
         rowKey={(row) => row.id}
@@ -598,7 +748,7 @@ describe("VirtualTable scrollbar wrapper", () => {
 
   test("vertical track starts below sticky header", async () => {
     const { container } = render(
-      <VirtualTable
+      <DataTable
         rows={Array.from({ length: 60 }, (_, i) => ({ id: String(i), name: `Row ${i}` }))}
         columns={columns}
         rowKey={(row) => row.id}

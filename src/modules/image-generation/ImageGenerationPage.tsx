@@ -9,7 +9,7 @@ import { ImagePreviewOverlay } from "@/modules/ui/ImagePreviewOverlay";
 import { Modal } from "@/modules/ui/Modal";
 import { Select } from "@/modules/ui/Select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/modules/ui/Tabs";
-import { VirtualTable, type VirtualTableColumn } from "@/modules/ui/VirtualTable";
+import { DataTable, type DataTableColumn } from "@/modules/ui/DataTable";
 
 const GPT_IMAGE_MODEL = "gpt-image-2";
 const GENERATION_STATUS_KEYS = [
@@ -324,10 +324,12 @@ export function ImageGenerationPage() {
 
               <div className="grid gap-4 xl:grid-cols-2">
                 <SpecTable
+                  tableId="image-generation-request-params"
                   title={t("image_generation.request_params_title")}
                   rows={activeDoc.requestRows}
                 />
                 <SpecTable
+                  tableId="image-generation-response-schema"
                   title={t("image_generation.response_schema_title")}
                   rows={activeDoc.responseRows}
                 />
@@ -386,9 +388,9 @@ function EndpointCallDoc({ doc }: { doc: EndpointDoc }) {
   );
 }
 
-function SpecTable({ title, rows }: { title: string; rows: SpecRow[] }) {
+function SpecTable({ tableId, title, rows }: { tableId: string; title: string; rows: SpecRow[] }) {
   const { t } = useTranslation();
-  const columns = useMemo<VirtualTableColumn<SpecRow>[]>(
+  const columns = useMemo<DataTableColumn<SpecRow>[]>(
     () => [
       {
         key: "name",
@@ -428,7 +430,8 @@ function SpecTable({ title, rows }: { title: string; rows: SpecRow[] }) {
     >
       <h4 className="text-sm font-semibold text-slate-900 dark:text-white">{title}</h4>
       <div className="mt-4">
-        <VirtualTable<SpecRow>
+        <DataTable<SpecRow>
+          tableId={tableId}
           rows={rows}
           columns={columns}
           rowKey={(row) => row.name}

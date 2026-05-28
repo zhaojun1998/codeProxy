@@ -9,7 +9,7 @@ import { Modal } from "@/modules/ui/Modal";
 import { useToast } from "@/modules/ui/ToastProvider";
 import { Select } from "@/modules/ui/Select";
 import { SearchableSelect } from "@/modules/ui/SearchableSelect";
-import { VirtualTable } from "@/modules/ui/VirtualTable";
+import { DataTable } from "@/modules/ui/DataTable";
 import { LogContentModal } from "@/modules/monitor/LogContentModal";
 import { ErrorDetailModal } from "@/modules/monitor/ErrorDetailModal";
 import {
@@ -401,7 +401,8 @@ export function RequestLogsPage() {
 
         {/* 表格区域 — 自适应视口高度，内部滚动 */}
         <div className="relative min-h-[360px] h-[calc(100dvh-300px)] overflow-hidden px-5">
-          <VirtualTable
+          <DataTable
+            tableId="request-logs"
             rows={rows}
             columns={logColumns}
             rowKey={(row) => row.id}

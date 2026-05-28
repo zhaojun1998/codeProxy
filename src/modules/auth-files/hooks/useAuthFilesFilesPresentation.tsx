@@ -18,7 +18,7 @@ import { Select } from "@/modules/ui/Select";
 import { Tabs, TabsList, TabsTrigger } from "@/modules/ui/Tabs";
 import { HoverTooltip } from "@/modules/ui/Tooltip";
 import { ToggleSwitch } from "@/modules/ui/ToggleSwitch";
-import type { VirtualTableColumn } from "@/modules/ui/VirtualTable";
+import type { DataTableColumn } from "@/modules/ui/DataTable";
 import {
   pickQuotaPreviewItem,
   type FilesViewMode,
@@ -493,7 +493,7 @@ export function useAuthFilesFilesPresentation({
     [formatQuotaResetTextCompact, translateQuotaText],
   );
 
-  const fileColumns = useMemo<VirtualTableColumn<AuthFileItem>[]>(() => {
+  const fileColumns = useMemo<DataTableColumn<AuthFileItem>[]>(() => {
     return [
       {
         key: "select",

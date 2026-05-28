@@ -16,7 +16,7 @@ import { Button } from "@/modules/ui/Button";
 import { Card } from "@/modules/ui/Card";
 import { ConfirmModal } from "@/modules/ui/ConfirmModal";
 import { useToast } from "@/modules/ui/ToastProvider";
-import { VirtualTable, type VirtualTableColumn } from "@/modules/ui/VirtualTable";
+import { DataTable, type DataTableColumn } from "@/modules/ui/DataTable";
 import {
   CcSwitchImportConfigModal,
   type CcSwitchChannelGroupOption,
@@ -166,7 +166,7 @@ export function CcSwitchImportSettingsPage() {
     };
   }, [notify, t]);
 
-  const columns = useMemo<VirtualTableColumn<CcSwitchImportConfigListItem>[]>(
+  const columns = useMemo<DataTableColumn<CcSwitchImportConfigListItem>[]>(
     () => [
       {
         key: "client",
@@ -316,7 +316,8 @@ export function CcSwitchImportSettingsPage() {
         padding="compact"
         className="rounded-2xl"
       >
-        <VirtualTable<CcSwitchImportConfigListItem>
+        <DataTable<CcSwitchImportConfigListItem>
+          tableId="ccswitch-import-configs"
           rows={configs}
           columns={columns}
           rowKey={(row) => row.id}
