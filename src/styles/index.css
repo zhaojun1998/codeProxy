@@ -49,7 +49,7 @@
   height: 0;
 }
 
-/* VirtualTable：隐藏原生滚动条，改用 DOM 自定义滚动条 */
+/* DataTable：隐藏原生滚动条，改用 DOM 自定义滚动条 */
 .table-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;

@@ -27,7 +27,7 @@ import { HoverTooltip } from "@/modules/ui/Tooltip";
 import { Select } from "@/modules/ui/Select";
 import { SearchableSelect, type SearchableSelectOption } from "@/modules/ui/SearchableSelect";
 import { Tabs, TabsList, TabsTrigger } from "@/modules/ui/Tabs";
-import { VirtualTable, type VirtualTableColumn } from "@/modules/ui/VirtualTable";
+import { DataTable, type DataTableColumn } from "@/modules/ui/DataTable";
 import { ToggleSwitch } from "@/modules/ui/ToggleSwitch";
 import type {
   AuthFileModelOwnerGroup,
@@ -508,7 +508,7 @@ interface AuthFilesFilesTabProps {
   selectedFileNames: string[];
   deletingAll: boolean;
   pageItems: AuthFileItem[];
-  fileColumns: VirtualTableColumn<AuthFileItem>[];
+  fileColumns: DataTableColumn<AuthFileItem>[];
   filesViewMode: FilesViewMode;
   selectedFileNameSet: Set<string>;
   quotaByFileName: Record<string, QuotaState>;
@@ -1137,7 +1137,8 @@ export function AuthFilesFilesTab({
         <Card padding="none" className="relative overflow-hidden">
           <div className="p-4 sm:p-5">
             {filesViewMode === "table" ? (
-              <VirtualTable<AuthFileItem>
+              <DataTable<AuthFileItem>
+                tableId="auth-files"
                 rows={pageItems}
                 columns={fileColumns}
                 rowKey={(row) => row.name}

@@ -104,6 +104,9 @@ export interface RequestLogsTableColumn<T> {
   key: string;
   label: string;
   width?: string;
+  resizable?: boolean;
+  minWidthPx?: number;
+  maxWidthPx?: number;
   headerClassName?: string;
   cellClassName?: string;
   render: (row: T, index: number) => React.ReactNode;

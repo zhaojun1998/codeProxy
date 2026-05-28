@@ -165,8 +165,8 @@ vi.mock("@/modules/monitor/ErrorDetailModal", () => ({
   ErrorDetailModal: () => null,
 }));
 
-vi.mock("@/modules/ui/VirtualTable", () => ({
-  VirtualTable: ({ rows, columns }: { rows: any[]; columns: any[] }) => (
+vi.mock("@/modules/ui/DataTable", () => ({
+  DataTable: ({ rows, columns }: { rows: any[]; columns: any[] }) => (
     <div>
       {rows.map((row, rowIndex) => (
         <div key={row.key}>
@@ -655,9 +655,7 @@ describe("ApiKeysPage", () => {
       await waitFor(() => {
         expect(writeText).toHaveBeenCalledWith(expect.stringContaining("ccswitch://v1/import?"));
       });
-      expect(
-        screen.getByRole("button", { name: /import link copied/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /import link copied/i })).toBeInTheDocument();
       expect(openSpy).not.toHaveBeenCalled();
 
       const copiedUrl = String(writeText.mock.calls.at(-1)?.[0] ?? "");
