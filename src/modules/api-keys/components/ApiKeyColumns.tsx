@@ -19,7 +19,7 @@ import {
   VendorIcon,
 } from "@/modules/api-keys/apiKeyPageUtils";
 import { HoverTooltip, OverflowTooltip } from "@/modules/ui/Tooltip";
-import type { VirtualTableColumn } from "@/modules/ui/VirtualTable";
+import type { DataTableColumn } from "@/modules/ui/DataTable";
 
 type CreateApiKeyColumnsOptions = {
   t: TFunction;
@@ -39,7 +39,7 @@ export const createApiKeyColumns = ({
   onImportToCcSwitch,
   onEdit,
   onDelete,
-}: CreateApiKeyColumnsOptions): VirtualTableColumn<ApiKeyEntry>[] => [
+}: CreateApiKeyColumnsOptions): DataTableColumn<ApiKeyEntry>[] => [
   {
     key: "status",
     label: t("api_keys_page.col_status"),

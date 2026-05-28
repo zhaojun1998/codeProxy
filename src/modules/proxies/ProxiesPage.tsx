@@ -9,7 +9,7 @@ import { TextInput } from "@/modules/ui/Input";
 import { Modal } from "@/modules/ui/Modal";
 import { ToggleSwitch } from "@/modules/ui/ToggleSwitch";
 import { useToast } from "@/modules/ui/ToastProvider";
-import { VirtualTable, type VirtualTableColumn } from "@/modules/ui/VirtualTable";
+import { DataTable, type DataTableColumn } from "@/modules/ui/DataTable";
 import {
   emptyProxyDraft,
   proxyEndpoint,
@@ -198,7 +198,7 @@ export function ProxiesPage() {
     [refreshCheckResults],
   );
 
-  const columns = useMemo<VirtualTableColumn<ProxyPoolEntry>[]>(
+  const columns = useMemo<DataTableColumn<ProxyPoolEntry>[]>(
     () => [
       {
         key: "name",
@@ -354,7 +354,8 @@ export function ProxiesPage() {
       </div>
 
       <Card className="overflow-hidden" loading={loading && entries.length === 0}>
-        <VirtualTable<ProxyPoolEntry>
+        <DataTable<ProxyPoolEntry>
+          tableId="proxy-pool"
           rows={sortedEntries}
           columns={columns}
           rowKey={(entry) => entry.id}

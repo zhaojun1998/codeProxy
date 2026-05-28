@@ -21,7 +21,7 @@ import { Select } from "@/modules/ui/Select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/modules/ui/Tabs";
 import { useToast } from "@/modules/ui/ToastProvider";
 import { HoverTooltip, OverflowTooltip } from "@/modules/ui/Tooltip";
-import { VirtualTable, type VirtualTableColumn } from "@/modules/ui/VirtualTable";
+import { DataTable, type DataTableColumn } from "@/modules/ui/DataTable";
 import { VendorIcon } from "@/modules/api-keys/apiKeyPageUtils";
 import {
   emptyModelPricing,
@@ -894,7 +894,7 @@ export function RoutingConfigEditor({
     setDeleteGroupTarget(null);
   }, [deleteGroupTarget, removeRoutingGroup]);
 
-  const groupColumns = useMemo<VirtualTableColumn<RoutingChannelGroupEntry>[]>(
+  const groupColumns = useMemo<DataTableColumn<RoutingChannelGroupEntry>[]>(
     () => [
       {
         key: "name",
@@ -1143,7 +1143,7 @@ export function RoutingConfigEditor({
     [disabled, openEditGroup, resolveGroupChannels, routesByGroup, staleChannelsByGroup, t],
   );
 
-  const groupMemberColumns = useMemo<VirtualTableColumn<RoutingChannelGroupMemberEntry>[]>(
+  const groupMemberColumns = useMemo<DataTableColumn<RoutingChannelGroupMemberEntry>[]>(
     () => [
       {
         key: "channel",
@@ -1237,7 +1237,7 @@ export function RoutingConfigEditor({
                   </Button>
                 </div>
               ),
-            } satisfies VirtualTableColumn<RoutingChannelGroupMemberEntry>,
+            } satisfies DataTableColumn<RoutingChannelGroupMemberEntry>,
           ]),
     ],
     [
@@ -1251,7 +1251,7 @@ export function RoutingConfigEditor({
     ],
   );
 
-  const modelColumns = useMemo<VirtualTableColumn<RoutingModelOption>[]>(
+  const modelColumns = useMemo<DataTableColumn<RoutingModelOption>[]>(
     () => [
       {
         key: "select",
@@ -1406,7 +1406,8 @@ export function RoutingConfigEditor({
           </Button>
         </div>
 
-        <VirtualTable<RoutingChannelGroupEntry>
+        <DataTable<RoutingChannelGroupEntry>
+          tableId="routing-channel-groups"
           rows={displayGroups}
           columns={groupColumns}
           rowKey={(group) => group.id}
@@ -1772,7 +1773,8 @@ export function RoutingConfigEditor({
                     )}
                   </div>
 
-                  <VirtualTable<RoutingChannelGroupMemberEntry>
+                  <DataTable<RoutingChannelGroupMemberEntry>
+                    tableId="routing-channel-group-members"
                     rows={resolvedDraftChannels}
                     columns={groupMemberColumns}
                     rowKey={(channel) => channel.id}
@@ -1848,7 +1850,8 @@ export function RoutingConfigEditor({
                       data-testid="group-editor-model-list"
                       className="min-h-0 flex-1 overflow-hidden"
                     >
-                      <VirtualTable<RoutingModelOption>
+                      <DataTable<RoutingModelOption>
+                        tableId="routing-model-options"
                         rows={modelOptions}
                         columns={modelColumns}
                         rowKey={(model) => model.id}

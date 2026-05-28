@@ -48,6 +48,14 @@ export function OpenAIProvidersTab({
   onToggleSelected,
 }: OpenAIProvidersTabProps) {
   const { t } = useTranslation();
+  const gridColumnsClass =
+    gridColumns === 4
+      ? "grid-cols-1 sm:grid-cols-4"
+      : gridColumns === 3
+        ? "grid-cols-1 sm:grid-cols-3"
+        : gridColumns === 2
+          ? "grid-cols-1 sm:grid-cols-2"
+          : "grid-cols-1";
 
   return (
     <Card
@@ -73,13 +81,10 @@ export function OpenAIProvidersTab({
           data-testid="providers-tab-scroll"
           className={[
             "min-h-0 flex-1 overflow-y-auto pr-1",
-            gridColumns > 1 ? "grid gap-3" : "space-y-3",
-          ].join(" ")}
-          style={
             gridColumns > 1
-              ? { gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }
-              : undefined
-          }
+              ? ["grid gap-3 items-start content-start", gridColumnsClass].join(" ")
+              : "space-y-3",
+          ].join(" ")}
         >
           {providers.map((provider, idx) => {
             const selectionKey = `${provider.name.trim().toLowerCase()}:${idx}`;
@@ -122,9 +127,11 @@ export function OpenAIProvidersTab({
                     {headerEntries.map(([key, value]) => (
                       <span
                         key={key}
-                        className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-700 dark:border-neutral-800 dark:bg-neutral-950/60 dark:text-white/75"
+                        className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-700 dark:border-neutral-800 dark:bg-neutral-950/60 dark:text-white/75"
+                        title={`${key}: ${String(value)}`}
                       >
-                        <span className="font-semibold">{key}:</span> {String(value)}
+                        <span className="shrink-0 font-semibold">{key}:</span>
+                        <span className="min-w-0 truncate">{String(value)}</span>
                       </span>
                     ))}
                   </div>
@@ -142,7 +149,7 @@ export function OpenAIProvidersTab({
                         return (
                           <div
                             key={`${entry.apiKey}:${entryIndex}`}
-                            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-xs dark:border-neutral-800 dark:bg-neutral-950/60"
+                            className="grid gap-2 rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-xs dark:border-neutral-800 dark:bg-neutral-950/60 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                           >
                             <div className="min-w-0">
                               <p className="truncate font-mono text-slate-900 dark:text-white">
@@ -154,7 +161,7 @@ export function OpenAIProvidersTab({
                                 </p>
                               ) : null}
                             </div>
-                            <div className="flex flex-wrap items-center gap-2 tabular-nums">
+                            <div className="flex flex-wrap items-center gap-2 tabular-nums sm:justify-end">
                               <span
                                 className={[
                                   "rounded-full px-2 py-0.5 font-semibold",
@@ -206,21 +213,25 @@ export function OpenAIProvidersTab({
 
                 {provider.models?.length ? (
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {provider.models.map((model) => (
-                      <span
-                        key={model.name}
-                        className="rounded-full bg-slate-900 px-2 py-0.5 text-[11px] text-white dark:bg-white dark:text-neutral-950"
-                        title={
-                          model.alias && model.alias !== model.name
-                            ? `${model.name} => ${model.alias}`
-                            : model.name
-                        }
-                      >
-                        {model.alias && model.alias !== model.name
+                    {provider.models.map((model) => {
+                      const modelLabel =
+                        model.alias && model.alias !== model.name
                           ? `${model.name} → ${model.alias}`
-                          : model.name}
-                      </span>
-                    ))}
+                          : model.name;
+                      return (
+                        <span
+                          key={model.name}
+                          className="inline-flex max-w-full min-w-0 rounded-full bg-slate-900 px-2 py-0.5 text-[11px] text-white dark:bg-white dark:text-neutral-950"
+                          title={
+                            model.alias && model.alias !== model.name
+                              ? `${model.name} => ${model.alias}`
+                              : model.name
+                          }
+                        >
+                          <span className="min-w-0 truncate">{modelLabel}</span>
+                        </span>
+                      );
+                    })}
                   </div>
                 ) : null}
 

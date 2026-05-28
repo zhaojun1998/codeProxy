@@ -13,7 +13,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/modules/ui/Tabs";
 import { ToggleSwitch } from "@/modules/ui/ToggleSwitch";
 import { useToast } from "@/modules/ui/ToastProvider";
 import { OverflowTooltip } from "@/modules/ui/Tooltip";
-import { VirtualTable, type VirtualTableColumn } from "@/modules/ui/VirtualTable";
+import { DataTable, type DataTableColumn } from "@/modules/ui/DataTable";
 import { apiClient } from "@/lib/http/client";
 import iconClaude from "@/assets/icons/claude.svg";
 import iconCodex from "@/assets/icons/codex.svg";
@@ -1062,7 +1062,7 @@ export function ModelsPage() {
 
   const canDeleteModels = activeTab === "library";
 
-  const modelColumns = useMemo<VirtualTableColumn<ModelItem>[]>(
+  const modelColumns = useMemo<DataTableColumn<ModelItem>[]>(
     () => [
       ...(canDeleteModels
         ? [
@@ -1088,7 +1088,7 @@ export function ModelsPage() {
                   onCheckedChange={(checked) => toggleModelSelection(row.id, checked)}
                 />
               ),
-            } satisfies VirtualTableColumn<ModelItem>,
+            } satisfies DataTableColumn<ModelItem>,
           ]
         : []),
       {
@@ -1551,7 +1551,8 @@ export function ModelsPage() {
                 </div>
               </div>
 
-              <VirtualTable<ModelItem>
+              <DataTable<ModelItem>
+                tableId="models-library"
                 rows={filteredModels}
                 columns={modelColumns}
                 rowKey={(row) => row.id}
@@ -1606,7 +1607,8 @@ export function ModelsPage() {
             </div>
           }
         >
-          <VirtualTable<ModelItem>
+          <DataTable<ModelItem>
+            tableId="model-configs"
             rows={filteredModels}
             columns={modelColumns}
             rowKey={(row) => row.id}

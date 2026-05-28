@@ -112,7 +112,7 @@ describe("RequestLogsPage", () => {
       </ThemeProvider>,
     );
 
-    expect(await screen.findByText("First Token")).toBeInTheDocument();
+    expect(await screen.findByText("Duration")).toBeInTheDocument();
     expect(await screen.findByText("183ms")).toBeInTheDocument();
   });
 
@@ -148,7 +148,7 @@ describe("RequestLogsPage", () => {
     expect(await screen.findByText("No Data")).toBeInTheDocument();
   });
 
-  test("renders request logs table through the shared VirtualTable wrapper", async () => {
+  test("renders request logs table through the shared DataTable wrapper", async () => {
     await i18n.changeLanguage("zh-CN");
 
     mocks.getUsageLogs.mockResolvedValue({

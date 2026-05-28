@@ -1,8 +1,15 @@
-import type { ReactNode } from "react";
-import { Settings2, Trash2 } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { EllipsisVertical, Settings2, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@/modules/ui/Button";
 import { ToggleSwitch } from "@/modules/ui/ToggleSwitch";
+
+const ACTION_MENU_CONTENT_CLASS =
+  "z-[220] min-w-36 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-900/10 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-black/35";
+const ACTION_MENU_ITEM_CLASS =
+  "flex w-full cursor-default select-none items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 outline-none transition-colors focus:bg-slate-100 data-[highlighted]:bg-slate-100 dark:text-white/75 dark:focus:bg-white/10 dark:data-[highlighted]:bg-white/10";
+const ACTION_MENU_DANGER_ITEM_CLASS =
+  "flex w-full cursor-default select-none items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-rose-600 outline-none transition-colors focus:bg-rose-50 data-[highlighted]:bg-rose-50 dark:text-rose-300 dark:focus:bg-rose-500/10 dark:data-[highlighted]:bg-rose-500/10";
 
 export interface ProviderCardProps {
   /** Card title (provider name) */
@@ -21,7 +28,7 @@ export interface ProviderCardProps {
   onEdit?: () => void;
   /** Callback when delete button is clicked */
   onDelete?: () => void;
-  /** Extra elements rendered in the header actions area (between toggle and edit) */
+  /** Extra elements rendered below the title row */
   headerExtra?: ReactNode;
   /** Card body content */
   children?: ReactNode;
@@ -40,11 +47,14 @@ export function ProviderCard({
   children,
 }: ProviderCardProps) {
   const { t } = useTranslation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const hasActionMenu = Boolean(onEdit || onDelete);
+  const hasHeaderExtra = Boolean(headerExtra);
 
   return (
     <div
       className={[
-        "group rounded-2xl border px-4 py-3 shadow-sm transition-all duration-200 ease-out",
+        "group relative rounded-2xl border px-4 py-3 shadow-sm transition-all duration-200 ease-out",
         selected
           ? "border-blue-400 bg-blue-50/50 ring-1 ring-blue-200 dark:border-blue-500/50 dark:bg-blue-950/20 dark:ring-blue-500/20"
           : "border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white hover:shadow-md dark:border-neutral-800 dark:bg-neutral-950/60 dark:hover:border-neutral-700 dark:hover:bg-neutral-950/80 dark:hover:shadow-lg dark:hover:shadow-black/20",
@@ -54,50 +64,85 @@ export function ProviderCard({
         .join(" ")}
     >
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-2">
-        {onToggleSelected ? (
-          <div
-            className={[
-              "flex items-center justify-center overflow-hidden transition-all duration-200 ease-out",
-              selected
-                ? "w-8 opacity-100"
-                : "w-0 opacity-0 group-hover:w-8 group-hover:opacity-100",
-            ].join(" ")}
-          >
-            <input
-              type="checkbox"
-              aria-label={t("providers.select_provider", { name: title })}
-              checked={selected}
-              onChange={(e) => onToggleSelected(e.currentTarget.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-slate-900 accent-slate-900 focus-visible:ring-2 focus-visible:ring-slate-400/35 dark:border-neutral-700 dark:bg-neutral-950 dark:text-white dark:accent-white dark:focus-visible:ring-white/15"
-            />
-          </div>
-        ) : null}
-        <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900 dark:text-white">
-          {title}
-        </p>
-        <div className="ml-auto flex items-center gap-2">
-          {headerExtra}
+      <div className="grid gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          {onToggleSelected ? (
+            <div
+              className={[
+                "flex items-center justify-center overflow-hidden transition-[width,opacity] duration-200 ease-out",
+                selected
+                  ? "w-7 opacity-100"
+                  : "w-0 opacity-0 group-hover:w-7 group-hover:opacity-100",
+              ].join(" ")}
+            >
+              <input
+                type="checkbox"
+                aria-label={t("providers.select_provider", { name: title })}
+                checked={selected}
+                onChange={(e) => onToggleSelected(e.currentTarget.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-slate-900 accent-slate-900 focus-visible:ring-2 focus-visible:ring-slate-400/35 dark:border-neutral-700 dark:bg-neutral-950 dark:text-white dark:accent-white dark:focus-visible:ring-white/15"
+              />
+            </div>
+          ) : null}
+          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900 dark:text-white">
+            {title}
+          </p>
           {onToggleEnabled ? (
-            <ToggleSwitch
-              checked={enabled}
-              ariaLabel={`${t("providers.enable_provider")} ${title}`}
-              onCheckedChange={onToggleEnabled}
-            />
+            <div className="shrink-0">
+              <ToggleSwitch
+                checked={enabled}
+                ariaLabel={`${t("providers.enable_provider")} ${title}`}
+                onCheckedChange={onToggleEnabled}
+              />
+            </div>
           ) : null}
-          {onEdit ? (
-            <Button variant="secondary" size="sm" onClick={onEdit}>
-              <Settings2 size={14} />
-              {t("providers.edit")}
-            </Button>
-          ) : null}
-          {onDelete ? (
-            <Button variant="danger" size="sm" onClick={onDelete}>
-              <Trash2 size={14} />
-              {t("providers.delete")}
-            </Button>
+          {hasActionMenu ? (
+            <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  className={[
+                    "inline-flex h-5 w-5 flex-none items-center justify-center rounded-full border-0 bg-transparent p-0 text-slate-500 shadow-none outline-none ring-0 transition-[color,opacity] duration-150 ease-out hover:bg-transparent hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-slate-400/35 active:bg-transparent dark:text-white/55 dark:hover:bg-transparent dark:hover:text-white dark:focus-visible:ring-white/15",
+                    menuOpen
+                      ? "pointer-events-auto opacity-100"
+                      : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
+                  ].join(" ")}
+                  aria-label={t("providers.more_actions")}
+                  title={t("providers.more_actions")}
+                  data-tooltip-placement="left"
+                >
+                  <EllipsisVertical size={13} />
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="end"
+                  sideOffset={8}
+                  className={ACTION_MENU_CONTENT_CLASS}
+                >
+                  {onEdit ? (
+                    <DropdownMenu.Item className={ACTION_MENU_ITEM_CLASS} onSelect={() => onEdit()}>
+                      <Settings2 size={15} />
+                      <span>{t("providers.edit")}</span>
+                    </DropdownMenu.Item>
+                  ) : null}
+                  {onDelete ? (
+                    <DropdownMenu.Item
+                      className={ACTION_MENU_DANGER_ITEM_CLASS}
+                      onSelect={() => onDelete()}
+                    >
+                      <Trash2 size={15} />
+                      <span>{t("providers.delete")}</span>
+                    </DropdownMenu.Item>
+                  ) : null}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           ) : null}
         </div>
+        {hasHeaderExtra ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">{headerExtra}</div>
+        ) : null}
       </div>
 
       {/* Content */}

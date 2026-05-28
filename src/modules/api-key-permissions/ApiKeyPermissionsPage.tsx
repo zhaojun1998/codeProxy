@@ -19,7 +19,7 @@ import { TextInput } from "@/modules/ui/Input";
 import { Modal } from "@/modules/ui/Modal";
 import { ToggleSwitch } from "@/modules/ui/ToggleSwitch";
 import { useToast } from "@/modules/ui/ToastProvider";
-import { VirtualTable, type VirtualTableColumn } from "@/modules/ui/VirtualTable";
+import { DataTable, type DataTableColumn } from "@/modules/ui/DataTable";
 
 type ProfileDraft = {
   id: string;
@@ -269,7 +269,7 @@ export function ApiKeyPermissionsPage() {
     }
   };
 
-  const columns = useMemo<VirtualTableColumn<ApiKeyPermissionProfile>[]>(
+  const columns = useMemo<DataTableColumn<ApiKeyPermissionProfile>[]>(
     () => [
       {
         key: "name",
@@ -406,7 +406,8 @@ export function ApiKeyPermissionsPage() {
             icon={<ShieldCheck size={32} />}
           />
         ) : (
-          <VirtualTable<ApiKeyPermissionProfile>
+          <DataTable<ApiKeyPermissionProfile>
+            tableId="api-key-permission-profiles"
             rows={profiles}
             columns={columns}
             rowKey={(profile) => profile.id}

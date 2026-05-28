@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -15,14 +16,20 @@ import { TableCellOverflowTooltip } from "@/modules/ui/TableCellOverflowTooltip"
 // Types
 // ---------------------------------------------------------------------------
 
-/** Column definition for VirtualTable */
-export interface VirtualTableColumn<T> {
+/** Column definition for DataTable */
+export interface DataTableColumn<T> {
   /** Unique key for this column */
   key: string;
   /** Header label */
   label: string;
   /** Fixed width class (Tailwind), e.g. "w-52" */
   width?: string;
+  /** Whether users can drag this column's right edge to resize it. */
+  resizable?: boolean;
+  /** Minimum drag-resize width in px. */
+  minWidthPx?: number;
+  /** Maximum drag-resize width in px. */
+  maxWidthPx?: number;
   /** Extra header class (e.g. "text-right") */
   headerClassName?: string;
   /** Extra cell class */
@@ -35,11 +42,13 @@ export interface VirtualTableColumn<T> {
   render: (row: T, index: number) => ReactNode;
 }
 
-export interface VirtualTableProps<T> {
+export interface DataTableProps<T> {
+  /** Stable id used to keep each table's column widths isolated in localStorage. */
+  tableId?: string;
   /** Row data array */
   rows: readonly T[];
   /** Column definitions */
-  columns: VirtualTableColumn<T>[];
+  columns: DataTableColumn<T>[];
   /** Unique key extractor for each row */
   rowKey: (row: T, index: number) => string;
   /** Whether the initial data is loading */
@@ -50,7 +59,7 @@ export interface VirtualTableProps<T> {
   loadingMore?: boolean;
   /** Callback when scrolled near bottom (triggers next page load) */
   onScrollBottom?: () => void;
-  /** Enable row virtualization (default true). Disable to allow natural row height. */
+  /** Legacy row windowing mode. Most management tables keep this disabled for finite row sets. */
   virtualize?: boolean;
   /** Row height in px (default 44) */
   rowHeight?: number;
@@ -87,8 +96,88 @@ const DEFAULT_ROW_HEIGHT = 44;
 const DEFAULT_OVERSCAN = 12;
 const DEFAULT_SCROLL_THRESHOLD = 100;
 const DEFAULT_BOTTOM_DEBOUNCE_MS = 120;
+const COLUMN_WIDTH_STORAGE_PREFIX = "codeProxy.dataTable.columnWidths.v1";
+const DEFAULT_MIN_COLUMN_WIDTH = 72;
+const DEFAULT_MAX_COLUMN_WIDTH = 640;
+const COLUMN_RESIZE_PREVIEW_LINE_WIDTH = 2;
+const NON_RESIZABLE_COLUMN_KEYS = new Set(["select", "action", "actions"]);
 
-function resolveCellOverflowTooltip<T>(column: VirtualTableColumn<T>, row: T, index: number) {
+type ColumnWidthMap = Record<string, number>;
+
+interface ColumnResizeState {
+  pointerId: number;
+  columnKey: string;
+  startClientX: number;
+  startLineCenterClientX: number;
+  startWidth: number;
+  minWidth: number;
+  maxWidth: number;
+}
+
+interface ColumnResizePreview {
+  width: number;
+  left: number;
+  top: number;
+  height: number;
+  tooltipTop: number;
+}
+
+function clampColumnWidth<T>(column: DataTableColumn<T>, width: number) {
+  const minWidth = column.minWidthPx ?? DEFAULT_MIN_COLUMN_WIDTH;
+  const maxWidth = column.maxWidthPx ?? DEFAULT_MAX_COLUMN_WIDTH;
+  return Math.max(minWidth, Math.min(maxWidth, Math.round(width)));
+}
+
+function getColumnWidthStorageKey(tableId?: string) {
+  const trimmed = tableId?.trim();
+  return trimmed ? `${COLUMN_WIDTH_STORAGE_PREFIX}.${trimmed}` : null;
+}
+
+function readStoredColumnWidths(tableId?: string): ColumnWidthMap {
+  const key = getColumnWidthStorageKey(tableId);
+  if (!key || typeof window === "undefined") return {};
+
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>)
+        .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
+        .map(([columnKey, value]) => [columnKey, Math.round(value as number)]),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredColumnWidths(tableId: string | undefined, widths: ColumnWidthMap) {
+  const key = getColumnWidthStorageKey(tableId);
+  if (!key || typeof window === "undefined") return;
+
+  try {
+    const normalized = Object.fromEntries(
+      Object.entries(widths).filter(([, value]) => Number.isFinite(value) && value > 0),
+    );
+    window.localStorage.setItem(key, JSON.stringify(normalized));
+  } catch {
+    // localStorage can be unavailable in private browsing or embedded contexts.
+  }
+}
+
+function shouldAllowColumnResize<T>(
+  column: DataTableColumn<T>,
+  columnIndex: number,
+  columns: DataTableColumn<T>[],
+) {
+  if (columnIndex >= columns.length - 1) return false;
+  if (column.resizable !== undefined) return column.resizable;
+  return !NON_RESIZABLE_COLUMN_KEYS.has(column.key);
+}
+
+function resolveCellOverflowTooltip<T>(column: DataTableColumn<T>, row: T, index: number) {
   if (column.overflowTooltip === false) return false;
 
   if (typeof column.overflowTooltip === "function") {
@@ -99,11 +188,22 @@ function resolveCellOverflowTooltip<T>(column: VirtualTableColumn<T>, row: T, in
   return undefined;
 }
 
+function safeSetPointerCapture(element: Element, pointerId: number) {
+  try {
+    if ("setPointerCapture" in element) {
+      element.setPointerCapture(pointerId);
+    }
+  } catch {
+    // Synthetic pointer events in automated checks may not create an active browser pointer.
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-export function VirtualTable<T>({
+export function DataTable<T>({
+  tableId,
   rows,
   columns,
   rowKey,
@@ -111,7 +211,7 @@ export function VirtualTable<T>({
   hasMore = false,
   loadingMore = false,
   onScrollBottom,
-  virtualize = true,
+  virtualize = false,
   rowHeight = DEFAULT_ROW_HEIGHT,
   overscan = DEFAULT_OVERSCAN,
   scrollThreshold = DEFAULT_SCROLL_THRESHOLD,
@@ -125,11 +225,18 @@ export function VirtualTable<T>({
   rowClassName,
   allowWheelPropagationAtBoundary = false,
   naturalFlow = false,
-}: VirtualTableProps<T>) {
+}: DataTableProps<T>) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLTableSectionElement | null>(null);
+  const headerCellsRef = useRef<Record<string, HTMLTableCellElement | null>>({});
   const headerHeightRef = useRef(0);
+  const [columnWidths, setColumnWidths] = useState<ColumnWidthMap>(() =>
+    readStoredColumnWidths(tableId),
+  );
+  const columnWidthsRef = useRef<ColumnWidthMap>(columnWidths);
+  const [resizePreview, setResizePreview] = useState<ColumnResizePreview | null>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(480);
@@ -154,6 +261,33 @@ export function VirtualTable<T>({
   });
 
   const colCount = columns.length;
+
+  useEffect(() => {
+    setColumnWidths(readStoredColumnWidths(tableId));
+  }, [tableId]);
+
+  useEffect(() => {
+    columnWidthsRef.current = columnWidths;
+  }, [columnWidths]);
+
+  useEffect(() => {
+    const validKeys = new Set(columns.map((column) => column.key));
+    setColumnWidths((prev) => {
+      let changed = false;
+      const next: ColumnWidthMap = {};
+      columns.forEach((column) => {
+        const width = prev[column.key];
+        if (width !== undefined) next[column.key] = clampColumnWidth(column, width);
+      });
+      Object.keys(prev).forEach((key) => {
+        if (!validKeys.has(key)) changed = true;
+      });
+      columns.forEach((column) => {
+        if (next[column.key] !== prev[column.key]) changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [columns]);
 
   const updateScrollMetrics = useCallback(() => {
     const el = containerRef.current;
@@ -324,7 +458,7 @@ export function VirtualTable<T>({
       if (!el) return;
 
       const pointerId = e.pointerId;
-      e.currentTarget.setPointerCapture(pointerId);
+      safeSetPointerCapture(e.currentTarget, pointerId);
 
       if (axis === "y") {
         const headerH = headerHeightRef.current;
@@ -407,6 +541,137 @@ export function VirtualTable<T>({
     if (!drag) return;
     if (drag.pointerId !== e.pointerId) return;
     dragRef.current = null;
+  }, []);
+
+  const columnResizeRef = useRef<ColumnResizeState | null>(null);
+
+  const buildColumnResizePreview = useCallback(
+    (
+      active: ColumnResizeState,
+      width: number,
+      pointerClientY: number,
+    ): ColumnResizePreview | null => {
+      const rootRect = rootRef.current?.getBoundingClientRect();
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      if (!rootRect || !containerRect) return null;
+
+      const scroller = containerRef.current;
+      const hasHorizontalOverflow = scroller
+        ? scroller.scrollWidth > scroller.clientWidth + 1
+        : false;
+      const lineCenterClientX = active.startLineCenterClientX + width - active.startWidth;
+      const top = Math.max(0, containerRect.top - rootRect.top);
+      const bottomInset = hasHorizontalOverflow ? 14 : 0;
+      const bottom = Math.min(rootRect.height, containerRect.bottom - rootRect.top - bottomInset);
+      const height = Math.max(0, bottom - top);
+      const tooltipTop = Math.max(
+        top + 8,
+        Math.min(top + Math.max(0, height - 32), pointerClientY - rootRect.top + 10),
+      );
+
+      return {
+        width,
+        left: lineCenterClientX - rootRect.left - COLUMN_RESIZE_PREVIEW_LINE_WIDTH / 2,
+        top,
+        height,
+        tooltipTop,
+      };
+    },
+    [],
+  );
+
+  const finishColumnResize = useCallback(() => {
+    const active = columnResizeRef.current;
+    if (!active) return;
+
+    columnResizeRef.current = null;
+    setResizePreview(null);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    document.documentElement.style.cursor = "";
+    const latestWidths = columnWidthsRef.current;
+    writeStoredColumnWidths(tableId, {
+      ...latestWidths,
+      [active.columnKey]: latestWidths[active.columnKey] ?? active.startWidth,
+    });
+  }, [tableId]);
+
+  const handleColumnResizePointerDown = useCallback(
+    (column: DataTableColumn<T>, e: ReactPointerEvent<HTMLButtonElement>) => {
+      if (e.button !== 0) return;
+
+      const headerCell = headerCellsRef.current[column.key];
+      if (!headerCell) return;
+
+      const rect = headerCell.getBoundingClientRect();
+      const startWidth = columnWidths[column.key] ?? rect.width;
+      const minWidth = column.minWidthPx ?? DEFAULT_MIN_COLUMN_WIDTH;
+      const maxWidth = column.maxWidthPx ?? DEFAULT_MAX_COLUMN_WIDTH;
+      const nextStartWidth = Math.max(minWidth, Math.min(maxWidth, startWidth));
+
+      e.preventDefault();
+      e.stopPropagation();
+      safeSetPointerCapture(e.currentTarget, e.pointerId);
+
+      const resizeState = {
+        pointerId: e.pointerId,
+        columnKey: column.key,
+        startClientX: e.clientX,
+        startLineCenterClientX:
+          e.currentTarget.getBoundingClientRect().left + e.currentTarget.offsetWidth / 2,
+        startWidth: nextStartWidth,
+        minWidth,
+        maxWidth,
+      };
+      columnResizeRef.current = resizeState;
+      document.body.style.cursor = "col-resize";
+      document.documentElement.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      setColumnWidths((prev) => ({ ...prev, [column.key]: nextStartWidth }));
+      setResizePreview(buildColumnResizePreview(resizeState, nextStartWidth, e.clientY));
+    },
+    [buildColumnResizePreview, columnWidths],
+  );
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      const active = columnResizeRef.current;
+      if (!active) return;
+
+      event.preventDefault();
+      const nextWidth = Math.max(
+        active.minWidth,
+        Math.min(active.maxWidth, active.startWidth + event.clientX - active.startClientX),
+      );
+      const roundedWidth = Math.round(nextWidth);
+
+      columnWidthsRef.current = { ...columnWidthsRef.current, [active.columnKey]: roundedWidth };
+      setColumnWidths((prev) => ({ ...prev, [active.columnKey]: roundedWidth }));
+      setResizePreview(buildColumnResizePreview(active, roundedWidth, event.clientY));
+    };
+
+    const handlePointerUp = () => finishColumnResize();
+    const handleWindowBlur = () => finishColumnResize();
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+    window.addEventListener("blur", handleWindowBlur);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  }, [buildColumnResizePreview, finishColumnResize]);
+
+  useEffect(() => {
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.documentElement.style.cursor = "";
+    };
   }, []);
 
   const measureHeaderHeight = useCallback(() => {
@@ -562,8 +827,18 @@ export function VirtualTable<T>({
     return { vThumb: v, hThumb: h };
   }, [headerHeight, scrollMetrics]);
 
+  const resolveColumnStyle = useCallback(
+    (column: DataTableColumn<T>): CSSProperties | undefined => {
+      const width = columnWidths[column.key];
+      if (!width) return undefined;
+      return { width, minWidth: width, maxWidth: width };
+    },
+    [columnWidths],
+  );
+
   return (
     <div
+      ref={rootRef}
       aria-busy={loading || loadingMore ? true : undefined}
       data-vt-natural-flow={naturalFlow ? true : undefined}
       className={
@@ -601,17 +876,44 @@ export function VirtualTable<T>({
           className={`w-full ${minWidth} table-fixed border-separate border-spacing-0 text-sm`}
         >
           <caption className="sr-only">{caption}</caption>
+          <colgroup>
+            {columns.map((col) => (
+              <col key={col.key} style={resolveColumnStyle(col)} />
+            ))}
+          </colgroup>
 
           {/* ── HeroUI-styled header ── */}
           <thead ref={headerRef} className={naturalFlow ? undefined : "sticky top-0 z-20"}>
             <tr className="text-left text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-white/55">
-              {columns.map((col) => {
+              {columns.map((col, colIndex) => {
+                const canResize = shouldAllowColumnResize(col, colIndex, columns);
                 return (
                   <th
                     key={col.key}
-                    className={`whitespace-nowrap px-4 py-3 ${col.width ?? ""} ${col.headerClassName ?? ""}`}
+                    aria-label={col.label}
+                    ref={(node) => {
+                      headerCellsRef.current[col.key] = node;
+                    }}
+                    style={resolveColumnStyle(col)}
+                    className={`group/column relative whitespace-nowrap px-4 py-3 ${col.width ?? ""} ${col.headerClassName ?? ""}`}
                   >
                     {col.headerRender ? col.headerRender() : col.label}
+                    {canResize ? (
+                      <button
+                        type="button"
+                        data-vt-column-resizer
+                        aria-label={t("common.resize_column", { column: col.label })}
+                        title={t("common.resize_column", { column: col.label })}
+                        className="group/resize absolute -right-2 top-0 z-30 h-full w-4 cursor-col-resize touch-none bg-transparent outline-none"
+                        style={{ cursor: "col-resize" }}
+                        onPointerDown={(event) => handleColumnResizePointerDown(col, event)}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="mx-auto block h-6 w-px rounded-full bg-slate-300/80 opacity-70 transition-[width,background-color,opacity] group-hover/resize:w-0.5 group-hover/resize:bg-slate-500 group-hover/resize:opacity-100 group-focus-visible/resize:w-0.5 group-focus-visible/resize:bg-slate-500 group-focus-visible/resize:opacity-100 dark:bg-white/25 dark:group-hover/resize:bg-white/55 dark:group-focus-visible/resize:bg-white/55"
+                        />
+                      </button>
+                    ) : null}
                   </th>
                 );
               })}
@@ -690,6 +992,7 @@ export function VirtualTable<T>({
                         return (
                           <td
                             key={col.key}
+                            style={resolveColumnStyle(col)}
                             className={`px-4 py-2.5 align-middle ${col.cellClassName ?? ""} ${roundCls}`}
                           >
                             <TableCellOverflowTooltip
@@ -780,6 +1083,30 @@ export function VirtualTable<T>({
             onPointerCancel={handleThumbPointerUp}
           />
         </div>
+      ) : null}
+
+      {resizePreview ? (
+        <>
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute z-20 w-0.5 bg-slate-500/70"
+            style={{
+              left: resizePreview.left,
+              top: resizePreview.top,
+              height: resizePreview.height,
+            }}
+          />
+          <div
+            role="status"
+            className="pointer-events-none absolute z-40 rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-lg dark:bg-white dark:text-neutral-950"
+            style={{
+              left: resizePreview.left + 10,
+              top: resizePreview.tooltipTop,
+            }}
+          >
+            {t("common.column_width_px", { width: resizePreview.width })}
+          </div>
+        </>
       ) : null}
     </div>
   );
