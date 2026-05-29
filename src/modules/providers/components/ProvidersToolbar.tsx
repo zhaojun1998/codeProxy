@@ -1,6 +1,6 @@
 import { type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { CheckSquare, Download, LayoutGrid, RefreshCw, Upload } from "lucide-react";
+import { CheckSquare, Download, LayoutGrid, Plus, RefreshCw, Upload } from "lucide-react";
 import { Button } from "@/modules/ui/Button";
 import { Select } from "@/modules/ui/Select";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
@@ -43,6 +43,7 @@ export function ProvidersToolbar({
   onClearSelection,
   onRefresh,
   onGridColumnsChange,
+  onAddCurrent,
 }: ProvidersToolbarProps) {
   const { t } = useTranslation();
   const hasImportExport = currentImportKind !== null;
@@ -51,53 +52,54 @@ export function ProvidersToolbar({
   return (
     <div
       data-testid="providers-batch-actions"
-      className="flex flex-wrap items-center gap-1 rounded-2xl bg-slate-50/80 px-2 py-1.5 transition-colors duration-200 ease-out dark:bg-white/3"
+      className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-slate-50/80 px-2 py-1.5 transition-colors duration-200 ease-out dark:bg-white/3"
     >
-      {hasImportExport ? (
-        <>
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-8! px-2 text-xs"
-            onClick={onImportClick}
-          >
-            <Upload size={14} />
-            {t("providers.import_json")}
-          </Button>
+      {/* Left group: import/export/select/refresh */}
+      <div className="flex flex-wrap items-center gap-1">
+        {hasImportExport ? (
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-8! px-2 text-xs"
+              onClick={onImportClick}
+            >
+              <Upload size={14} />
+              {t("providers.import_json")}
+            </Button>
 
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger asChild>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-8! px-2 text-xs"
-                disabled={currentTabItemsCount === 0}
-              >
-                <Download size={14} />
-                {t("providers.export_json")}
-              </Button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Portal>
-              <DropdownMenu.Content align="start" sideOffset={6} className={DROPDOWN_CONTENT}>
-                <DropdownMenu.Item className={DROPDOWN_ITEM} onSelect={() => onExport()}>
-                  {t("providers.export_json")}
-                </DropdownMenu.Item>
-                <DropdownMenu.Item
-                  className={DROPDOWN_ITEM}
-                  onSelect={() => onExportSelected()}
-                  disabled={selectedExportCount === 0}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-8! px-2 text-xs"
+                  disabled={currentTabItemsCount === 0}
                 >
-                  {t("providers.export_selected_json")}
-                </DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Portal>
-          </DropdownMenu.Root>
+                  <Download size={14} />
+                  {t("providers.export_json")}
+                </Button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content align="start" sideOffset={6} className={DROPDOWN_CONTENT}>
+                  <DropdownMenu.Item className={DROPDOWN_ITEM} onSelect={() => onExport()}>
+                    {t("providers.export_json")}
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item
+                    className={DROPDOWN_ITEM}
+                    onSelect={() => onExportSelected()}
+                    disabled={selectedExportCount === 0}
+                  >
+                    {t("providers.export_selected_json")}
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
 
-          <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
-              className="h-8! px-2 text-xs"
+              className="relative h-8! px-2 text-xs"
               onClick={() => onSelectAll(!allCurrentSelected)}
               disabled={currentTabItemsCount === 0}
             >
@@ -105,51 +107,50 @@ export function ProvidersToolbar({
               {allCurrentSelected
                 ? t("providers.batch_deselect_all")
                 : t("providers.batch_select_all")}
-            </Button>
-            {hasSelection ? (
-              <>
-                <span className="text-xs tabular-nums text-slate-500 dark:text-white/55">
+              {hasSelection ? (
+                <span className="absolute -right-1.5 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold leading-none text-white">
                   {selectedExportCount}
                 </span>
-                <button
-                  type="button"
-                  onClick={onClearSelection}
-                  className="inline-flex items-center rounded px-1 py-0.5 text-xs text-slate-400 transition-colors hover:text-slate-700 dark:text-white/40 dark:hover:text-white/70"
-                  aria-label={t("providers.batch_clear")}
-                >
-                  ✕
-                </button>
-              </>
-            ) : null}
-          </div>
-        </>
-      ) : null}
+              ) : null}
+            </Button>
+          </>
+        ) : null}
 
-      <Button
-        variant="secondary"
-        size="sm"
-        className="h-8! px-2 text-xs"
-        onClick={onRefresh}
-        disabled={loading}
-      >
-        <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-        {t("providers.refresh")}
-      </Button>
-
-      <div className="ml-auto flex items-center gap-1.5">
-        <LayoutGrid size={14} className="text-slate-500 dark:text-white/50" />
-        <Select
-          value={String(gridColumns)}
-          onChange={(v) => onGridColumnsChange(Number(v))}
-          options={[
-            { value: "1", label: t("providers.grid_cols_1") },
-            { value: "2", label: t("providers.grid_cols_2") },
-            { value: "3", label: t("providers.grid_cols_3") },
-            { value: "4", label: t("providers.grid_cols_4") },
-          ]}
+        <Button
+          variant="secondary"
           size="sm"
-          aria-label={t("providers.grid_columns_aria")}
-        />
+          className="h-8! px-2 text-xs"
+          onClick={onRefresh}
+          disabled={loading}
+        >
+          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+          {t("providers.refresh")}
+        </Button>
+      </div>
+
+      {/* Right group: grid + add */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          <LayoutGrid size={14} className="text-slate-500 dark:text-white/50" />
+          <Select
+            value={String(gridColumns)}
+            onChange={(v) => onGridColumnsChange(Number(v))}
+            options={[
+              { value: "1", label: t("providers.grid_cols_1") },
+              { value: "2", label: t("providers.grid_cols_2") },
+              { value: "3", label: t("providers.grid_cols_3") },
+              { value: "4", label: t("providers.grid_cols_4") },
+            ]}
+            size="sm"
+            aria-label={t("providers.grid_columns_aria")}
+          />
+        </div>
+        {onAddCurrent ? (
+          <Button variant="primary" size="sm" className="h-8! px-3 text-xs" onClick={onAddCurrent}>
+            <Plus size={14} />
+            {t("providers.add_new")}
+          </Button>
+        ) : null}
       </div>
     </div>
   );
