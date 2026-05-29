@@ -13,11 +13,9 @@ import {
   stripDisableAllModelsRule,
 } from "@/modules/providers/providers-helpers";
 import { formatLatency } from "@/modules/providers/hooks/useProviderLatency";
-import type { ProviderAccessSummary } from "@/modules/providers/provider-access";
 import { ProviderConnectionRows } from "@/modules/providers/components/ProviderConnectionRows";
 import { ProviderMetricChip } from "@/modules/providers/components/ProviderMetricChip";
 import { ProviderModelChips } from "@/modules/providers/components/ProviderModelChips";
-import { ProviderAccessChips } from "@/modules/providers/components/ProviderAccessChips";
 
 import { useTranslation } from "react-i18next";
 
@@ -35,7 +33,6 @@ export function ProviderKeyListCard({
 
   getStats,
   getStatusBar,
-  getAccessSummary,
   getLatencyEntry,
   checkLatency,
   showBaseUrl = true,
@@ -54,7 +51,6 @@ export function ProviderKeyListCard({
   renderExtra?: (item: ProviderSimpleConfig, index: number) => ReactNode;
   getStats: (item: ProviderSimpleConfig) => KeyStatBucket;
   getStatusBar: (item: ProviderSimpleConfig) => StatusBarData;
-  getAccessSummary?: (item: ProviderSimpleConfig) => ProviderAccessSummary | null;
   getLatencyEntry?: (key: string) => { latencyMs: number | null; loading: boolean; error: boolean };
   checkLatency?: (key: string, baseUrl: string) => void;
   showBaseUrl?: boolean;
@@ -93,7 +89,7 @@ export function ProviderKeyListCard({
           className={[
             "min-h-0 flex-1 overflow-y-auto pr-1",
             gridColumns > 1
-              ? ["grid gap-3 items-start content-start", gridColumnsClass].join(" ")
+              ? ["grid gap-3", gridColumnsClass].join(" ")
               : "space-y-3",
           ].join(" ")}
         >
@@ -106,7 +102,6 @@ export function ProviderKeyListCard({
             const models = item.models || [];
             const stats = getStats(item);
             const statusData = getStatusBar(item);
-            const accessSummary = getAccessSummary?.(item) ?? null;
 
             return (
               <ProviderCard
@@ -206,10 +201,6 @@ export function ProviderKeyListCard({
                     tone={stats.failure > 0 ? "rose" : "slate"}
                     label={t("providers.failed_stats", { count: stats.failure })}
                   />
-                </div>
-
-                <div className="mt-2">
-                  <ProviderAccessChips accessSummary={accessSummary} />
                 </div>
 
                 {headerEntries.length ? (
