@@ -805,7 +805,13 @@ export function ProvidersPage() {
         onClearSelection={() => setSelectedExportKeys([])}
         onRefresh={() => void refreshTab(tab)}
         onGridColumnsChange={setGridColumns}
-        onAddCurrent={null}
+        onAddCurrent={
+          tab === "ampcode"
+            ? null
+            : tab === "openai"
+              ? () => openOpenAIEditor(null)
+              : () => openKeyEditor(tab, null)
+        }
       />
 
       <Tabs
