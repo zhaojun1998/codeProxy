@@ -321,12 +321,12 @@ describe("ProvidersPage openai tab", () => {
     );
 
     expect(await screen.findByText("OpenAI Main")).toBeInTheDocument();
-    const providerSwitch = await screen.findByRole("switch", {
-      name: /Enable provider OpenAI Main/i,
-    });
-    expect(providerSwitch).toHaveAttribute("aria-checked", "true");
 
-    await user.click(providerSwitch);
+    const menuButton = await screen.findByLabelText("More actions");
+    await user.click(menuButton);
+
+    const disableItem = await screen.findByText("Disable");
+    await user.click(disableItem);
 
     await waitFor(() => {
       expect(mocks.patchOpenAIProviderDisabled).toHaveBeenCalledWith(0, true);

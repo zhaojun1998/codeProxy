@@ -37,7 +37,6 @@ import {
   type ProviderImportDiff,
   type ProviderImportKind,
 } from "@/modules/providers/provider-import-export";
-import { summarizeProviderAccess } from "@/modules/providers/provider-access";
 import { ProvidersPageHeader } from "@/modules/providers/components/ProvidersPageHeader";
 import { ProvidersToolbar } from "@/modules/providers/components/ProvidersToolbar";
 import { ProviderTabsWithCounts } from "@/modules/providers/components/ProviderTabsWithCounts";
@@ -301,17 +300,6 @@ export function ProvidersPage() {
     void loadProxyPool();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const getProviderAccessSummary = useCallback(
-    (item: ProviderSimpleConfig) => {
-      const channelName = String(item.name ?? "").trim();
-      if (!channelName) {
-        return null;
-      }
-      return summarizeProviderAccess(channelName, apiKeyEntries, channelGroups);
-    },
-    [apiKeyEntries, channelGroups],
-  );
 
   const handleKeyEditorRouteClose = useCallback(() => {
     if (location.pathname !== "/ai-providers") {
@@ -831,7 +819,6 @@ export function ProvidersPage() {
               onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("gemini", idx, enabled)}
               getStats={getSimpleStats}
               getStatusBar={getSimpleStatusBar}
-              getAccessSummary={getProviderAccessSummary}
               getLatencyEntry={getLatencyEntry}
               checkLatency={checkLatency}
               gridColumns={gridColumns}
@@ -852,7 +839,6 @@ export function ProvidersPage() {
               onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("claude", idx, enabled)}
               getStats={getSimpleStats}
               getStatusBar={getSimpleStatusBar}
-              getAccessSummary={getProviderAccessSummary}
               getLatencyEntry={getLatencyEntry}
               checkLatency={checkLatency}
               gridColumns={gridColumns}
@@ -873,7 +859,6 @@ export function ProvidersPage() {
               onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("codex", idx, enabled)}
               getStats={getSimpleStats}
               getStatusBar={getSimpleStatusBar}
-              getAccessSummary={getProviderAccessSummary}
               getLatencyEntry={getLatencyEntry}
               checkLatency={checkLatency}
               gridColumns={gridColumns}
@@ -896,7 +881,6 @@ export function ProvidersPage() {
               onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("opencode-go", idx, enabled)}
               getStats={getSimpleStats}
               getStatusBar={getSimpleStatusBar}
-              getAccessSummary={getProviderAccessSummary}
               showBaseUrl={false}
               gridColumns={gridColumns}
               selectedKeys={selectedExportKeySet}
@@ -915,7 +899,6 @@ export function ProvidersPage() {
               onDelete={(idx) => setConfirm({ type: "deleteKey", keyType: "vertex", index: idx })}
               getStats={getSimpleStats}
               getStatusBar={getSimpleStatusBar}
-              getAccessSummary={getProviderAccessSummary}
               getLatencyEntry={getLatencyEntry}
               checkLatency={checkLatency}
               gridColumns={gridColumns}
@@ -936,7 +919,6 @@ export function ProvidersPage() {
               onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("bedrock", idx, enabled)}
               getStats={getSimpleStats}
               getStatusBar={getSimpleStatusBar}
-              getAccessSummary={getProviderAccessSummary}
               getLatencyEntry={getLatencyEntry}
               checkLatency={checkLatency}
               gridColumns={gridColumns}

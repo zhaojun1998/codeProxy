@@ -3009,6 +3009,7 @@
     "opencode_go_desc": "Fixed OpenCode Go upstream; paste your OpenCode key and all Go-plan models are routed automatically.",
     "bedrock_desc": "Supports AWS Bedrock API key or SigV4 credentials, region, headers, and Claude model aliases.",
     "enable": "Enable",
+    "disable": "Disable",
     "force_mapping": "Force Model Mapping",
     "excluded_placeholder": "One model per line; * disables all",
     "paste_key": "Paste API Key",

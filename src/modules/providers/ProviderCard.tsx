@@ -1,8 +1,7 @@
 import { useState, type ReactNode } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { EllipsisVertical, Settings2, Trash2 } from "lucide-react";
+import { EllipsisVertical, Power, Settings2, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { ToggleSwitch } from "@/modules/ui/ToggleSwitch";
 
 const ACTION_MENU_CONTENT_CLASS =
   "z-[220] min-w-36 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-900/10 dark:border-neutral-800 dark:bg-neutral-950 dark:shadow-black/35";
@@ -48,7 +47,7 @@ export function ProviderCard({
 }: ProviderCardProps) {
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
-  const hasActionMenu = Boolean(onEdit || onDelete);
+  const hasActionMenu = Boolean(onEdit || onDelete || onToggleEnabled);
   const hasHeaderExtra = Boolean(headerExtra);
 
   return (
@@ -83,21 +82,15 @@ export function ProviderCard({
               />
             </div>
           ) : null}
+          {hasHeaderExtra ? (
+            <div className="shrink-0">{headerExtra}</div>
+          ) : null}
           <p
-            className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900 dark:text-white"
+            className="min-w-0 max-w-[180px] flex-1 truncate text-sm font-semibold text-slate-900 dark:text-white"
             title={title}
           >
             {title}
           </p>
-          {onToggleEnabled ? (
-            <div className="shrink-0">
-              <ToggleSwitch
-                checked={enabled}
-                ariaLabel={`${t("providers.enable_provider")} ${title}`}
-                onCheckedChange={onToggleEnabled}
-              />
-            </div>
-          ) : null}
           {hasActionMenu ? (
             <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
               <DropdownMenu.Trigger asChild>
@@ -122,6 +115,17 @@ export function ProviderCard({
                   sideOffset={8}
                   className={ACTION_MENU_CONTENT_CLASS}
                 >
+                  {onToggleEnabled ? (
+                    <DropdownMenu.Item
+                      className={ACTION_MENU_ITEM_CLASS}
+                      onSelect={() => onToggleEnabled(!enabled)}
+                    >
+                      <Power size={15} />
+                      <span>
+                        {enabled ? t("providers.disable") : t("providers.enable")}
+                      </span>
+                    </DropdownMenu.Item>
+                  ) : null}
                   {onEdit ? (
                     <DropdownMenu.Item className={ACTION_MENU_ITEM_CLASS} onSelect={() => onEdit()}>
                       <Settings2 size={15} />
@@ -142,9 +146,6 @@ export function ProviderCard({
             </DropdownMenu.Root>
           ) : null}
         </div>
-        {hasHeaderExtra ? (
-          <div className="flex flex-wrap items-center justify-end gap-2">{headerExtra}</div>
-        ) : null}
 
       {/* Content */}
       {children ? <div className="mt-2 min-w-0">{children}</div> : null}
