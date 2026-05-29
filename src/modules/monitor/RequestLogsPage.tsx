@@ -312,10 +312,39 @@ export function RequestLogsPage() {
       <div className="flex flex-1 flex-col rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgb(15_23_42_/_0.035)] dark:border-white/[0.06] dark:bg-neutral-950/70 dark:shadow-[0_1px_2px_rgb(0_0_0_/_0.22)]">
         {/* 标题栏 */}
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-3">
-          <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-white">
-            <ScrollText size={18} className="text-slate-900 dark:text-white" aria-hidden="true" />
-            {t("request_logs.heading")}
-          </h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-white">
+              <ScrollText size={18} className="text-slate-900 dark:text-white" aria-hidden="true" />
+              {t("request_logs.heading")}
+            </h2>
+            <div className="hidden min-[640px]:flex items-center gap-2 text-xs text-slate-500 dark:text-white/50">
+              <span className="text-slate-300 dark:text-white/15">|</span>
+              <span>
+                {t("request_logs.records_count", {
+                  count: stats.total.toLocaleString(),
+                } as Record<string, string>)}
+              </span>
+              <span className="text-slate-300 dark:text-white/15">|</span>
+              <span>
+                {t("common.success_rate")}{" "}
+                <span className="font-mono tabular-nums text-slate-900 dark:text-white">{stats.success_rate.toFixed(1)}%</span>
+              </span>
+              <span className="text-slate-300 dark:text-white/15">|</span>
+              <span>
+                {t("request_logs.col_total_token")}{" "}
+                <span className="font-mono tabular-nums text-slate-900 dark:text-white">{stats.total_tokens.toLocaleString()}</span>
+              </span>
+              <span className="text-slate-300 dark:text-white/15">|</span>
+              <span>
+                {t("request_logs.col_cost")}{" "}
+                <span className="font-mono tabular-nums text-emerald-700 dark:text-emerald-400">${stats.total_cost.toFixed(4)}</span>
+              </span>
+              <span className="text-slate-300 dark:text-white/15">|</span>
+              <span className="text-slate-400 dark:text-white/40">
+                {loading ? t("request_logs.refreshing") : lastUpdatedText}
+              </span>
+            </div>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <RequestLogsTimeRangeSelector value={timeRange} onChange={setTimeRange} />
             <button
@@ -364,74 +393,35 @@ export function RequestLogsPage() {
           hasActiveFilters={hasActiveFilters}
         />
 
-        {/* 表格区域 + 统计面板 */}
-        <div className="flex min-h-[360px] h-[calc(100dvh-300px)] px-5 overflow-hidden">
-          {/* 表格 */}
-          <div className="relative flex-1 overflow-hidden">
-            <DataTable
-              tableId="request-logs"
-              rows={rows}
-              columns={logColumns}
-              rowKey={(row) => row.id}
-              loading={loading}
-              virtualize={false}
-              minWidth="min-w-[1240px]"
-              height="h-full"
-              minHeight="min-h-full"
-              caption={t("request_logs.table_caption")}
-              emptyText={t("request_logs.no_data")}
-              showAllLoadedMessage={false}
-            />
+        {/* 表格区域 — 自适应视口高度，内部滚动 */}
+        <div className="relative min-h-[360px] h-[calc(100dvh-300px)] overflow-hidden px-5">
+          <DataTable
+            tableId="request-logs"
+            rows={rows}
+            columns={logColumns}
+            rowKey={(row) => row.id}
+            loading={loading}
+            virtualize={false}
+            minWidth="min-w-[1240px]"
+            height="h-full"
+            minHeight="min-h-full"
+            caption={t("request_logs.table_caption")}
+            emptyText={t("request_logs.no_data")}
+            showAllLoadedMessage={false}
+          />
 
-            {/* Loading overlay */}
-            {loading ? (
-              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-b-2xl bg-white/70 backdrop-blur-sm dark:bg-neutral-950/55">
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/85 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm dark:border-neutral-800 dark:bg-neutral-950/70 dark:text-white/75">
-                  <span
-                    className="h-4 w-4 rounded-full border-2 border-slate-300 border-t-slate-900 motion-reduce:animate-none motion-safe:animate-spin dark:border-white/20 dark:border-t-white/80"
-                    aria-hidden="true"
-                  />
-                  <span role="status">{t("common.loading_ellipsis")}</span>
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          {/* 统计面板 */}
-          <div className="ml-4 w-44 flex-shrink-0 border-l border-slate-100 pl-4 flex flex-col justify-center gap-3 dark:border-neutral-800/60">
-            <div className="text-xs text-slate-500 dark:text-white/50">
-              {t("request_logs.records_count", {
-                count: stats.total.toLocaleString(),
-              } as Record<string, string>)}
-            </div>
-            <div>
-              <div className="text-xs text-slate-500 dark:text-white/50">
-                {t("common.success_rate")}
-              </div>
-              <div className="font-mono tabular-nums text-sm text-slate-900 dark:text-white">
-                {stats.success_rate.toFixed(1)}%
+          {/* Loading overlay */}
+          {loading ? (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-b-2xl bg-white/70 backdrop-blur-sm dark:bg-neutral-950/55">
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white/85 px-3 py-2 text-sm font-medium text-slate-700 shadow-sm dark:border-neutral-800 dark:bg-neutral-950/70 dark:text-white/75">
+                <span
+                  className="h-4 w-4 rounded-full border-2 border-slate-300 border-t-slate-900 motion-reduce:animate-none motion-safe:animate-spin dark:border-white/20 dark:border-t-white/80"
+                  aria-hidden="true"
+                />
+                <span role="status">{t("common.loading_ellipsis")}</span>
               </div>
             </div>
-            <div>
-              <div className="text-xs text-slate-500 dark:text-white/50">
-                {t("request_logs.col_total_token")}
-              </div>
-              <div className="font-mono tabular-nums text-sm text-slate-900 dark:text-white">
-                {stats.total_tokens.toLocaleString()}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-slate-500 dark:text-white/50">
-                {t("request_logs.col_cost")}
-              </div>
-              <div className="font-mono tabular-nums text-sm text-emerald-700 dark:text-emerald-400">
-                ${stats.total_cost.toFixed(4)}
-              </div>
-            </div>
-            <div className="text-[11px] text-slate-400 dark:text-white/40 border-t border-slate-100 pt-3 dark:border-neutral-800/60">
-              {loading ? t("request_logs.refreshing") : lastUpdatedText}
-            </div>
-          </div>
+          ) : null}
         </div>
 
         {/* 分页控件 — flex-shrink-0 固定在底部 */}
