@@ -839,13 +839,13 @@ export function AuthFilesFilesTab({
             data-testid="auth-files-mobile-filter-panel"
             className={[
               mobileFiltersOpen ? "grid" : "hidden",
-              "gap-3 md:grid",
+              "gap-x-1.5 md:grid",
             ].join(" ")}
           >
             <div className="flex flex-col gap-1.5">
-              <div className="flex min-w-0 flex-wrap items-start gap-2">
+              <div className="flex min-w-0 flex-wrap items-start gap-x-1.5 gap-y-2">
                 {canSetModelOwnerGroup ? (
-                  <div className="min-w-0 flex-1 basis-[140px]">
+                  <div className="min-w-0 basis-[140px]">
                     <div className="space-y-1.5">
                       <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
                         {t("auth_files.model_owner_group")}
@@ -855,7 +855,7 @@ export function AuthFilesFilesTab({
                           variant="secondary"
                           size="sm"
                           className={[
-                            "relative w-full justify-start px-3 text-xs",
+                            "relative w-full justify-start px-2.5 text-xs",
                             selectedModelOwner
                               ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/10 dark:text-emerald-100 dark:hover:bg-emerald-400/15"
                               : "bg-[#EBEBEC] text-[#3F3F46] hover:bg-[#E4E4E7] dark:bg-[#27272A] dark:text-white/75 dark:hover:bg-[#303036]",
@@ -884,7 +884,7 @@ export function AuthFilesFilesTab({
                 ) : null}
 
                 {customTagOptions.length > 0 ? (
-                  <div className="min-w-0 flex-1 basis-[140px]">
+                  <div className="min-w-0 basis-[140px]">
                     <div className="space-y-1.5">
                       <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
                         {t("auth_files.tag_filter")}
@@ -902,7 +902,7 @@ export function AuthFilesFilesTab({
                   </div>
                 ) : null}
 
-                <div className="min-w-0 flex-1 basis-[120px]">
+                <div className="min-w-0 basis-[120px]">
                   <div className="space-y-1.5">
                     <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
                       {t("auth_files.status_filter")}
@@ -919,7 +919,7 @@ export function AuthFilesFilesTab({
                   </div>
                 </div>
 
-                <div className="min-w-0 flex-1 basis-[200px]">
+                <div className="min-w-0 flex-1 basis-[240px]">
                   <div className="space-y-1.5">
                     <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
                       {t("auth_files.search")}
@@ -935,7 +935,7 @@ export function AuthFilesFilesTab({
                   </div>
                 </div>
 
-                <div className="min-w-0 flex-1 basis-[120px]">
+                <div className="min-w-0 basis-[120px]">
                   <div className="space-y-1.5">
                     <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
                       {t("auth_files.quota_auto_refresh")}
