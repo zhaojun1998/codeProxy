@@ -97,7 +97,7 @@ export function ProvidersToolbar({
             </DropdownMenu.Root>
 
             <Button
-              variant="ghost"
+              variant="secondary"
               size="sm"
               className="relative h-8! px-2 text-xs"
               onClick={() => onSelectAll(!allCurrentSelected)}
@@ -116,6 +116,13 @@ export function ProvidersToolbar({
           </>
         ) : null}
 
+        {onAddCurrent ? (
+          <Button variant="primary" size="sm" className="h-8! px-3 text-xs" onClick={onAddCurrent}>
+            <Plus size={14} />
+            {t("providers.add_new")}
+          </Button>
+        ) : null}
+
         <Button
           variant="secondary"
           size="sm"
@@ -128,7 +135,7 @@ export function ProvidersToolbar({
         </Button>
       </div>
 
-      {/* Right group: grid + add */}
+      {/* Right group: grid */}
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-1.5">
           <LayoutGrid size={14} className="text-slate-500 dark:text-white/50" />
@@ -145,12 +152,6 @@ export function ProvidersToolbar({
             aria-label={t("providers.grid_columns_aria")}
           />
         </div>
-        {onAddCurrent ? (
-          <Button variant="primary" size="sm" className="h-8! px-3 text-xs" onClick={onAddCurrent}>
-            <Plus size={14} />
-            {t("providers.add_new")}
-          </Button>
-        ) : null}
       </div>
     </div>
   );
