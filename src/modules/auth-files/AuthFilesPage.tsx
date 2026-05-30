@@ -351,7 +351,6 @@ export function AuthFilesPage() {
     checkAuthFileConnectivity,
     forceRefreshPage,
     runQuotaRefreshBatch,
-    quotaLastUpdatedText,
   } = useAuthFilesQuotaState({
     tab,
     pageItems,
@@ -555,7 +554,6 @@ export function AuthFilesPage() {
             setSelectedModelOwner={(owner) => setModelOwnerForAuthGroup(filter, owner)}
             search={search}
             setSearch={updateSearch}
-            quotaLastUpdatedText={quotaLastUpdatedText}
             loading={loading}
             files={files}
             filesLength={files.length}
