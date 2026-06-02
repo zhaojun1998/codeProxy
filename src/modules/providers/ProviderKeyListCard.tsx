@@ -13,64 +13,58 @@ import {
   stripDisableAllModelsRule,
 } from "@/modules/providers/providers-helpers";
 import { formatLatency } from "@/modules/providers/hooks/useProviderLatency";
-import type { ProviderAccessSummary } from "@/modules/providers/provider-access";
+import { ProviderConnectionRows } from "@/modules/providers/components/ProviderConnectionRows";
+import { ProviderMetricChip } from "@/modules/providers/components/ProviderMetricChip";
+import { ProviderModelChips } from "@/modules/providers/components/ProviderModelChips";
 
 import { useTranslation } from "react-i18next";
 
 export function ProviderKeyListCard({
-  title,
-  description,
   items,
   loading = false,
   onAdd,
   onEdit,
   onDelete,
   onToggleEnabled,
-  gridColumns = 2,
   renderExtra,
 
   getStats,
   getStatusBar,
-  getAccessSummary,
   getLatencyEntry,
   checkLatency,
   showBaseUrl = true,
   selectedKeys,
   onToggleSelected,
+  naturalHeight = false,
+  showConnectionRows = true,
+  showModelMetric = true,
+  showExcludedModels = true,
+  renderMetricsExtra,
 }: {
-  title: string;
-  description: string;
   items: ProviderSimpleConfig[];
   loading?: boolean;
   onAdd: () => void;
   onEdit: (index: number) => void;
   onDelete: (index: number) => void;
   onToggleEnabled?: (index: number, enabled: boolean) => void;
-  gridColumns?: number;
   renderExtra?: (item: ProviderSimpleConfig, index: number) => ReactNode;
+  renderMetricsExtra?: (item: ProviderSimpleConfig, index: number, stats: KeyStatBucket) => ReactNode;
   getStats: (item: ProviderSimpleConfig) => KeyStatBucket;
   getStatusBar: (item: ProviderSimpleConfig) => StatusBarData;
-  getAccessSummary?: (item: ProviderSimpleConfig) => ProviderAccessSummary | null;
   getLatencyEntry?: (key: string) => { latencyMs: number | null; loading: boolean; error: boolean };
   checkLatency?: (key: string, baseUrl: string) => void;
   showBaseUrl?: boolean;
   selectedKeys?: Set<string>;
   onToggleSelected?: (key: string, checked: boolean) => void;
+  naturalHeight?: boolean;
+  showConnectionRows?: boolean;
+  showModelMetric?: boolean;
+  showExcludedModels?: boolean;
 }) {
   const { t } = useTranslation();
-  const gridColumnsClass =
-    gridColumns === 4
-      ? "grid-cols-1 sm:grid-cols-4"
-      : gridColumns === 3
-        ? "grid-cols-1 sm:grid-cols-3"
-        : gridColumns === 2
-          ? "grid-cols-1 sm:grid-cols-2"
-          : "grid-cols-1";
 
   return (
     <Card
-      title={title}
-      description={description}
       className="flex h-full min-h-0 flex-col"
       bodyClassName="min-h-0 flex flex-1 flex-col"
       loading={loading}
@@ -86,12 +80,8 @@ export function ProviderKeyListCard({
       ) : (
         <div
           data-testid="providers-tab-scroll"
-          className={[
-            "min-h-0 flex-1 overflow-y-auto pr-1",
-            gridColumns > 1
-              ? ["grid gap-3 items-start content-start", gridColumnsClass].join(" ")
-              : "space-y-3",
-          ].join(" ")}
+          className="min-h-0 flex-1 overflow-y-auto pr-1 grid gap-3 items-start content-start justify-start"
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 18rem), 22rem))" }}
         >
           {items.map((item, idx) => {
             const selectionKey = `${item.apiKey.trim().toLowerCase()}:${idx}`;
@@ -102,15 +92,6 @@ export function ProviderKeyListCard({
             const models = item.models || [];
             const stats = getStats(item);
             const statusData = getStatusBar(item);
-            const accessSummary = getAccessSummary?.(item) ?? null;
-            const accessTone =
-              accessSummary === null || accessSummary.totalKeys === 0
-                ? "border-slate-200 bg-slate-50 text-slate-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white/65"
-                : accessSummary.reachableKeys === 0
-                  ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200"
-                  : accessSummary.reachableKeys < accessSummary.totalKeys
-                    ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100"
-                    : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100";
 
             return (
               <ProviderCard
@@ -119,6 +100,7 @@ export function ProviderKeyListCard({
                 selected={selected}
                 enabled={!disabled}
                 dimmed={disabled}
+                naturalHeight={naturalHeight}
                 onToggleSelected={
                   onToggleSelected
                     ? (checked) => onToggleSelected(selectionKey, checked)
@@ -139,10 +121,19 @@ export function ProviderKeyListCard({
                           error: false,
                         };
                         const providerBaseUrl = item.baseUrl || "";
+                        const latencyMs = entry.latencyMs;
+                        const latencyColor =
+                          latencyMs === null
+                            ? "text-slate-400 dark:text-white/40"
+                            : latencyMs < 200
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : latencyMs < 500
+                                ? "text-amber-600 dark:text-amber-400"
+                                : "text-rose-600 dark:text-rose-400";
                         return (
                           <button
                             type="button"
-                            className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] tabular-nums text-slate-600 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/25 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white/60 dark:hover:border-blue-600 dark:hover:bg-blue-950 dark:hover:text-blue-300 dark:focus-visible:ring-blue-300/20"
+                            className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] tabular-nums font-medium transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/25 dark:hover:bg-white/10 dark:focus-visible:ring-white/20 ${entry.loading ? "text-slate-500" : entry.error ? "text-rose-500" : latencyColor}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               if (providerBaseUrl) checkLatency(latencyKey, providerBaseUrl);
@@ -161,9 +152,9 @@ export function ProviderKeyListCard({
                             {entry.loading ? (
                               <Loader2 size={10} className="animate-spin" />
                             ) : entry.error ? (
-                              <span className="text-rose-500">×</span>
-                            ) : entry.latencyMs !== null ? (
-                              <span className="font-medium">{formatLatency(entry.latencyMs)}</span>
+                              <span>×</span>
+                            ) : latencyMs !== null ? (
+                              <span>{formatLatency(latencyMs)}</span>
                             ) : (
                               <Zap size={10} />
                             )}
@@ -172,47 +163,53 @@ export function ProviderKeyListCard({
                       })()
                     : undefined
                 }
+                footer={<ProviderStatusBar data={statusData} />}
               >
-                <div className="space-y-1 text-xs text-slate-600 dark:text-white/65">
-                  <p className="truncate font-mono">apiKey：{maskApiKey(item.apiKey)}</p>
-                  {showBaseUrl ? (
-                    <p className="truncate font-mono">baseUrl：{item.baseUrl || "--"}</p>
-                  ) : null}
-                  {item.proxyUrl ? (
-                    <p className="truncate font-mono">proxyUrl：{item.proxyUrl}</p>
-                  ) : null}
-                  <p className="tabular-nums">
-                    {t("providers.models_label")}: {models.length} ·{" "}
-                    {t("providers.excluded_models_label")}: {excludedModels.length} ·{" "}
-                    {t("providers.headers_optional")}: {headerEntries.length} ·{" "}
-                    {t("providers.success_stats", { count: stats.success })} ·{" "}
-                    {t("providers.failed_stats", { count: stats.failure })}
-                  </p>
-                </div>
-
-                {accessSummary ? (
-                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-                    <span className={`rounded-full border px-2 py-0.5 font-medium ${accessTone}`}>
-                      {accessSummary.totalKeys === 0
-                        ? t("providers.access_no_keys")
-                        : accessSummary.reachableKeys === 0
-                          ? t("providers.access_none")
-                          : accessSummary.reachableKeys < accessSummary.totalKeys
-                            ? t("providers.access_limited", {
-                                reachable: accessSummary.reachableKeys,
-                                total: accessSummary.totalKeys,
-                              })
-                            : t("providers.access_all", { total: accessSummary.totalKeys })}
-                    </span>
-                    {accessSummary.exactOverrideKeys > 0 ? (
-                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-                        {t("providers.access_exact_overrides", {
-                          count: accessSummary.exactOverrideKeys,
-                        })}
-                      </span>
-                    ) : null}
-                  </div>
+                {showConnectionRows ? (
+                  <ProviderConnectionRows
+                    apiKey={item.apiKey}
+                    baseUrl={item.baseUrl}
+                    proxyUrl={item.proxyUrl}
+                    maskApiKey={maskApiKey}
+                    showBaseUrl={showBaseUrl}
+                  />
                 ) : null}
+
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  {showModelMetric ? (
+                    <ProviderMetricChip
+                      tone="blue"
+                      label={t("providers.models_label")}
+                      value={models.length}
+                    />
+                  ) : null}
+                  {showExcludedModels && excludedModels.length ? (
+                    <ProviderMetricChip
+                      tone="rose"
+                      label={t("providers.excluded_models_label")}
+                      value={excludedModels.length}
+                    />
+                  ) : null}
+                  {headerEntries.length ? (
+                    <ProviderMetricChip
+                      tone="slate"
+                      label={t("providers.headers_optional")}
+                      value={headerEntries.length}
+                      title={`${headerEntries.length} header(s)`}
+                    />
+                  ) : null}
+                  <ProviderMetricChip
+                    tone={stats.success > 0 ? "emerald" : "slate"}
+                    label={t("providers.success_stats", { count: stats.success })}
+                  />
+                  <ProviderMetricChip
+                    tone={stats.failure > 0 ? "rose" : "slate"}
+                    label={t("providers.failed_stats", { count: stats.failure })}
+                  />
+                  {renderMetricsExtra ? (
+                    <div className="ml-auto">{renderMetricsExtra(item, idx, stats)}</div>
+                  ) : null}
+                </div>
 
                 {headerEntries.length ? (
                   <div className="mt-2 flex flex-wrap gap-1">
@@ -229,32 +226,15 @@ export function ProviderKeyListCard({
                   </div>
                 ) : null}
 
-                {models.length ? (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {models.map((model) => {
-                      const modelLabel =
-                        model.alias && model.alias !== model.name
-                          ? `${model.name} → ${model.alias}`
-                          : model.name;
-                      return (
-                        <span
-                          key={model.name}
-                          className="inline-flex max-w-full min-w-0 rounded-full bg-slate-900 px-2 py-0.5 text-[11px] text-white dark:bg-white dark:text-neutral-950"
-                          title={
-                            model.alias && model.alias !== model.name
-                              ? `${model.name} => ${model.alias}`
-                              : model.name
-                          }
-                        >
-                          <span className="min-w-0 truncate">{modelLabel}</span>
-                        </span>
-                      );
-                    })}
-                  </div>
-                ) : null}
+                <div className="mt-1.5">
+                  <ProviderModelChips
+                    models={models}
+                    maxVisible={6}
+                  />
+                </div>
 
-                {excludedModels.length ? (
-                  <div className="mt-2 flex flex-wrap gap-1">
+                {showExcludedModels && excludedModels.length ? (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
                     {excludedModels.map((model) => (
                       <span
                         key={model}
@@ -268,8 +248,6 @@ export function ProviderKeyListCard({
                 ) : null}
 
                 {renderExtra ? renderExtra(item, idx) : null}
-
-                <ProviderStatusBar data={statusData} />
               </ProviderCard>
             );
           })}

@@ -15,6 +15,15 @@ const DISABLE_ALL_MODELS_RULE = "*";
 export const hasDisableAllModelsRule = (models?: string[]) =>
   Array.isArray(models) && models.some((m) => String(m ?? "").trim() === DISABLE_ALL_MODELS_RULE);
 
+export const isProviderSimpleConfigEnabled = (item: ProviderSimpleConfig): boolean =>
+  !hasDisableAllModelsRule(item.excludedModels);
+
+export const isBedrockProviderConfigEnabled = (item: BedrockProviderConfig): boolean =>
+  !hasDisableAllModelsRule(item.excludedModels);
+
+export const isOpenAIProviderEnabled = (provider: OpenAIProvider): boolean =>
+  provider.disabled !== true;
+
 export const stripDisableAllModelsRule = (models?: string[]) =>
   Array.isArray(models)
     ? models.filter((m) => String(m ?? "").trim() !== DISABLE_ALL_MODELS_RULE)
@@ -109,6 +118,8 @@ export type ProviderKeyDraft = {
   proxyId: string;
   excludedModelsText: string;
   visionFallbackModel: string;
+  workspaceId: string;
+  authCookie: string;
   headersEntries: KeyValueEntry[];
   modelEntries: ModelEntryDraft[];
   skipAnthropicProcessing: boolean;
@@ -189,6 +200,8 @@ export const buildProviderKeyDraft = (
     proxyId: input?.proxyId ?? "",
     excludedModelsText: excludedModelsToText(input?.excludedModels),
     visionFallbackModel: input?.visionFallbackModel ?? "",
+    workspaceId: input?.workspaceId ?? "",
+    authCookie: input?.authCookie ?? "",
     headersEntries: recordToKeyValueEntries(input?.headers),
     modelEntries: buildModelEntries(input?.models),
     skipAnthropicProcessing: input?.skipAnthropicProcessing ?? false,

@@ -239,15 +239,25 @@ export const usageApi = {
     model?: string;
     channel?: string;
     status?: string;
+    api_keys?: string[];
+    models?: string[];
+    channels?: string[];
+    statuses?: string[];
   }): Promise<UsageLogsResponse> {
     const qs = new URLSearchParams();
     if (params.page) qs.set("page", String(params.page));
     if (params.size) qs.set("size", String(params.size));
     if (params.days) qs.set("days", String(params.days));
-    if (params.api_key) qs.set("api_key", params.api_key);
-    if (params.model) qs.set("model", params.model);
-    if (params.channel) qs.set("channel", params.channel);
-    if (params.status) qs.set("status", params.status);
+    // Multi-value params take priority
+    appendUniqueParams(qs, "api_key", params.api_keys);
+    appendUniqueParams(qs, "model", params.models);
+    appendUniqueParams(qs, "channel", params.channels);
+    appendUniqueParams(qs, "status", params.statuses);
+    // Backward compatibility: fallback to single-value params if no multi-value
+    if (!params.api_keys?.length && params.api_key) qs.set("api_key", params.api_key);
+    if (!params.models?.length && params.model) qs.set("model", params.model);
+    if (!params.channels?.length && params.channel) qs.set("channel", params.channel);
+    if (!params.statuses?.length && params.status) qs.set("status", params.status);
     const query = qs.toString();
     const resp = await apiClient.get<UsageLogsResponse>(`/usage/logs${query ? `?${query}` : ""}`);
     return {
@@ -266,6 +276,7 @@ export const usageApi = {
         success_rate: resp?.stats?.success_rate ?? 0,
         total_tokens: resp?.stats?.total_tokens ?? 0,
         total_cost: resp?.stats?.total_cost ?? 0,
+        cache_rate: resp?.stats?.cache_rate ?? 0,
       },
     };
   },
@@ -343,6 +354,7 @@ export interface DashboardSummary {
     cached_tokens: number;
     total_tokens: number;
     total_cost: number;
+    cache_rate: number;
   };
   trends?: {
     request_volume?: DashboardTrendPoint[];
@@ -416,6 +428,7 @@ export interface UsageLogsResponse {
     success_rate: number;
     total_tokens: number;
     total_cost: number;
+    cache_rate: number;
   };
 }
 

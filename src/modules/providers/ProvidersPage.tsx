@@ -1,15 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Cloud, Download, LayoutGrid, RefreshCw, Upload } from "lucide-react";
-import iconGemini from "@/assets/icons/gemini.svg";
-import iconClaude from "@/assets/icons/claude.svg";
-import iconCodex from "@/assets/icons/codex.svg";
-import iconVertex from "@/assets/icons/vertex.svg";
-import iconAmp from "@/assets/icons/amp.svg";
-import iconOpenai from "@/assets/icons/openai.svg";
-import iconOpenCodeDark from "@/assets/icons/opencode-dark.svg";
-import iconOpenCodeLight from "@/assets/icons/opencode-light.svg";
 import { ampcodeApi, providersApi, usageApi } from "@/lib/http/apis";
 import { apiKeyEntriesApi, type ApiKeyEntry } from "@/lib/http/apis/api-keys";
 import { channelGroupsApi, type ChannelGroupItem } from "@/lib/http/apis/channel-groups";
@@ -18,8 +9,7 @@ import type { BedrockProviderConfig, OpenAIProvider, ProviderSimpleConfig } from
 import { Button } from "@/modules/ui/Button";
 import { ConfirmModal } from "@/modules/ui/ConfirmModal";
 import { Modal } from "@/modules/ui/Modal";
-import { Select } from "@/modules/ui/Select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/modules/ui/Tabs";
+import { Tabs, TabsContent } from "@/modules/ui/Tabs";
 import { useToast } from "@/modules/ui/ToastProvider";
 import { downloadTextAsFile } from "@/modules/auth-files/helpers/authFilesPageUtils";
 import { AmpcodePanel } from "@/modules/providers/components/AmpcodePanel";
@@ -28,14 +18,23 @@ import { OpenAIProvidersTab } from "@/modules/providers/components/OpenAIProvide
 import { ProviderKeyModal } from "@/modules/providers/components/ProviderKeyModal";
 import { useOpenAIProviderEditor } from "@/modules/providers/hooks/useOpenAIProviderEditor";
 import { ProviderKeyListCard } from "@/modules/providers/ProviderKeyListCard";
+import {
+  OpenCodeGoUsageCardSection,
+  mergeOpenCodeGoUsage,
+  type OpenCodeGoUsageCacheEntry,
+} from "@/modules/providers/components/OpenCodeGoUsageCardSection";
 import { useProviderKeyEditor } from "@/modules/providers/hooks/useProviderKeyEditor";
 import { useProviderLatency } from "@/modules/providers/hooks/useProviderLatency";
 import { useProviderUsageSummary } from "@/modules/providers/hooks/useProviderUsageSummary";
 import { normalizeUsageSourceId, type KeyStatBucket } from "@/modules/providers/provider-usage";
+import { getCachedData, setCachedData } from "@/modules/providers/provider-cache";
 import {
   maskApiKey,
   readBool,
   readString,
+  isProviderSimpleConfigEnabled,
+  isBedrockProviderConfigEnabled,
+  isOpenAIProviderEnabled,
   type AmpMappingEntry,
 } from "@/modules/providers/providers-helpers";
 import {
@@ -44,17 +43,11 @@ import {
   type ProviderImportDiff,
   type ProviderImportKind,
 } from "@/modules/providers/provider-import-export";
-import { summarizeProviderAccess } from "@/modules/providers/provider-access";
+import { ProvidersToolbar } from "@/modules/providers/components/ProvidersToolbar";
+import { ProviderTabsWithCounts } from "@/modules/providers/components/ProviderTabsWithCounts";
+import type { ProviderTabId } from "@/modules/providers/components/ProviderTabsWithCounts";
 
-type ProviderTab =
-  | "gemini"
-  | "claude"
-  | "codex"
-  | "opencode-go"
-  | "vertex"
-  | "bedrock"
-  | "openai"
-  | "ampcode";
+type ProviderTab = ProviderTabId;
 
 const PROVIDER_TAB_STORAGE_KEY = "providers-page:tab";
 const PROVIDER_TAB_VALUES: ProviderTab[] = [
@@ -86,29 +79,6 @@ function saveProviderTab(tab: ProviderTab): void {
   }
 }
 
-const GRID_COLUMNS_STORAGE_KEY = "providers-page:gridColumns";
-
-function readSavedGridColumns(): number {
-  try {
-    const saved = localStorage.getItem(GRID_COLUMNS_STORAGE_KEY);
-    if (saved) {
-      const num = Number(saved);
-      if (num >= 1 && num <= 4) return num;
-    }
-  } catch {
-    // ignore
-  }
-  return 2;
-}
-
-function saveGridColumns(cols: number): void {
-  try {
-    localStorage.setItem(GRID_COLUMNS_STORAGE_KEY, String(cols));
-  } catch {
-    // ignore
-  }
-}
-
 const getProviderSelectionKey = (
   kind: ProviderImportKind,
   item: ProviderSimpleConfig | BedrockProviderConfig | OpenAIProvider,
@@ -121,6 +91,12 @@ const getProviderSelectionKey = (
     : `${String((item as ProviderSimpleConfig).apiKey ?? "")
         .trim()
         .toLowerCase()}:${index}`;
+
+const getOpenCodeGoUsageCacheKey = (item: ProviderSimpleConfig, index: number) =>
+  [item.workspaceId?.trim() || "no-workspace", item.name?.trim() || `item-${index}`, index].join(":");
+
+type OpenCodeGoUsageState = Record<string, OpenCodeGoUsageCacheEntry>;
+type OpenCodeGoUsageLoadingState = Record<string, boolean>;
 
 export function ProvidersPage() {
   const { t } = useTranslation();
@@ -137,11 +113,65 @@ export function ProvidersPage() {
   }, []);
   const [loading, setLoading] = useState(true);
 
-  const [gridColumns, setGridColumnsState] = useState(readSavedGridColumns);
-  const setGridColumns = useCallback((cols: number) => {
-    setGridColumnsState(cols);
-    saveGridColumns(cols);
-  }, []);
+  const cachedUsageState = getCachedData<OpenCodeGoUsageState>("opencode-go-usage");
+  const [openCodeGoUsageState, setOpenCodeGoUsageState] = useState<OpenCodeGoUsageState>(
+    cachedUsageState ?? {},
+  );
+  const [openCodeGoUsageLoadingState, setOpenCodeGoUsageLoadingState] =
+    useState<OpenCodeGoUsageLoadingState>({});
+
+  const refreshOpenCodeGoUsage = useCallback(
+    async (item: ProviderSimpleConfig, index: number) => {
+      const hasQuery = Boolean(item.workspaceId?.trim() && item.authCookie?.trim());
+      if (!hasQuery) return;
+
+      const cacheKey = getOpenCodeGoUsageCacheKey(item, index);
+      setOpenCodeGoUsageLoadingState((prev) => ({ ...prev, [cacheKey]: true }));
+      try {
+        const result = await providersApi.queryOpenCodeGoUsage({
+          "workspace-id": item.workspaceId?.trim(),
+          "auth-cookie": item.authCookie?.trim(),
+          "proxy-id": item.proxyId?.trim(),
+          "proxy-url": item.proxyUrl?.trim(),
+          name: item.name?.trim(),
+          "api-key": item.apiKey?.trim(),
+          index,
+        });
+        const entry: OpenCodeGoUsageCacheEntry = {
+          workspaceId: result.workspace_id,
+          usage: result.usage,
+          updatedAt: Date.now(),
+        };
+        setOpenCodeGoUsageState((prev) => {
+          const existing = prev[cacheKey];
+          const merged = mergeOpenCodeGoUsage(existing?.usage ?? [], entry.usage);
+          const next = {
+            ...prev,
+            [cacheKey]: { ...entry, usage: merged, workspaceId: entry.workspaceId ?? existing?.workspaceId },
+          };
+          setCachedData("opencode-go-usage", next);
+          return next;
+        });
+        setOpenCodeGoUsageLoadingState((prev) => ({ ...prev, [cacheKey]: false }));
+      } catch (err: unknown) {
+        setOpenCodeGoUsageState((prev) => {
+          const existing = prev[cacheKey];
+          const entry: OpenCodeGoUsageCacheEntry = {
+            workspaceId: existing?.workspaceId,
+            usage: existing?.usage ?? [],
+            updatedAt: Date.now(),
+            error:
+              err instanceof Error ? err.message : t("providers.opencode_go_usage_query_failed"),
+          };
+          const next = { ...prev, [cacheKey]: entry };
+          setCachedData("opencode-go-usage", next);
+          return next;
+        });
+        setOpenCodeGoUsageLoadingState((prev) => ({ ...prev, [cacheKey]: false }));
+      }
+    },
+    [t],
+  );
 
   const [geminiKeys, setGeminiKeys] = useState<ProviderSimpleConfig[]>([]);
   const [claudeKeys, setClaudeKeys] = useState<ProviderSimpleConfig[]>([]);
@@ -150,6 +180,43 @@ export function ProvidersPage() {
   const [vertexKeys, setVertexKeys] = useState<ProviderSimpleConfig[]>([]);
   const [bedrockKeys, setBedrockKeys] = useState<BedrockProviderConfig[]>([]);
   const [openaiProviders, setOpenaiProviders] = useState<OpenAIProvider[]>([]);
+
+  // Auto-refresh OpenCode Go usage when tab switches to opencode-go and cache is stale
+  const OPEN_CODE_GO_USAGE_STALE_MS = 5 * 60 * 1000;
+  const autoRefreshOpenCodeGoInFlightRef = useRef(false);
+
+  useEffect(() => {
+    if (tab !== "opencode-go") return;
+    if (loading) return;
+    if (openCodeGoKeys.length === 0) return;
+    if (autoRefreshOpenCodeGoInFlightRef.current) return;
+
+    const staleKeys = openCodeGoKeys
+      .map((item, idx) => ({ item, idx, key: getOpenCodeGoUsageCacheKey(item, idx) }))
+      .filter(({ item }) => Boolean(item.workspaceId?.trim() && item.authCookie?.trim()))
+      .filter(({ key }) => {
+        if (openCodeGoUsageLoadingState[key]) return false;
+        const entry = openCodeGoUsageState[key];
+        return !entry || Date.now() - entry.updatedAt > OPEN_CODE_GO_USAGE_STALE_MS;
+      });
+
+    if (staleKeys.length === 0) return;
+
+    autoRefreshOpenCodeGoInFlightRef.current = true;
+
+    const refreshBatch = async () => {
+      for (let i = 0; i < staleKeys.length; i += 2) {
+        const batch = staleKeys.slice(i, i + 2);
+        await Promise.allSettled(
+          batch.map(({ item, idx }) => refreshOpenCodeGoUsage(item, idx)),
+        );
+      }
+      autoRefreshOpenCodeGoInFlightRef.current = false;
+    };
+
+    void refreshBatch();
+  }, [tab, loading, openCodeGoKeys, openCodeGoUsageState, openCodeGoUsageLoadingState, refreshOpenCodeGoUsage]);
+
   const [apiKeyEntries, setApiKeyEntries] = useState<ApiKeyEntry[]>([]);
   const [channelGroups, setChannelGroups] = useState<ChannelGroupItem[]>([]);
   const [proxyPoolEntries, setProxyPoolEntries] = useState<ProxyPoolEntry[]>([]);
@@ -181,32 +248,83 @@ export function ProvidersPage() {
   } | null>(null);
   const [importing, setImporting] = useState(false);
   const [selectedExportKeys, setSelectedExportKeys] = useState<string[]>([]);
+
+  // Clean up stale usage cache entries when config list changes
+  useEffect(() => {
+    setOpenCodeGoUsageState((prev) => {
+      const validKeys = new Set(
+        openCodeGoKeys.map((item, idx) => getOpenCodeGoUsageCacheKey(item, idx)),
+      );
+      const staleKeys = Object.keys(prev).filter((k) => !validKeys.has(k));
+      if (staleKeys.length === 0) return prev;
+      const next = { ...prev };
+      staleKeys.forEach((k) => delete next[k]);
+      setCachedData("opencode-go-usage", next);
+      return next;
+    });
+  }, [openCodeGoKeys]);
+
   const refreshTab = useCallback(
     async (tabId: typeof tab) => {
       setLoading(true);
       try {
         switch (tabId) {
-          case "gemini":
-            setGeminiKeys(await providersApi.getGeminiKeys());
+          case "gemini": {
+            const cachedG = getCachedData<ProviderSimpleConfig[]>("gemini");
+            if (cachedG) setGeminiKeys(cachedG);
+            const freshG = await providersApi.getGeminiKeys();
+            setGeminiKeys(freshG);
+            setCachedData("gemini", freshG);
             break;
-          case "claude":
-            setClaudeKeys(await providersApi.getClaudeConfigs());
+          }
+          case "claude": {
+            const cachedC = getCachedData<ProviderSimpleConfig[]>("claude");
+            if (cachedC) setClaudeKeys(cachedC);
+            const freshC = await providersApi.getClaudeConfigs();
+            setClaudeKeys(freshC);
+            setCachedData("claude", freshC);
             break;
-          case "codex":
-            setCodexKeys(await providersApi.getCodexConfigs());
+          }
+          case "codex": {
+            const cachedX = getCachedData<ProviderSimpleConfig[]>("codex");
+            if (cachedX) setCodexKeys(cachedX);
+            const freshX = await providersApi.getCodexConfigs();
+            setCodexKeys(freshX);
+            setCachedData("codex", freshX);
             break;
-          case "opencode-go":
-            setOpenCodeGoKeys(await providersApi.getOpenCodeGoConfigs());
+          }
+          case "opencode-go": {
+            const cachedO = getCachedData<ProviderSimpleConfig[]>("opencode-go");
+            if (cachedO) setOpenCodeGoKeys(cachedO);
+            const freshO = await providersApi.getOpenCodeGoConfigs();
+            setOpenCodeGoKeys(freshO);
+            setCachedData("opencode-go", freshO);
             break;
-          case "vertex":
-            setVertexKeys(await providersApi.getVertexConfigs());
+          }
+          case "vertex": {
+            const cachedV = getCachedData<ProviderSimpleConfig[]>("vertex");
+            if (cachedV) setVertexKeys(cachedV);
+            const freshV = await providersApi.getVertexConfigs();
+            setVertexKeys(freshV);
+            setCachedData("vertex", freshV);
             break;
-          case "bedrock":
-            setBedrockKeys(await providersApi.getBedrockConfigs());
+          }
+          case "bedrock": {
+            const cachedB = getCachedData<BedrockProviderConfig[]>("bedrock");
+            if (cachedB) setBedrockKeys(cachedB);
+            const freshB = await providersApi.getBedrockConfigs();
+            setBedrockKeys(freshB);
+            setCachedData("bedrock", freshB);
             break;
-          case "openai":
-            setOpenaiProviders(await providersApi.getOpenAIProviders());
+          }
+          case "openai": {
+            const cachedA = getCachedData<OpenAIProvider[]>("openai");
+            if (cachedA) setOpenaiProviders(cachedA);
+            const freshA = await providersApi.getOpenAIProviders();
+            setOpenaiProviders(freshA);
+            setCachedData("openai", freshA);
             break;
+          }
           case "ampcode": {
             const [amp, ampMap] = await Promise.all([
               ampcodeApi.getAmpcode(),
@@ -251,6 +369,8 @@ export function ProvidersPage() {
 
   const loadUsage = useCallback(async () => {
     try {
+      const cachedUsage = getCachedData<Record<string, KeyStatBucket>>("usage-stats");
+      if (cachedUsage) setUsageStatsBySource(cachedUsage);
       const usage = await usageApi.getEntityStats(30, "all").catch(() => null);
       if (usage?.source) {
         const stats: Record<string, KeyStatBucket> = {};
@@ -264,6 +384,7 @@ export function ProvidersPage() {
           }
         });
         setUsageStatsBySource(stats);
+        setCachedData("usage-stats", stats);
       }
     } catch {}
   }, []);
@@ -312,17 +433,6 @@ export function ProvidersPage() {
     void loadProxyPool();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const getProviderAccessSummary = useCallback(
-    (item: ProviderSimpleConfig) => {
-      const channelName = String(item.name ?? "").trim();
-      if (!channelName) {
-        return null;
-      }
-      return summarizeProviderAccess(channelName, apiKeyEntries, channelGroups);
-    },
-    [apiKeyEntries, channelGroups],
-  );
 
   const handleKeyEditorRouteClose = useCallback(() => {
     if (location.pathname !== "/ai-providers") {
@@ -565,6 +675,57 @@ export function ProvidersPage() {
     currentSelectableKeys.length > 0 &&
     currentSelectableKeys.every((key) => selectedExportKeySet.has(key));
 
+  const pageSummary = useMemo(() => {
+    const allKeyProviders = [
+      ...geminiKeys,
+      ...claudeKeys,
+      ...codexKeys,
+      ...openCodeGoKeys,
+      ...vertexKeys,
+    ];
+    const total = allKeyProviders.length + bedrockKeys.length + openaiProviders.length;
+    const enabled =
+      allKeyProviders.filter(isProviderSimpleConfigEnabled).length +
+      bedrockKeys.filter(isBedrockProviderConfigEnabled).length +
+      openaiProviders.filter(isOpenAIProviderEnabled).length;
+    return { total, enabled, disabled: total - enabled };
+  }, [
+    geminiKeys,
+    claudeKeys,
+    codexKeys,
+    openCodeGoKeys,
+    vertexKeys,
+    bedrockKeys,
+    openaiProviders,
+  ]);
+
+  const tabCounts = useMemo<Record<ProviderTab, number | null>>(() => {
+    const ampcodeCount =
+      ampcode && ampMappings.length > 0
+        ? ampMappings.filter((m) => m.from.trim() && m.to.trim()).length
+        : null;
+    return {
+      gemini: geminiKeys.length,
+      claude: claudeKeys.length,
+      codex: codexKeys.length,
+      "opencode-go": openCodeGoKeys.length,
+      vertex: vertexKeys.length,
+      bedrock: bedrockKeys.length,
+      openai: openaiProviders.length,
+      ampcode: ampcodeCount,
+    };
+  }, [
+    geminiKeys,
+    claudeKeys,
+    codexKeys,
+    openCodeGoKeys,
+    vertexKeys,
+    bedrockKeys,
+    openaiProviders,
+    ampcode,
+    ampMappings,
+  ]);
+
   const saveImportedItems = useCallback(
     async (
       kind: ProviderImportKind,
@@ -713,114 +874,38 @@ export function ProvidersPage() {
       data-testid="providers-page-shell"
       className="flex h-[calc(100dvh-97px)] min-h-0 flex-col gap-6 overflow-hidden sm:h-[calc(100dvh-113px)]"
     >
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="space-y-0.5">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-            {t("providers.config_overview")}
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-white/55">
-            {t("providers.config_overview_desc")}
-          </p>
-        </div>
-      </div>
-
-      <div
-        data-testid="providers-batch-actions"
-        className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-slate-50/80 px-2 py-1.5 transition-colors duration-200 ease-out dark:bg-white/3"
-      >
-        {currentImportKind ? (
-          <>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept="application/json,.json"
-              aria-label={t("providers.import_json")}
-              className="sr-only"
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0] ?? null;
-                void handleImportFile(file);
-                event.currentTarget.value = "";
-              }}
-            />
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-8! px-2 text-xs"
-              onClick={() => importInputRef.current?.click()}
-            >
-              <Upload size={14} />
-              {t("providers.import_json")}
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-8! px-2 text-xs"
-              onClick={handleExport}
-              disabled={currentTabItems.length === 0}
-            >
-              <Download size={14} />
-              {t("providers.export_json")}
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-8! px-2 text-xs"
-              onClick={() => selectAllCurrentItems(!allCurrentSelected)}
-              disabled={currentSelectableKeys.length === 0}
-            >
-              {allCurrentSelected
-                ? t("providers.batch_deselect_all")
-                : t("providers.batch_select_all")}
-            </Button>
-            <span className="ml-1 text-xs font-medium text-slate-600 dark:text-white/65">
-              {t("providers.batch_selected", { count: selectedExportCount })}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8! px-2 text-xs"
-              onClick={() => setSelectedExportKeys([])}
-              disabled={selectedExportCount === 0}
-            >
-              {t("providers.batch_clear")}
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-8! px-2 text-xs"
-              onClick={handleExportSelected}
-              disabled={selectedExportCount === 0}
-            >
-              {t("providers.export_selected_json")}
-            </Button>
-          </>
-        ) : null}
-        <Button
-          variant="secondary"
-          size="sm"
-          className="h-8! px-2 text-xs"
-          onClick={() => void refreshTab(tab)}
-          disabled={loading}
-        >
-          <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-          {t("providers.refresh")}
-        </Button>
-        <div className="ml-auto flex items-center gap-1.5">
-          <LayoutGrid size={14} className="text-slate-500 dark:text-white/50" />
-          <Select
-            value={String(gridColumns)}
-            onChange={(v) => setGridColumns(Number(v))}
-            options={[
-              { value: "1", label: t("providers.grid_cols_1") },
-              { value: "2", label: t("providers.grid_cols_2") },
-              { value: "3", label: t("providers.grid_cols_3") },
-              { value: "4", label: t("providers.grid_cols_4") },
-            ]}
-            size="sm"
-            aria-label={t("providers.grid_columns_aria")}
-          />
-        </div>
-      </div>
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json,.json"
+        aria-label={t("providers.import_json")}
+        className="sr-only"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0] ?? null;
+          void handleImportFile(file);
+          event.currentTarget.value = "";
+        }}
+      />
+      <ProvidersToolbar
+        currentImportKind={currentImportKind}
+        currentTabItemsCount={currentTabItems.length}
+        selectedExportCount={selectedExportCount}
+        allCurrentSelected={allCurrentSelected}
+        loading={loading}
+        onImportClick={() => importInputRef.current?.click()}
+        onExport={handleExport}
+        onExportSelected={handleExportSelected}
+        onSelectAll={selectAllCurrentItems}
+        onClearSelection={() => setSelectedExportKeys([])}
+        onRefresh={() => void refreshTab(tab)}
+        onAddCurrent={
+          tab === "ampcode"
+            ? null
+            : tab === "openai"
+              ? () => openOpenAIEditor(null)
+              : () => openKeyEditor(tab, null)
+        }
+      />
 
       <Tabs
         value={tab}
@@ -832,50 +917,28 @@ export function ProvidersPage() {
           void refreshTab(nextTab);
         }}
       >
+        <ProviderTabsWithCounts
+          tabs={[
+            { id: "gemini", label: "Gemini", count: tabCounts.gemini },
+            { id: "claude", label: "Claude", count: tabCounts.claude },
+            { id: "codex", label: "Codex", count: tabCounts.codex },
+            { id: "opencode-go", label: "OpenCode Go", count: tabCounts["opencode-go"] },
+            { id: "vertex", label: "Vertex", count: tabCounts.vertex },
+            { id: "bedrock", label: "Bedrock", count: tabCounts.bedrock },
+            { id: "openai", label: t("providers.openai_compatible"), count: tabCounts.openai },
+            { id: "ampcode", label: "Ampcode", count: tabCounts.ampcode },
+          ]}
+          value={tab}
+          onValueChange={(next) => {
+            if (next === tab) return;
+            setSelectedExportKeys([]);
+            setTab(next);
+            void refreshTab(next);
+          }}
+        />
         <div className="flex min-h-0 flex-1 flex-col gap-4">
-          <div className="flex shrink-0">
-            <TabsList>
-              <TabsTrigger value="gemini">
-                <img src={iconGemini} alt="" className="size-4" />
-                Gemini
-              </TabsTrigger>
-              <TabsTrigger value="claude">
-                <img src={iconClaude} alt="" className="size-4" />
-                Claude
-              </TabsTrigger>
-              <TabsTrigger value="codex">
-                <img src={iconCodex} alt="" className="size-4 dark:hidden" />
-                <img src={iconCodex} alt="" className="hidden size-4 dark:block" />
-                Codex
-              </TabsTrigger>
-              <TabsTrigger value="opencode-go">
-                <img src={iconOpenCodeLight} alt="" className="size-4 dark:hidden" />
-                <img src={iconOpenCodeDark} alt="" className="hidden size-4 dark:block" />
-                OpenCode Go
-              </TabsTrigger>
-              <TabsTrigger value="vertex">
-                <img src={iconVertex} alt="" className="size-4" />
-                Vertex
-              </TabsTrigger>
-              <TabsTrigger value="bedrock">
-                <Cloud size={16} />
-                Bedrock
-              </TabsTrigger>
-              <TabsTrigger value="openai">
-                <img src={iconOpenai} alt="" className="size-4 dark:hidden" />
-                <img src={iconOpenai} alt="" className="hidden size-4 dark:block" />
-                {t("providers.openai_compatible")}
-              </TabsTrigger>
-              <TabsTrigger value="ampcode">
-                <img src={iconAmp} alt="" className="size-4" />
-                Ampcode
-              </TabsTrigger>
-            </TabsList>
-          </div>
           <TabsContent value="gemini" className="min-h-0 flex flex-1 flex-col">
             <ProviderKeyListCard
-              title={t("providers.gemini_keys")}
-              description={t("providers.openai_desc")}
               items={geminiKeys}
               loading={isActiveTabListLoading("gemini")}
               onAdd={() => openKeyEditor("gemini", null)}
@@ -884,10 +947,8 @@ export function ProvidersPage() {
               onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("gemini", idx, enabled)}
               getStats={getSimpleStats}
               getStatusBar={getSimpleStatusBar}
-              getAccessSummary={getProviderAccessSummary}
               getLatencyEntry={getLatencyEntry}
               checkLatency={checkLatency}
-              gridColumns={gridColumns}
               selectedKeys={selectedExportKeySet}
               onToggleSelected={toggleExportSelection}
             />
@@ -895,8 +956,6 @@ export function ProvidersPage() {
 
           <TabsContent value="claude" className="min-h-0 flex flex-1 flex-col">
             <ProviderKeyListCard
-              title={t("providers.claude_keys")}
-              description={t("providers.codex_desc")}
               items={claudeKeys}
               loading={isActiveTabListLoading("claude")}
               onAdd={() => openKeyEditor("claude", null)}
@@ -905,10 +964,8 @@ export function ProvidersPage() {
               onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("claude", idx, enabled)}
               getStats={getSimpleStats}
               getStatusBar={getSimpleStatusBar}
-              getAccessSummary={getProviderAccessSummary}
               getLatencyEntry={getLatencyEntry}
               checkLatency={checkLatency}
-              gridColumns={gridColumns}
               selectedKeys={selectedExportKeySet}
               onToggleSelected={toggleExportSelection}
             />
@@ -916,8 +973,6 @@ export function ProvidersPage() {
 
           <TabsContent value="codex" className="min-h-0 flex flex-1 flex-col">
             <ProviderKeyListCard
-              title={t("providers.codex_keys")}
-              description={t("providers.gemini_desc")}
               items={codexKeys}
               loading={isActiveTabListLoading("codex")}
               onAdd={() => openKeyEditor("codex", null)}
@@ -926,10 +981,8 @@ export function ProvidersPage() {
               onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("codex", idx, enabled)}
               getStats={getSimpleStats}
               getStatusBar={getSimpleStatusBar}
-              getAccessSummary={getProviderAccessSummary}
               getLatencyEntry={getLatencyEntry}
               checkLatency={checkLatency}
-              gridColumns={gridColumns}
               selectedKeys={selectedExportKeySet}
               onToggleSelected={toggleExportSelection}
             />
@@ -937,8 +990,6 @@ export function ProvidersPage() {
 
           <TabsContent value="opencode-go" className="min-h-0 flex flex-1 flex-col">
             <ProviderKeyListCard
-              title={t("providers.opencode_go_keys")}
-              description={t("providers.opencode_go_desc")}
               items={openCodeGoKeys}
               loading={isActiveTabListLoading("opencode-go")}
               onAdd={() => openKeyEditor("opencode-go", null)}
@@ -949,9 +1000,63 @@ export function ProvidersPage() {
               onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("opencode-go", idx, enabled)}
               getStats={getSimpleStats}
               getStatusBar={getSimpleStatusBar}
-              getAccessSummary={getProviderAccessSummary}
               showBaseUrl={false}
-              gridColumns={gridColumns}
+              naturalHeight
+              showConnectionRows={false}
+              showModelMetric={false}
+              showExcludedModels={false}
+              renderExtra={(item, idx) =>
+                item.workspaceId?.trim() && item.authCookie?.trim() ? (
+                  <OpenCodeGoUsageCardSection
+                    usageEntry={openCodeGoUsageState[getOpenCodeGoUsageCacheKey(item, idx)]}
+                    loading={openCodeGoUsageLoadingState[getOpenCodeGoUsageCacheKey(item, idx)] ?? false}
+                    onRefresh={() => void refreshOpenCodeGoUsage(item, idx)}
+                  />
+                ) : null
+              }
+              renderMetricsExtra={(item, idx) => {
+                if (!(item.workspaceId?.trim() && item.authCookie?.trim())) return null;
+                const cacheKey = getOpenCodeGoUsageCacheKey(item, idx);
+                const loading = openCodeGoUsageLoadingState[cacheKey] ?? false;
+                const hasError = Boolean(openCodeGoUsageState[cacheKey]?.error);
+                return (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void refreshOpenCodeGoUsage(item, idx);
+                    }}
+                    disabled={loading}
+                    className={[
+                      "inline-flex h-6 w-6 items-center justify-center rounded-lg transition-all duration-150",
+                      "text-slate-400 hover:bg-slate-200/60 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/25",
+                      "dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white/60 dark:focus-visible:ring-white/20",
+                      loading || hasError
+                        ? "opacity-100"
+                        : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+                    ].join(" ")}
+                    aria-label="Refresh usage"
+                    title="Refresh usage"
+                  >
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={loading ? "animate-spin" : ""}
+                    >
+                      <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                      <path d="M21 3v5h-5" />
+                      <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                      <path d="M3 21v-5h5" />
+                    </svg>
+                  </button>
+                );
+              }}
               selectedKeys={selectedExportKeySet}
               onToggleSelected={toggleExportSelection}
             />
@@ -959,8 +1064,6 @@ export function ProvidersPage() {
 
           <TabsContent value="vertex" className="min-h-0 flex flex-1 flex-col">
             <ProviderKeyListCard
-              title={t("providers.vertex_keys")}
-              description={t("providers.vertex_desc")}
               items={vertexKeys}
               loading={isActiveTabListLoading("vertex")}
               onAdd={() => openKeyEditor("vertex", null)}
@@ -968,10 +1071,8 @@ export function ProvidersPage() {
               onDelete={(idx) => setConfirm({ type: "deleteKey", keyType: "vertex", index: idx })}
               getStats={getSimpleStats}
               getStatusBar={getSimpleStatusBar}
-              getAccessSummary={getProviderAccessSummary}
               getLatencyEntry={getLatencyEntry}
               checkLatency={checkLatency}
-              gridColumns={gridColumns}
               selectedKeys={selectedExportKeySet}
               onToggleSelected={toggleExportSelection}
             />
@@ -979,8 +1080,6 @@ export function ProvidersPage() {
 
           <TabsContent value="bedrock" className="min-h-0 flex flex-1 flex-col">
             <ProviderKeyListCard
-              title={t("providers.bedrock_keys")}
-              description={t("providers.bedrock_desc")}
               items={bedrockKeys}
               loading={isActiveTabListLoading("bedrock")}
               onAdd={() => openKeyEditor("bedrock", null)}
@@ -989,10 +1088,8 @@ export function ProvidersPage() {
               onToggleEnabled={(idx, enabled) => void toggleKeyEnabled("bedrock", idx, enabled)}
               getStats={getSimpleStats}
               getStatusBar={getSimpleStatusBar}
-              getAccessSummary={getProviderAccessSummary}
               getLatencyEntry={getLatencyEntry}
               checkLatency={checkLatency}
-              gridColumns={gridColumns}
               selectedKeys={selectedExportKeySet}
               onToggleSelected={toggleExportSelection}
             />
@@ -1014,7 +1111,6 @@ export function ProvidersPage() {
               onToggleKeyEntryEnabled={(providerIndex, entryIndex, enabled) =>
                 void toggleOpenAIKeyEntryEnabled(providerIndex, entryIndex, enabled)
               }
-              gridColumns={gridColumns}
               selectedKeys={selectedExportKeySet}
               onToggleSelected={toggleExportSelection}
             />

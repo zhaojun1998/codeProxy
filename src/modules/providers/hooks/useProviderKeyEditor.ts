@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useToast } from "@/modules/ui/ToastProvider";
 import type { BedrockProviderConfig, ProviderSimpleConfig } from "@/lib/http/types";
 import { providersApi } from "@/lib/http/apis";
+import { invalidateConfiguredModelAvailability } from "@/modules/models/configuredAvailabilityCache";
 import { keyValueEntriesToRecord } from "@/modules/providers/KeyValueInputList";
 import {
   buildProviderKeyDraft,
@@ -144,6 +145,12 @@ export function useProviderKeyEditor({
       ...(isOpenCodeGo && keyDraft.visionFallbackModel.trim()
         ? { visionFallbackModel: keyDraft.visionFallbackModel.trim() }
         : {}),
+      ...(isOpenCodeGo && keyDraft.workspaceId.trim()
+        ? { workspaceId: keyDraft.workspaceId.trim() }
+        : {}),
+      ...(isOpenCodeGo && keyDraft.authCookie.trim()
+        ? { authCookie: keyDraft.authCookie.trim() }
+        : {}),
       ...(!isOpenCodeGo && modelCommit.models ? { models: modelCommit.models } : {}),
       ...(editKeyType === "claude" && keyDraft.skipAnthropicProcessing
         ? { skipAnthropicProcessing: true }
@@ -207,6 +214,7 @@ export function useProviderKeyEditor({
         await providersApi.saveBedrockConfigs(next);
         setBedrockKeys(next);
       }
+      invalidateConfiguredModelAvailability();
       notify({ type: "success", message: t("providers.saved") });
       closeKeyEditor();
       startRefreshTransition(() => void refreshAll());
@@ -265,6 +273,7 @@ export function useProviderKeyEditor({
           await providersApi.deleteBedrockConfig(index);
           setBedrockKeys((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
         }
+        invalidateConfiguredModelAvailability();
         notify({ type: "success", message: t("providers.deleted") });
       } catch (err: unknown) {
         notify({

@@ -128,23 +128,35 @@ function reconcileGenericMappings(
   models: readonly string[],
   fallbackModel: string,
 ): CcSwitchModelMapping[] {
+  const currentNonRole = currentMappings.filter((mapping) => !mapping.role);
   const currentByTarget = new Map(
-    currentMappings
-      .filter((mapping) => !mapping.role)
-      .map((mapping) => [mapping.targetModel.trim().toLowerCase(), mapping]),
+    currentNonRole.map((mapping) => [mapping.targetModel.trim().toLowerCase(), mapping]),
   );
-  const currentTargets = currentMappings
-    .filter((mapping) => !mapping.role)
-    .map((mapping) => mapping.targetModel);
-  const targets = dedupeModels(models.length > 0 ? [...currentTargets, ...models] : currentTargets);
-  const resolvedTargets = targets.length > 0 ? targets : dedupeModels([fallbackModel]);
+  const seen = new Set<string>();
+  const result: CcSwitchModelMapping[] = [];
 
-  return resolvedTargets.map((targetModel) => {
-    const existing = currentByTarget.get(targetModel.toLowerCase());
-    return {
-      requestModel: existing?.requestModel.trim() || targetModel,
-      targetModel,
-    };
+  for (const mapping of currentNonRole) {
+    const key = mapping.targetModel.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(mapping);
+  }
+
+  const sortedNew = [...new Set(models.map((m) => m.trim()).filter(Boolean))]
+    .filter((m) => !seen.has(m.toLowerCase()))
+    .sort((a, b) => a.localeCompare(b));
+  for (const targetModel of sortedNew) {
+    const key = targetModel.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push({ requestModel: targetModel, targetModel });
+  }
+
+  const resolvedTargets =
+    result.length > 0 ? result : dedupeModels([fallbackModel]).map((targetModel) => ({ requestModel: targetModel, targetModel }));
+  return resolvedTargets.map((mapping) => {
+    const existing = currentByTarget.get(mapping.targetModel.trim().toLowerCase());
+    return existing ?? mapping;
   });
 }
 
@@ -196,15 +208,6 @@ function resolveGenericDefaultModel(
 }
 
 function reconcileModelMappings(draft: ConfigDraft, models: readonly string[]): ConfigDraft {
-  if (draft.clientType === "codex") {
-    const modelMappings = draft.modelMappings.filter((mapping) => !mapping.role);
-    return {
-      ...draft,
-      modelMappings,
-      defaultModel: resolveGenericDefaultModel(modelMappings, draft.defaultModel),
-    };
-  }
-
   const modelMappings =
     draft.clientType === "claude"
       ? reconcileClaudeMappings(draft.modelMappings, models, draft.defaultModel)
@@ -229,15 +232,15 @@ function modelOptions(models: readonly string[]): SearchableSelectOption[] {
   }));
 }
 
-function getDuplicateGenericTargetModels(modelMappings: readonly CcSwitchModelMapping[]): string[] {
+function getDuplicateGenericRequestModels(modelMappings: readonly CcSwitchModelMapping[]): string[] {
   const counts = new Map<string, { label: string; count: number }>();
   for (const mapping of modelMappings) {
     if (mapping.role) continue;
-    const targetModel = mapping.targetModel.trim();
-    if (!targetModel) continue;
-    const key = targetModel.toLowerCase();
+    const requestModel = mapping.requestModel.trim();
+    if (!requestModel) continue;
+    const key = requestModel.toLowerCase();
     const current = counts.get(key);
-    counts.set(key, { label: current?.label ?? targetModel, count: (current?.count ?? 0) + 1 });
+    counts.set(key, { label: current?.label ?? requestModel, count: (current?.count ?? 0) + 1 });
   }
   return Array.from(counts.values())
     .filter((item) => item.count > 1)
@@ -305,7 +308,9 @@ export function CcSwitchImportConfigModal({
       endpointPath:
         value.endpointPath || DEFAULT_CC_SWITCH_IMPORT_SETTINGS[value.clientType].endpointPath,
     });
-    setAvailableModels([]);
+    setAvailableModels(
+      dedupeModels(value.modelMappings.map((mapping) => mapping.targetModel).filter(Boolean)),
+    );
   }, [open, value]);
 
   const selectedGroup = draft.allowedChannelGroups[0] ?? "";
@@ -341,17 +346,18 @@ export function CcSwitchImportConfigModal({
     const modelOwnerKeys = new Set(
       (selectedGroupOption?.modelOwnerKeys ?? []).map(normalizeModelOwnerKey).filter(Boolean),
     );
-    const lookupParams =
-      lookupChannels.length > 0
-        ? { allowedChannels: lookupChannels }
-        : { allowedChannelGroups: [selectedGroup] };
+    const lookupParams = selectedGroup
+      ? { allowedChannelGroups: [selectedGroup] }
+      : { allowedChannels: lookupChannels };
 
     setModelsLoading(true);
     modelsApi
       .listAvailableModels(lookupParams)
       .then(async (models) => {
         if (cancelled) return;
-        const availability = await loadConfiguredModelAvailability();
+        const availability = await loadConfiguredModelAvailability(
+          selectedGroup ? { allowedChannelGroups: [selectedGroup] } : undefined,
+        );
         if (cancelled) return;
         let visibleModels = filterByConfiguredModelAvailability(models, availability);
         const optionMap = new Map<string, string>();
@@ -363,7 +369,10 @@ export function CcSwitchImportConfigModal({
         };
         const needsModelConfigs = authoritativeModelOwnerKeys.size > 0 || modelOwnerKeys.size > 0;
         if (needsModelConfigs) {
-          const modelConfigs = await modelsApi.getModelConfigs("active").catch(() => []);
+          const modelConfigs =
+            availability.metadataItems && availability.metadataItems.length > 0
+              ? availability.metadataItems
+              : await modelsApi.getModelConfigs("active").catch(() => []);
           if (cancelled) return;
           if (modelOwnerKeys.size > 0 && authoritativeModelOwnerKeys.size === 0) {
             const allowedModelIds = new Set(
@@ -419,15 +428,15 @@ export function CcSwitchImportConfigModal({
     if (!open) return;
     setDraft((current) => {
       const currentSelectedGroup = current.allowedChannelGroups[0] ?? "";
-      return currentSelectedGroup
-        ? reconcileModelMappings(current, availableModels)
-        : {
-            ...current,
-            defaultModel: "",
-            modelMappings: [],
-          };
+      if (!currentSelectedGroup) {
+        return { ...current, defaultModel: "", modelMappings: [] };
+      }
+      if (modelsLoading && availableModels.length === 0 && current.modelMappings.length > 0) {
+        return current;
+      }
+      return reconcileModelMappings(current, availableModels);
     });
-  }, [availableModelsKey, open, selectedGroup]);
+  }, [availableModelsKey, open, selectedGroup, modelsLoading, availableModels.length]);
 
   const authFieldOptions = useMemo(
     () =>
@@ -445,8 +454,8 @@ export function CcSwitchImportConfigModal({
   const client = getCcSwitchClientConfig(draft.clientType);
   const clientLabel = t(client.labelKey);
   const groupSelectOptions = useMemo<SearchableSelectOption[]>(
-    () =>
-      channelGroupOptions.map((option) => {
+    () => {
+      const options = channelGroupOptions.map((option) => {
         const path = routeLabel(option.routePath);
         return {
           value: option.value,
@@ -471,8 +480,22 @@ export function CcSwitchImportConfigModal({
             </span>
           ),
         };
-      }),
-    [channelGroupOptions],
+      });
+
+      const currentGroup = draft.allowedChannelGroups[0] ?? "";
+      if (currentGroup && !channelGroupOptions.some((o) => o.value === currentGroup)) {
+        const hiddenLabel = `${currentGroup} ${t("ccswitch.config_channel_group_hidden")}`;
+        options.push({
+          value: currentGroup,
+          triggerLabel: <span>{hiddenLabel}</span>,
+          searchText: hiddenLabel,
+          label: <span>{hiddenLabel}</span>,
+        });
+      }
+
+      return options;
+    },
+    [channelGroupOptions, draft.allowedChannelGroups, t],
   );
   const previewRoutePath = selectedGroup
     ? ensureCcSwitchRoutePath(draft.routePath, selectedGroup, draft.id)
@@ -492,15 +515,15 @@ export function CcSwitchImportConfigModal({
     [availableModels, draft.modelMappings],
   );
   const preparedDraft = prepareDraftForSave(draft);
-  const modelMappingsLoading = Boolean(selectedGroup && modelsLoading);
-  const duplicateActualModels = getDuplicateGenericTargetModels(draft.modelMappings);
+  const hasRenderableMappings = draft.modelMappings.length > 0;
+  const modelMappingsLoading = Boolean(selectedGroup && modelsLoading && !hasRenderableMappings);
+  const duplicateRequestModels = getDuplicateGenericRequestModels(draft.modelMappings);
   const isSaveDisabled =
     !preparedDraft.providerName.trim() ||
     !selectedGroup ||
     !preparedDraft.defaultModel.trim() ||
     preparedDraft.modelMappings.length === 0 ||
-    duplicateActualModels.length > 0 ||
-    modelMappingsLoading;
+    duplicateRequestModels.length > 0;
 
   const setClientType = (clientType: CcSwitchClientType) => {
     const defaults = DEFAULT_CC_SWITCH_IMPORT_SETTINGS[clientType];
@@ -959,10 +982,10 @@ export function CcSwitchImportConfigModal({
                   </tbody>
                 </table>
               )}
-              {duplicateActualModels.length > 0 ? (
+              {duplicateRequestModels.length > 0 ? (
                 <div className="border-t border-rose-100 bg-rose-50 px-4 py-2 text-xs font-medium text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200">
-                  {t("ccswitch.config_actual_model_duplicate", {
-                    model: duplicateActualModels.join(", "),
+                  {t("ccswitch.config_request_model_duplicate", {
+                    model: duplicateRequestModels.join(", "),
                   })}
                 </div>
               ) : null}

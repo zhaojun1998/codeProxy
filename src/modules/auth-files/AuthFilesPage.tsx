@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigationType, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { ConfirmModal } from "@/modules/ui/ConfirmModal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/modules/ui/Tabs";
 import type { AuthFileItem } from "@/lib/http/types";
@@ -72,7 +72,6 @@ const buildAuthFilesSignature = (items: AuthFileItem[]): string =>
 export function AuthFilesPage() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
-  const navigationType = useNavigationType();
 
   const [tab, setTab] = useState<"files" | "excluded" | "alias">("files");
   const {
@@ -351,7 +350,6 @@ export function AuthFilesPage() {
     checkAuthFileConnectivity,
     forceRefreshPage,
     runQuotaRefreshBatch,
-    quotaLastUpdatedText,
   } = useAuthFilesQuotaState({
     tab,
     pageItems,
@@ -363,7 +361,6 @@ export function AuthFilesPage() {
       safePage,
       ...pageItems.map((file) => file.name),
     ].join("\n"),
-    navigationType,
     loading,
     setFiles,
     setDetailFile,
@@ -555,7 +552,6 @@ export function AuthFilesPage() {
             setSelectedModelOwner={(owner) => setModelOwnerForAuthGroup(filter, owner)}
             search={search}
             setSearch={updateSearch}
-            quotaLastUpdatedText={quotaLastUpdatedText}
             loading={loading}
             files={files}
             filesLength={files.length}

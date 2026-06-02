@@ -490,15 +490,22 @@ export function RoutingConfigEditor({
     () => resolvedDraftChannels.map((channel) => channel.name.trim()).filter(Boolean),
     [resolvedDraftChannels],
   );
+  const resolvedDraftChannelKey = useMemo(
+    () => resolvedDraftChannelValues.join("\n"),
+    [resolvedDraftChannelValues],
+  );
 
   const editingSystemDefaultGroup =
     groupEditorId === SYSTEM_DEFAULT_GROUP_ID ||
     (groupEditorId !== null && groupDraft.name.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME);
 
-  const selectedModelSet = useMemo(
-    () => new Set(groupDraft.allowedModels.map((model) => model.trim()).filter(Boolean)),
-    [groupDraft.allowedModels],
-  );
+  const selectedModelSet = useMemo(() => {
+    const effectiveSelectAll = !modelsSelectionTouched && groupDraft.allowedModels.length === 0;
+    if (effectiveSelectAll) {
+      return new Set(modelOptions.map((model) => model.id));
+    }
+    return new Set(groupDraft.allowedModels.map((model) => model.trim()).filter(Boolean));
+  }, [groupDraft.allowedModels, modelOptions, modelsSelectionTouched]);
 
   const modelOptionIds = useMemo(() => modelOptions.map((model) => model.id), [modelOptions]);
   const selectedVisibleModelCount = useMemo(
@@ -727,6 +734,13 @@ export function RoutingConfigEditor({
     setModelsSelectionTouched(true);
     setGroupDraft((current) => {
       const currentModels = current.allowedModels.map((model) => model.trim()).filter(Boolean);
+      // First interaction from "no restriction" empty state: initialize with full visible set
+      if (currentModels.length === 0 && modelOptionIds.length > 0) {
+        const initial = new Set(modelOptionIds);
+        if (checked) initial.add(normalized);
+        else initial.delete(normalized);
+        return { ...current, allowedModels: Array.from(initial) };
+      }
       if (checked) {
         return {
           ...current,
@@ -738,7 +752,7 @@ export function RoutingConfigEditor({
         allowedModels: currentModels.filter((model) => model !== normalized),
       };
     });
-  }, []);
+  }, [modelOptionIds]);
 
   const selectAllDraftModels = useCallback(() => {
     setModelsSelectionTouched(true);
@@ -1348,7 +1362,6 @@ export function RoutingConfigEditor({
     let cancelled = false;
     setModelsLoading(true);
     setModelsError("");
-    setModelOptions([]);
     const modelLoader = editingSystemDefaultGroup
       ? loadModelsForChannels(resolvedDraftChannelValues, SYSTEM_DEFAULT_GROUP_NAME)
       : loadModelsForChannels(resolvedDraftChannelValues);
@@ -1365,18 +1378,21 @@ export function RoutingConfigEditor({
         const normalized = Array.from(optionMap.values()).sort((a, b) => a.id.localeCompare(b.id));
         setModelOptions(normalized);
         const allowed = new Set(normalized.map((model) => model.id));
-        setGroupDraft((current) => ({
-          ...current,
-          allowedModels: modelsSelectionTouched
-            ? current.allowedModels.filter((model) => allowed.has(model))
-            : normalized.map((model) => model.id),
-        }));
+        setGroupDraft((current) => {
+          if (!modelsSelectionTouched && current.allowedModels.length === 0) {
+            return current;
+          }
+          const nextAllowedModels = current.allowedModels.filter((model) => allowed.has(model));
+          const currentStr = JSON.stringify(current.allowedModels);
+          const nextStr = JSON.stringify(nextAllowedModels);
+          if (currentStr === nextStr) return current;
+          return { ...current, allowedModels: nextAllowedModels };
+        });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         const message =
           err instanceof Error ? err.message : t("channel_groups_page.models_load_failed");
-        setModelOptions([]);
         setModelsError(message);
       })
       .finally(() => {
@@ -1392,7 +1408,7 @@ export function RoutingConfigEditor({
     editingSystemDefaultGroup,
     loadModelsForChannels,
     modelsSelectionTouched,
-    resolvedDraftChannelValues,
+    resolvedDraftChannelKey,
     t,
   ]);
 
@@ -1413,10 +1429,11 @@ export function RoutingConfigEditor({
           rowKey={(group) => group.id}
           virtualize={false}
           rowHeight={44}
-          height="h-auto max-h-[68vh]"
+          height="h-[calc(100dvh-200px)]"
           minWidth="min-w-[1360px]"
           caption={t("channel_groups_page.table_group")}
           emptyText={t("channel_groups_page.empty_groups")}
+          allowWheelPropagationAtBoundary
           rowClassName={(group) =>
             group.system
               ? "bg-slate-50/55 dark:bg-neutral-900/45"

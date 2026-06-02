@@ -3,7 +3,6 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useTranslation } from "react-i18next";
 import {
   BarChart3,
-  CircleHelp,
   ClipboardPaste,
   Download,
   Ellipsis,
@@ -479,7 +478,6 @@ interface AuthFilesFilesTabProps {
   setSelectedModelOwner: (value: string) => void;
   search: string;
   setSearch: (value: string) => void;
-  quotaLastUpdatedText: string;
   loading: boolean;
   files: AuthFileItem[];
   filesLength: number;
@@ -559,7 +557,6 @@ export function AuthFilesFilesTab({
   setSelectedModelOwner,
   search,
   setSearch,
-  quotaLastUpdatedText,
   loading,
   files,
   filesLength,
@@ -807,281 +804,249 @@ export function AuthFilesFilesTab({
             </Button>
           </div>
 
+          <Tabs value={filter} onValueChange={setFilter} size="sm">
+            <TabsList className="max-w-full">
+              {filterChips.map((key) => {
+                const active = filter === key;
+                const normalizedKey = normalizeProviderKey(key);
+                const count =
+                  key === "all"
+                    ? filterCounts.total
+                    : (filterCounts.counts[normalizedKey] ?? 0);
+                const label = key === "all" ? t("auth_files.all") : key;
+                const countClass = active
+                  ? "bg-black/[0.06] text-[#18181B] dark:bg-white/12 dark:text-white"
+                  : "bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-white/70";
+                return (
+                  <TabsTrigger key={key} value={key}>
+                    {label}
+                    <span
+                      className={[
+                        "ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
+                        countClass,
+                      ].join(" ")}
+                    >
+                      {count}
+                    </span>
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </Tabs>
+
           <div
             id="auth-files-mobile-filter-panel"
             data-testid="auth-files-mobile-filter-panel"
             className={[
               mobileFiltersOpen ? "grid" : "hidden",
-              "gap-3 md:grid xl:grid-cols-[minmax(360px,1fr)_minmax(420px,auto)] xl:items-stretch",
+              "gap-x-1.5 md:grid",
             ].join(" ")}
           >
-            <div className="min-w-0 rounded-2xl bg-slate-50/80 px-3 py-2.5 transition-colors duration-200 ease-out dark:bg-white/[0.03]">
-              <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                  <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
-                    {t("auth_files.type_filter")}
-                  </p>
-                  <HoverTooltip content={t("auth_files.count_hint")} placement="top">
-                    <span
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full text-slate-400 dark:text-white/45"
-                      aria-label={t("auth_files.count_info")}
-                    >
-                      <CircleHelp size={14} />
-                    </span>
-                  </HoverTooltip>
-                </div>
-                {activeFilterCount > 0 ? (
-                  <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-slate-900 px-1.5 text-[10px] font-semibold tabular-nums text-white dark:bg-white dark:text-neutral-950">
-                    {activeFilterCount}
-                  </span>
+            <div className="flex flex-col gap-1.5">
+              <div className="flex min-w-0 flex-wrap items-start gap-x-1.5 gap-y-2">
+                {canSetModelOwnerGroup ? (
+                  <div className="min-w-0 basis-[140px]">
+                    <div className="space-y-1.5">
+                      <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
+                        {t("auth_files.model_owner_group")}
+                      </p>
+                      <HoverTooltip content={t("auth_files.model_owner_group")} placement="top">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className={[
+                            "relative w-full justify-start px-2.5 text-xs",
+                            selectedModelOwner
+                              ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/10 dark:text-emerald-100 dark:hover:bg-emerald-400/15"
+                              : "bg-[#EBEBEC] text-[#3F3F46] hover:bg-[#E4E4E7] dark:bg-[#27272A] dark:text-white/75 dark:hover:bg-[#303036]",
+                          ].join(" ")}
+                          onClick={() => {
+                            setDraftModelOwner(selectedModelOwner);
+                            setModelOwnerDialogOpen(true);
+                          }}
+                          aria-label={t("auth_files.model_owner_group")}
+                        >
+                          <Settings2 size={15} className="shrink-0" />
+                          <span className="min-w-0 flex-1 truncate text-left">
+                            {selectedModelOwnerGroup?.label ??
+                              (selectedModelOwner || t("auth_files.auth_file_models_option"))}
+                          </span>
+                          {selectedModelOwner ? (
+                            <span
+                              aria-hidden="true"
+                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500"
+                            />
+                          ) : null}
+                        </Button>
+                      </HoverTooltip>
+                    </div>
+                  </div>
                 ) : null}
+
+                {customTagOptions.length > 0 ? (
+                  <div className="min-w-0 basis-[140px]">
+                    <div className="space-y-1.5">
+                      <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
+                        {t("auth_files.tag_filter")}
+                      </p>
+                      <SearchableSelect
+                        value={tagFilter}
+                        onChange={setTagFilter}
+                        options={customTagSelectOptions}
+                        placeholder={t("auth_files.all_tags")}
+                        searchPlaceholder={t("auth_files.tag_filter_search_placeholder")}
+                        aria-label={t("auth_files.tag_filter")}
+                        size="sm"
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="min-w-0 basis-[120px]">
+                  <div className="space-y-1.5">
+                    <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
+                      {t("auth_files.status_filter")}
+                    </p>
+                    <Select
+                      value={statusFilter}
+                      onChange={(value) => setStatusFilter(value as AuthFileStatusFilter)}
+                      options={statusFilterOptions}
+                      placeholder={t("auth_files.status_filter")}
+                      aria-label={t("auth_files.status_filter")}
+                      disabled={statusFilterOptions.length <= 1 && statusFilter === "all"}
+                      size="sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="min-w-0 basis-[120px]">
+                  <div className="space-y-1.5">
+                    <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
+                      {t("auth_files.quota_auto_refresh")}
+                    </p>
+                    <div
+                      className={loading && filesLength === 0 ? "pointer-events-none opacity-60" : ""}
+                    >
+                      <Select
+                        value={String(quotaAutoRefreshMs)}
+                        onChange={(value) =>
+                          setQuotaAutoRefreshMsRaw(normalizeQuotaAutoRefreshMs(value))
+                        }
+                        options={[
+                          { value: "0", label: t("auth_files.quota_refresh_off") },
+                          { value: "5000", label: "5s" },
+                          { value: "10000", label: "10s" },
+                          { value: "30000", label: "30s" },
+                          { value: "60000", label: "60s" },
+                        ]}
+                        aria-label={t("auth_files.quota_auto_refresh")}
+                        variant="chip"
+                        className="w-full"
+                        size="sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="min-w-0 basis-[180px]">
+                  <div className="space-y-1.5">
+                    <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
+                      {t("auth_files.search")}
+                    </p>
+                    <TextInput
+                      value={search}
+                      onChange={(e) => setSearch(e.currentTarget.value)}
+                      placeholder={t("auth_files_page.filename_hint")}
+                      aria-label={t("auth_files.search")}
+                      endAdornment={<Search size={16} className="text-slate-400" />}
+                      size="sm"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <Tabs value={filter} onValueChange={setFilter} size="sm">
-                <TabsList className="max-w-full">
-                  {filterChips.map((key) => {
-                    const active = filter === key;
-                    const normalizedKey = normalizeProviderKey(key);
-                    const count =
-                      key === "all"
-                        ? filterCounts.total
-                        : (filterCounts.counts[normalizedKey] ?? 0);
-                    const label = key === "all" ? t("auth_files.all") : key;
-                    const countClass = active
-                      ? "bg-black/[0.06] text-[#18181B] dark:bg-white/12 dark:text-white"
-                      : "bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-white/70";
-                    return (
-                      <TabsTrigger key={key} value={key}>
-                        {label}
-                        <span
-                          className={[
-                            "ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums",
-                            countClass,
-                          ].join(" ")}
-                        >
-                          {count}
-                        </span>
-                      </TabsTrigger>
-                    );
-                  })}
-                </TabsList>
-              </Tabs>
-            </div>
-
-            <div
-              className={[
-                "grid min-w-0 gap-2 sm:grid-cols-2",
-                canSetModelOwnerGroup && customTagOptions.length > 0
-                  ? "xl:grid-cols-[minmax(0,150px)_minmax(0,160px)_minmax(0,170px)_minmax(240px,280px)]"
-                  : canSetModelOwnerGroup
-                    ? "xl:grid-cols-[minmax(0,150px)_minmax(0,170px)_minmax(260px,320px)]"
-                    : customTagOptions.length > 0
-                      ? "xl:grid-cols-[minmax(0,170px)_minmax(0,180px)_minmax(260px,320px)]"
-                      : "xl:grid-cols-[minmax(0,180px)_minmax(280px,340px)]",
-                "xl:items-end",
-              ].join(" ")}
-            >
-              {canSetModelOwnerGroup ? (
-                <div className="min-w-0 space-y-1.5">
-                  <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
-                    {t("auth_files.model_owner_group")}
-                  </p>
-                  <HoverTooltip content={t("auth_files.model_owner_group")} placement="top">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <div className={loading && filesLength === 0 ? "pointer-events-none opacity-60" : ""}>
+                  {renderFilesViewModeTabs}
+                </div>
+                {selectedCount === 0 ? selectionActionsMenu : null}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="!h-8 px-2 text-xs"
+                    onClick={openGroupOverview}
+                    disabled={loading || groupOverviewLoading || filteredFiles.length === 0}
+                  >
+                    <BarChart3 size={14} className={groupOverviewLoading ? "animate-pulse" : ""} />
+                    {t("auth_files.group_overview_button")}
+                  </Button>
+                  <HoverTooltip content={t("auth_files.refresh")}>
                     <Button
                       variant="secondary"
                       size="sm"
-                      className={[
-                        "relative !h-9 w-full justify-start px-3 text-xs",
-                        selectedModelOwner
-                          ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/10 dark:text-emerald-100 dark:hover:bg-emerald-400/15"
-                          : "bg-[#EBEBEC] text-[#3F3F46] hover:bg-[#E4E4E7] dark:bg-[#27272A] dark:text-white/75 dark:hover:bg-[#303036]",
-                      ].join(" ")}
-                      onClick={() => {
-                        setDraftModelOwner(selectedModelOwner);
-                        setModelOwnerDialogOpen(true);
-                      }}
-                      aria-label={t("auth_files.model_owner_group")}
+                      onClick={() => void refreshFilesAndQuota()}
+                      disabled={loading || usageLoading || refreshingAll}
+                      aria-label={t("auth_files.refresh")}
+                      title={t("auth_files.refresh")}
                     >
-                      <Settings2 size={15} className="shrink-0" />
-                      <span className="min-w-0 flex-1 truncate text-left">
-                        {selectedModelOwnerGroup?.label ??
-                          (selectedModelOwner || t("auth_files.auth_file_models_option"))}
-                      </span>
-                      {selectedModelOwner ? (
-                        <span
-                          aria-hidden="true"
-                          className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500"
-                        />
-                      ) : null}
+                      <RefreshCw
+                        size={15}
+                        className={loading || usageLoading || refreshingAll ? "animate-spin" : ""}
+                      />
                     </Button>
                   </HoverTooltip>
-                </div>
-              ) : null}
-
-              {customTagOptions.length > 0 ? (
-                <div className="min-w-0 space-y-1.5">
-                  <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
-                    {t("auth_files.tag_filter")}
-                  </p>
-                  <SearchableSelect
-                    value={tagFilter}
-                    onChange={setTagFilter}
-                    options={customTagSelectOptions}
-                    placeholder={t("auth_files.all_tags")}
-                    searchPlaceholder={t("auth_files.tag_filter_search_placeholder")}
-                    aria-label={t("auth_files.tag_filter")}
-                  />
-                </div>
-              ) : null}
-
-              <div className="min-w-0 space-y-1.5">
-                <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
-                  {t("auth_files.status_filter")}
-                </p>
-                <Select
-                  value={statusFilter}
-                  onChange={(value) => setStatusFilter(value as AuthFileStatusFilter)}
-                  options={statusFilterOptions}
-                  placeholder={t("auth_files.status_filter")}
-                  aria-label={t("auth_files.status_filter")}
-                  disabled={statusFilterOptions.length <= 1 && statusFilter === "all"}
-                  className="h-9"
-                />
+                  <HoverTooltip content={t("auth_files.upload")}>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      aria-label={t("auth_files.upload")}
+                      title={t("auth_files.upload")}
+                    >
+                      <Upload size={15} />
+                    </Button>
+                  </HoverTooltip>
+                  <HoverTooltip content={t("auth_files.paste_json")}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setJsonImportError("");
+                        setJsonImportOpen(true);
+                      }}
+                      disabled={uploading}
+                      aria-label={t("auth_files.paste_json")}
+                      title={t("auth_files.paste_json")}
+                    >
+                      <ClipboardPaste size={15} />
+                    </Button>
+                  </HoverTooltip>
+                  <HoverTooltip content={t("auth_files_page.add_oauth")}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        const normalized = normalizeProviderKey(filter);
+                        const oauthTab =
+                          normalized === "codex" ||
+                          normalized === "anthropic" ||
+                          normalized === "antigravity" ||
+                          normalized === "gemini-cli" ||
+                          normalized === "kimi" ||
+                          normalized === "qwen"
+                            ? (normalized as OAuthDialogTab)
+                            : "codex";
+                        setOauthDialogDefaultTab(oauthTab);
+                        setOauthDialogOpen(true);
+                      }}
+                      aria-label={t("auth_files_page.add_oauth")}
+                      title={t("auth_files_page.add_oauth")}
+                    >
+                      <Plus size={15} />
+                    </Button>
+                  </HoverTooltip>
               </div>
-
-              <div className="min-w-0 space-y-1.5">
-                <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-white/65">
-                  {t("auth_files.search")}
-                </p>
-                <TextInput
-                  value={search}
-                  onChange={(e) => setSearch(e.currentTarget.value)}
-                  placeholder={t("auth_files_page.filename_hint")}
-                  aria-label={t("auth_files.search")}
-                  endAdornment={<Search size={16} className="text-slate-400" />}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center gap-2 text-xs text-slate-500 dark:text-white/45">
-                <span className="font-medium">{t("auth_files.quota_updated_at")}</span>
-                <span className="font-mono tabular-nums">
-                  {loading && filesLength === 0 ? "--" : quotaLastUpdatedText}
-                </span>
-              </div>
-
-              <div className={loading && filesLength === 0 ? "pointer-events-none opacity-60" : ""}>
-                {renderFilesViewModeTabs}
-              </div>
-
-              <div className="inline-flex items-center gap-1.5">
-                <span className="text-xs font-medium text-slate-500 dark:text-white/45">
-                  {t("auth_files.quota_auto_refresh")}
-                </span>
-                <div
-                  className={loading && filesLength === 0 ? "pointer-events-none opacity-60" : ""}
-                >
-                  <Select
-                    value={String(quotaAutoRefreshMs)}
-                    onChange={(value) =>
-                      setQuotaAutoRefreshMsRaw(normalizeQuotaAutoRefreshMs(value))
-                    }
-                    options={[
-                      { value: "0", label: t("auth_files.quota_refresh_off") },
-                      { value: "5000", label: "5s" },
-                      { value: "10000", label: "10s" },
-                      { value: "30000", label: "30s" },
-                      { value: "60000", label: "60s" },
-                    ]}
-                    aria-label={t("auth_files.quota_auto_refresh")}
-                    variant="chip"
-                    className="w-[88px]"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-1.5 lg:justify-end">
-              {selectedCount === 0 ? selectionActionsMenu : null}
-              <Button
-                variant="secondary"
-                size="sm"
-                className="!h-8 px-2 text-xs"
-                onClick={openGroupOverview}
-                disabled={loading || groupOverviewLoading || filteredFiles.length === 0}
-              >
-                <BarChart3 size={14} className={groupOverviewLoading ? "animate-pulse" : ""} />
-                {t("auth_files.group_overview_button")}
-              </Button>
-              <HoverTooltip content={t("auth_files.refresh")}>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => void refreshFilesAndQuota()}
-                  disabled={loading || usageLoading || refreshingAll}
-                  aria-label={t("auth_files.refresh")}
-                  title={t("auth_files.refresh")}
-                >
-                  <RefreshCw
-                    size={15}
-                    className={loading || usageLoading || refreshingAll ? "animate-spin" : ""}
-                  />
-                </Button>
-              </HoverTooltip>
-              <HoverTooltip content={t("auth_files.upload")}>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  aria-label={t("auth_files.upload")}
-                  title={t("auth_files.upload")}
-                >
-                  <Upload size={15} />
-                </Button>
-              </HoverTooltip>
-              <HoverTooltip content={t("auth_files.paste_json")}>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setJsonImportError("");
-                    setJsonImportOpen(true);
-                  }}
-                  disabled={uploading}
-                  aria-label={t("auth_files.paste_json")}
-                  title={t("auth_files.paste_json")}
-                >
-                  <ClipboardPaste size={15} />
-                </Button>
-              </HoverTooltip>
-              <HoverTooltip content={t("auth_files_page.add_oauth")}>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    const normalized = normalizeProviderKey(filter);
-                    const oauthTab =
-                      normalized === "codex" ||
-                      normalized === "anthropic" ||
-                      normalized === "antigravity" ||
-                      normalized === "gemini-cli" ||
-                      normalized === "kimi" ||
-                      normalized === "qwen"
-                        ? (normalized as OAuthDialogTab)
-                        : "codex";
-                    setOauthDialogDefaultTab(oauthTab);
-                    setOauthDialogOpen(true);
-                  }}
-                  aria-label={t("auth_files_page.add_oauth")}
-                  title={t("auth_files_page.add_oauth")}
-                >
-                  <Plus size={15} />
-                </Button>
-              </HoverTooltip>
             </div>
           </div>
 
@@ -1238,7 +1203,7 @@ export function AuthFilesFilesTab({
                                   "flex h-8 items-center justify-center px-1 transition-opacity",
                                   showSelectionControl
                                     ? "opacity-100 pointer-events-auto"
-                                    : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
+                                    : "opacity-0 pointer-events-none group-hover:opacity-100 group-focus-within:opacity-100 group-hover:pointer-events-auto group-focus-within:pointer-events-auto",
                                 ].join(" ")}
                               >
                                 <input
@@ -1257,12 +1222,19 @@ export function AuthFilesFilesTab({
                             {runtimeOnly ? (
                               <span className="text-xs text-slate-400 dark:text-white/40">--</span>
                             ) : (
-                              <ToggleSwitch
-                                ariaLabel={t("auth_files.enable_disable")}
-                                checked={!fileDisabled}
-                                onCheckedChange={(enabled) => void setFileEnabled(file, enabled)}
-                                disabled={Boolean(statusUpdating[file.name])}
-                              />
+                              <div
+                                className={[
+                                  "flex h-8 items-center justify-center transition-opacity",
+                                  "opacity-0 pointer-events-none group-hover:opacity-100 group-focus-within:opacity-100 group-hover:pointer-events-auto group-focus-within:pointer-events-auto",
+                                ].join(" ")}
+                              >
+                                <ToggleSwitch
+                                  ariaLabel={t("auth_files.enable_disable")}
+                                  checked={!fileDisabled}
+                                  onCheckedChange={(enabled) => void setFileEnabled(file, enabled)}
+                                  disabled={Boolean(statusUpdating[file.name])}
+                                />
+                              </div>
                             )}
                           </div>
                         </div>
