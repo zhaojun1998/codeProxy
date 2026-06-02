@@ -38,6 +38,7 @@ export function ProviderKeyListCard({
   naturalHeight = false,
   showConnectionRows = true,
   showModelMetric = true,
+  showExcludedModels = true,
   renderMetricsExtra,
 }: {
   items: ProviderSimpleConfig[];
@@ -58,6 +59,7 @@ export function ProviderKeyListCard({
   naturalHeight?: boolean;
   showConnectionRows?: boolean;
   showModelMetric?: boolean;
+  showExcludedModels?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -181,7 +183,7 @@ export function ProviderKeyListCard({
                       value={models.length}
                     />
                   ) : null}
-                  {excludedModels.length ? (
+                  {showExcludedModels && excludedModels.length ? (
                     <ProviderMetricChip
                       tone="rose"
                       label={t("providers.excluded_models_label")}
@@ -231,7 +233,7 @@ export function ProviderKeyListCard({
                   />
                 </div>
 
-                {excludedModels.length ? (
+                {showExcludedModels && excludedModels.length ? (
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {excludedModels.map((model) => (
                       <span
