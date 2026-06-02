@@ -786,4 +786,47 @@ describe("CcSwitchImportSettingsPage", () => {
     expect(optionLabels.some((text) => text.includes("default"))).toBe(true);
     expect(optionLabels.some((text) => text.includes("nvidia"))).toBe(false);
   });
+
+  test("shows hidden channel group label when editing a config with an implicit filtered-out group", async () => {
+    listChannelGroups.mockResolvedValue([
+      { name: "pro", description: "Pro route", "path-routes": ["/pro"] },
+      { name: "default", implicit: true },
+      { name: "nvidia", implicit: true },
+    ]);
+    listAvailableModels.mockResolvedValue([]);
+    listConfigs.mockResolvedValue([
+      {
+        id: "cfg-nvidia",
+        clientType: "codex",
+        providerName: "Relay NVIDIA",
+        note: "old config",
+        defaultModel: "gpt-5.5",
+        allowedChannelGroups: ["nvidia"],
+        endpointPath: "/v1",
+        usageAutoInterval: 30,
+        modelMappings: [{ requestModel: "gpt-5.5", targetModel: "mistral-7b" }],
+      },
+    ]);
+    renderPage();
+    const user = userEvent.setup();
+
+    expect(await screen.findByText("Relay NVIDIA")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /edit config/i }));
+
+    const dialog = await screen.findByRole("dialog", { name: /edit cc switch config/i });
+    expect(
+      await within(dialog).findByRole("combobox", { name: /select channel group/i }),
+    ).toHaveTextContent(/nvidia/i);
+
+    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(replaceConfigs).toHaveBeenCalledWith([
+        expect.objectContaining({
+          id: "cfg-nvidia",
+          allowedChannelGroups: ["nvidia"],
+        }),
+      ]),
+    );
+  });
 });
