@@ -122,6 +122,9 @@ export function ProvidersPage() {
 
   const refreshOpenCodeGoUsage = useCallback(
     async (item: ProviderSimpleConfig, index: number) => {
+      const hasQuery = Boolean(item.workspaceId?.trim() && item.authCookie?.trim());
+      if (!hasQuery) return;
+
       const cacheKey = getOpenCodeGoUsageCacheKey(item, index);
       setOpenCodeGoUsageLoadingState((prev) => ({ ...prev, [cacheKey]: true }));
       try {
@@ -190,6 +193,7 @@ export function ProvidersPage() {
 
     const staleKeys = openCodeGoKeys
       .map((item, idx) => ({ item, idx, key: getOpenCodeGoUsageCacheKey(item, idx) }))
+      .filter(({ item }) => Boolean(item.workspaceId?.trim() && item.authCookie?.trim()))
       .filter(({ key }) => {
         if (openCodeGoUsageLoadingState[key]) return false;
         const entry = openCodeGoUsageState[key];
@@ -1000,14 +1004,18 @@ export function ProvidersPage() {
               naturalHeight
               showConnectionRows={false}
               showModelMetric={false}
-              renderExtra={(item, idx) => (
-                <OpenCodeGoUsageCardSection
-                  usageEntry={openCodeGoUsageState[getOpenCodeGoUsageCacheKey(item, idx)]}
-                  loading={openCodeGoUsageLoadingState[getOpenCodeGoUsageCacheKey(item, idx)] ?? false}
-                  onRefresh={() => void refreshOpenCodeGoUsage(item, idx)}
-                />
-              )}
+              showExcludedModels={false}
+              renderExtra={(item, idx) =>
+                item.workspaceId?.trim() && item.authCookie?.trim() ? (
+                  <OpenCodeGoUsageCardSection
+                    usageEntry={openCodeGoUsageState[getOpenCodeGoUsageCacheKey(item, idx)]}
+                    loading={openCodeGoUsageLoadingState[getOpenCodeGoUsageCacheKey(item, idx)] ?? false}
+                    onRefresh={() => void refreshOpenCodeGoUsage(item, idx)}
+                  />
+                ) : null
+              }
               renderMetricsExtra={(item, idx) => {
+                if (!(item.workspaceId?.trim() && item.authCookie?.trim())) return null;
                 const cacheKey = getOpenCodeGoUsageCacheKey(item, idx);
                 const loading = openCodeGoUsageLoadingState[cacheKey] ?? false;
                 const hasError = Boolean(openCodeGoUsageState[cacheKey]?.error);
