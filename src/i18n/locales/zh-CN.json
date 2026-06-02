@@ -2705,6 +2705,7 @@
     "config_channel_groups_loading": "正在加载渠道分组...",
     "config_channel_groups_search_placeholder": "搜索渠道分组...",
     "config_channel_groups_empty": "没有匹配的渠道分组",
+    "config_channel_group_hidden": "已隐藏组",
     "config_select_filtered_groups": "选择当前结果",
     "config_deselect_filtered_groups": "清空当前结果",
     "config_selected_groups_count": "已选 {{count}} 项",

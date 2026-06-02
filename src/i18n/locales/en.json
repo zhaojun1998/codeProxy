@@ -2450,6 +2450,7 @@
     "config_channel_groups_loading": "Loading channel groups...",
     "config_channel_groups_search_placeholder": "Search channel groups...",
     "config_channel_groups_empty": "No matching channel groups",
+    "config_channel_group_hidden": "(hidden group)",
     "config_select_filtered_groups": "Select shown groups",
     "config_deselect_filtered_groups": "Clear shown groups",
     "config_selected_groups_count": "{{count}} selected",

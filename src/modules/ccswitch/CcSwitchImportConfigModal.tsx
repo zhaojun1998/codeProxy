@@ -454,8 +454,8 @@ export function CcSwitchImportConfigModal({
   const client = getCcSwitchClientConfig(draft.clientType);
   const clientLabel = t(client.labelKey);
   const groupSelectOptions = useMemo<SearchableSelectOption[]>(
-    () =>
-      channelGroupOptions.map((option) => {
+    () => {
+      const options = channelGroupOptions.map((option) => {
         const path = routeLabel(option.routePath);
         return {
           value: option.value,
@@ -480,8 +480,22 @@ export function CcSwitchImportConfigModal({
             </span>
           ),
         };
-      }),
-    [channelGroupOptions],
+      });
+
+      const currentGroup = draft.allowedChannelGroups[0] ?? "";
+      if (currentGroup && !channelGroupOptions.some((o) => o.value === currentGroup)) {
+        const hiddenLabel = `${currentGroup} ${t("ccswitch.config_channel_group_hidden")}`;
+        options.push({
+          value: currentGroup,
+          triggerLabel: <span>{hiddenLabel}</span>,
+          searchText: hiddenLabel,
+          label: <span>{hiddenLabel}</span>,
+        });
+      }
+
+      return options;
+    },
+    [channelGroupOptions, draft.allowedChannelGroups, t],
   );
   const previewRoutePath = selectedGroup
     ? ensureCcSwitchRoutePath(draft.routePath, selectedGroup, draft.id)
