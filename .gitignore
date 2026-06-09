@@ -12,3 +12,4 @@ playwright-report/
 .sisyphus/
 .agentflow/
 .helloagents/
+output/playwright/
