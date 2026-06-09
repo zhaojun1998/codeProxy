@@ -53,6 +53,7 @@ export interface SearchableCheckboxMultiSelectProps {
   showClearButton?: boolean;
   maxSummaryItems?: number;
   mobileBreakpoint?: number;
+  emptyValueMeansAllSelected?: boolean;
 }
 
 function optionText(option: SearchableCheckboxMultiSelectOption): string {
@@ -79,6 +80,7 @@ export function SearchableCheckboxMultiSelect({
   showClearButton = false,
   maxSummaryItems = 2,
   mobileBreakpoint = 640,
+  emptyValueMeansAllSelected = false,
 }: SearchableCheckboxMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -88,7 +90,27 @@ export function SearchableCheckboxMultiSelect({
   const [dropdownStyle, setDropdownStyle] = useState<CSSProperties>({});
   const [dropdownPlacement, setDropdownPlacement] = useState<"bottom" | "top">("bottom");
 
-  const selectedSet = useMemo(() => new Set(value), [value]);
+  const sanitizedExplicitValue = useMemo(() => {
+    const allowed = new Set(options.map((option) => option.value));
+    return value.filter(
+      (item, index) => allowed.has(item) && value.indexOf(item) === index,
+    );
+  }, [options, value]);
+
+  const implicitAllSelected =
+    emptyValueMeansAllSelected && sanitizedExplicitValue.length === 0 && options.length > 0;
+
+  const effectiveValue = useMemo(
+    () => (implicitAllSelected ? options.map((option) => option.value) : sanitizedExplicitValue),
+    [implicitAllSelected, options, sanitizedExplicitValue],
+  );
+
+  const allOptionsSelectedExplicitly =
+    !implicitAllSelected && options.length > 0 && sanitizedExplicitValue.length === options.length;
+
+  const showAllSelectionSummary = implicitAllSelected || allOptionsSelectedExplicitly;
+
+  const selectedSet = useMemo(() => new Set(effectiveValue), [effectiveValue]);
 
   const filteredOptions = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -107,6 +129,8 @@ export function SearchableCheckboxMultiSelect({
 
   const allVisibleSelected =
     visibleValues.length > 0 && visibleValues.every((optionValue) => selectedSet.has(optionValue));
+
+  const showFilteredToggle = !(showAllSelectionSummary && query.trim().length === 0);
 
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current;
@@ -233,34 +257,44 @@ export function SearchableCheckboxMultiSelect({
   const toggleOption = useCallback(
     (optionValue: string) => {
       if (selectedSet.has(optionValue)) {
-        commitSelection(value.filter((item) => item !== optionValue));
+        commitSelection(effectiveValue.filter((item) => item !== optionValue));
         return;
       }
-      commitSelection([...value, optionValue]);
+      commitSelection([...effectiveValue, optionValue]);
     },
-    [commitSelection, selectedSet, value],
+    [commitSelection, effectiveValue, selectedSet],
   );
 
   const toggleFiltered = useCallback(() => {
     if (visibleValues.length === 0) return;
     if (allVisibleSelected) {
       const visibleSet = new Set(visibleValues);
-      commitSelection(value.filter((item) => !visibleSet.has(item)));
+      commitSelection(effectiveValue.filter((item) => !visibleSet.has(item)));
       return;
     }
-    commitSelection([...value, ...visibleValues]);
-  }, [allVisibleSelected, commitSelection, value, visibleValues]);
+    commitSelection([...effectiveValue, ...visibleValues]);
+  }, [allVisibleSelected, commitSelection, effectiveValue, visibleValues]);
 
   const selectedSummary = useMemo(() => {
-    if (value.length === 0) return placeholder;
-    const labels = value
+    if (showAllSelectionSummary || sanitizedExplicitValue.length === 0) return placeholder;
+    const labels = sanitizedExplicitValue
       .slice(0, maxSummaryItems)
       .map((item) =>
         optionText(options.find((option) => option.value === item) ?? { value: item, label: item }),
       )
       .join(", ");
-    return value.length > maxSummaryItems ? `${labels} +${value.length - maxSummaryItems}` : labels;
-  }, [maxSummaryItems, options, placeholder, value]);
+    return sanitizedExplicitValue.length > maxSummaryItems
+      ? `${labels} +${sanitizedExplicitValue.length - maxSummaryItems}`
+      : labels;
+  }, [
+    maxSummaryItems,
+    options,
+    placeholder,
+    sanitizedExplicitValue,
+    showAllSelectionSummary,
+  ]);
+
+  const showSelectionBadge = sanitizedExplicitValue.length > 0 && !showAllSelectionSummary;
 
   const handleClear = useCallback(
     (event: React.MouseEvent) => {
@@ -297,22 +331,23 @@ export function SearchableCheckboxMultiSelect({
           <span
             className={cn(
               "min-w-0 flex-1 truncate text-left",
-              value.length === 0 && "text-slate-400 dark:text-white/35",
+              (sanitizedExplicitValue.length === 0 || showAllSelectionSummary) &&
+                "text-slate-400 dark:text-white/35",
             )}
           >
             {selectedSummary}
           </span>
           <span className="flex shrink-0 items-center gap-2">
-            {value.length > 0 ? (
+            {showSelectionBadge ? (
               <span className="rounded-md bg-sky-50 px-1.5 py-0.5 text-[11px] font-semibold text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
-                {selectedCountLabel(value.length)}
+                {selectedCountLabel(sanitizedExplicitValue.length)}
               </span>
             ) : null}
             <ChevronDown
               size={14}
               className={cn(
                 selectChevron,
-                value.length > 0 &&
+                showSelectionBadge &&
                   showClearButton &&
                   "group-hover/multi-select:opacity-0 group-focus-within/multi-select:opacity-0",
                 open && "rotate-180",
@@ -367,36 +402,38 @@ export function SearchableCheckboxMultiSelect({
                   spellCheck={false}
                 />
               </div>
-              <button
-                type="button"
-                onClick={toggleFiltered}
-                disabled={visibleValues.length === 0}
-                className={cn(
-                  "mx-1 mt-1 shrink-0",
-                  selectOptionBase,
-                  visibleValues.length === 0
-                    ? "cursor-not-allowed text-[#A1A1AA] dark:text-[#71717A]"
-                    : selectOptionIdle,
-                )}
-              >
-                <span
+              {showFilteredToggle ? (
+                <button
+                  type="button"
+                  onClick={toggleFiltered}
+                  disabled={visibleValues.length === 0}
                   className={cn(
-                    "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
-                    allVisibleSelected
-                      ? "border-[#18181B] bg-[#18181B] text-white dark:border-white dark:bg-white dark:text-[#18181B]"
-                      : "border-[#96969B] bg-white dark:border-[#9F9FA8] dark:bg-[#27272A]",
+                    "mx-1 mt-1 shrink-0",
+                    selectOptionBase,
+                    visibleValues.length === 0
+                      ? "cursor-not-allowed text-[#A1A1AA] dark:text-[#71717A]"
+                      : selectOptionIdle,
                   )}
-                  aria-hidden="true"
                 >
-                  {allVisibleSelected ? <Check size={12} /> : null}
-                </span>
-                <span className="min-w-0 flex-1 truncate">
-                  {allVisibleSelected ? deselectFilteredLabel : selectFilteredLabel}
-                </span>
-                <span className="shrink-0 text-xs text-slate-400 dark:text-white/35">
-                  {selectedCountLabel(value.length)}
-                </span>
-              </button>
+                  <span
+                    className={cn(
+                      "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors",
+                      allVisibleSelected
+                        ? "border-[#18181B] bg-[#18181B] text-white dark:border-white dark:bg-white dark:text-[#18181B]"
+                        : "border-[#96969B] bg-white dark:border-[#9F9FA8] dark:bg-[#27272A]",
+                    )}
+                    aria-hidden="true"
+                  >
+                    {allVisibleSelected ? <Check size={12} /> : null}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {allVisibleSelected ? deselectFilteredLabel : selectFilteredLabel}
+                  </span>
+                  <span className="shrink-0 text-xs text-slate-400 dark:text-white/35">
+                    {selectedCountLabel(effectiveValue.length)}
+                  </span>
+                </button>
+              ) : null}
               <div
                 role="listbox"
                 aria-label={ariaLabel}
