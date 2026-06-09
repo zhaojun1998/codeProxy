@@ -65,6 +65,7 @@ export function RequestLogsFilters({
             clearLabel={t("request_logs.clear_key_filter")}
             showClearButton
             size="sm"
+            emptyValueMeansAllSelected
           />
         </div>
         <div className="w-full min-[480px]:w-auto sm:w-[200px]">
@@ -82,6 +83,7 @@ export function RequestLogsFilters({
             clearLabel={t("request_logs.clear_model_filter")}
             showClearButton
             size="sm"
+            emptyValueMeansAllSelected
           />
         </div>
         <div className="w-full min-[480px]:w-auto sm:w-[180px]">
@@ -99,6 +101,7 @@ export function RequestLogsFilters({
             clearLabel={t("request_logs.clear_channel_filter")}
             showClearButton
             size="sm"
+            emptyValueMeansAllSelected
           />
         </div>
         <div className="w-full min-[480px]:w-auto sm:w-[150px]">
@@ -116,6 +119,7 @@ export function RequestLogsFilters({
             clearLabel={t("request_logs.clear_status_filter")}
             showClearButton
             size="sm"
+            emptyValueMeansAllSelected
           />
         </div>
 

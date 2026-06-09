@@ -35,6 +35,28 @@ const emptyLogsResponse = {
   },
 };
 
+const responseWithFilterOptions = {
+  items: [],
+  total: 0,
+  page: 1,
+  size: 50,
+  filters: {
+    api_keys: ["sk-primary", "sk-secondary"],
+    api_key_names: {
+      "sk-primary": "Primary",
+      "sk-secondary": "Secondary",
+    },
+    models: ["gpt-5.4", "gpt-4.1"],
+    channels: ["Codex", "Relay"],
+  },
+  stats: {
+    total: 0,
+    success_rate: 0,
+    total_tokens: 0,
+    total_cost: 0,
+  },
+};
+
 const mocks = vi.hoisted(() => ({
   getUsageLogs: vi.fn(),
   getLogContent: vi.fn(),
@@ -146,6 +168,113 @@ describe("RequestLogsPage", () => {
     );
 
     expect(await screen.findByText("No Data")).toBeInTheDocument();
+  });
+
+  test("shows request-log multi-select filters as all-selected by default", async () => {
+    await i18n.changeLanguage("en");
+    const user = userEvent.setup();
+
+    mocks.getUsageLogs.mockResolvedValue(responseWithFilterOptions);
+
+    render(
+      <ThemeProvider>
+        <ToastProvider>
+          <RequestLogsPage />
+        </ToastProvider>
+      </ThemeProvider>,
+    );
+
+    const [keyFilter, modelFilter, channelFilter, statusFilter] =
+      await screen.findAllByRole("combobox");
+    expect(keyFilter).toHaveTextContent("All Keys");
+    expect(modelFilter).toHaveTextContent("All Models");
+    expect(channelFilter).toHaveTextContent("All Channels");
+    expect(statusFilter).toHaveTextContent("All Status");
+
+    await user.click(keyFilter);
+
+    expect(await screen.findByRole("option", { name: "Primary" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByRole("option", { name: "Secondary" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  test("only sends explicit request-log filter subsets, restores full selection, and resets filters", async () => {
+    await i18n.changeLanguage("en");
+    const user = userEvent.setup();
+
+    mocks.getUsageLogs.mockResolvedValue(responseWithFilterOptions);
+
+    render(
+      <ThemeProvider>
+        <ToastProvider>
+          <RequestLogsPage />
+        </ToastProvider>
+      </ThemeProvider>,
+    );
+
+    const [keyFilter] = await screen.findAllByRole("combobox");
+
+    await waitFor(() =>
+      expect(mocks.getUsageLogs).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          api_keys: undefined,
+          models: undefined,
+          channels: undefined,
+          statuses: undefined,
+        }),
+      ),
+    );
+
+    await user.click(keyFilter);
+    await user.click(await screen.findByRole("option", { name: "Primary" }));
+
+    await waitFor(() =>
+      expect(mocks.getUsageLogs).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          api_keys: ["sk-secondary"],
+        }),
+      ),
+    );
+
+    await user.click(screen.getByRole("option", { name: "Primary" }));
+
+    await waitFor(() =>
+      expect(mocks.getUsageLogs).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({
+          api_keys: undefined,
+        }),
+      ),
+    );
+
+    await user.click(await screen.findByRole("option", { name: "Primary" }));
+
+    await waitFor(() =>
+      expect(mocks.getUsageLogs).toHaveBeenNthCalledWith(
+        4,
+        expect.objectContaining({
+          api_keys: ["sk-secondary"],
+        }),
+      ),
+    );
+
+    await user.click(await screen.findByText("Reset filters"));
+
+    await waitFor(() =>
+      expect(mocks.getUsageLogs).toHaveBeenNthCalledWith(
+        5,
+        expect.objectContaining({
+          api_keys: undefined,
+        }),
+      ),
+    );
   });
 
   test("renders request logs table through the shared DataTable wrapper", async () => {

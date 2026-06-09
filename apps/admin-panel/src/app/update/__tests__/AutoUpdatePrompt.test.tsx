@@ -77,7 +77,7 @@ describe("AutoUpdatePrompt", () => {
     mocks.get.mockResolvedValue({ uptime: 10 });
   });
 
-  test("asks whether to update before showing the fixed-height update dialog", async () => {
+  test("asks whether to update before showing the scroll-contained update dialog", async () => {
     renderPrompt();
 
     expect(
@@ -98,7 +98,11 @@ describe("AutoUpdatePrompt", () => {
 
     expect(await screen.findByRole("heading", { name: /new version found/i })).toBeInTheDocument();
     expect(await screen.findByText(/Fixes and improvements/i)).toBeInTheDocument();
-    expect(screen.getByTestId("update-details-modal-body")).toHaveClass("h-[min(68vh,560px)]");
+    expect(screen.getByTestId("update-details-modal-body")).toHaveClass(
+      "max-h-[min(72vh,640px)]",
+      "overflow-y-auto",
+      "overscroll-contain",
+    );
     expect(screen.getByRole("button", { name: /update now/i })).toBeInTheDocument();
     expect(mocks.apply).not.toHaveBeenCalled();
   });

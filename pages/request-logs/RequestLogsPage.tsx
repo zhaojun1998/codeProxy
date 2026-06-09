@@ -39,6 +39,25 @@ const DEFAULT_CLEAR_OPTIONS: ClearUsageLogsPayload = {
   clear_request_records: false,
 };
 
+function normalizeFilterSelection(selected: string[], allowedValues: string[]): string[] {
+  if (allowedValues.length === 0) return [];
+  const allowed = new Set(allowedValues);
+  return selected.filter(
+    (item, index) => allowed.has(item) && selected.indexOf(item) === index,
+  );
+}
+
+function toFilterParam(selected: string[], allowedValues: string[]): string[] | undefined {
+  const normalized = normalizeFilterSelection(selected, allowedValues);
+  if (normalized.length === 0 || normalized.length === allowedValues.length) return undefined;
+  return normalized;
+}
+
+function hasPartialFilterSelection(selected: string[], allowedValues: string[]): boolean {
+  const normalized = normalizeFilterSelection(selected, allowedValues);
+  return normalized.length > 0 && normalized.length < allowedValues.length;
+}
+
 // ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
@@ -117,98 +136,11 @@ export function RequestLogsPage() {
 
   const requestSeqRef = useRef(0);
 
-  const hasActiveFilters =
-    selectedApiKeys.length > 0 ||
-    selectedModels.length > 0 ||
-    selectedChannels.length > 0 ||
-    selectedStatuses.length > 0;
-
-  const resetFilters = useCallback(() => {
-    setSelectedApiKeys([]);
-    setSelectedModels([]);
-    setSelectedChannels([]);
-    setSelectedStatuses([]);
-  }, []);
-
-  // Fetch logs from backend (server-side pagination)
-  const fetchLogs = useCallback(
-    async (page: number, size: number) => {
-      const seq = ++requestSeqRef.current;
-      setLoading(true);
-
-      try {
-        const resp: UsageLogsResponse = await usageApi.getUsageLogs({
-          page,
-          size,
-          days: timeRange,
-          api_keys: selectedApiKeys.length > 0 ? selectedApiKeys : undefined,
-          models: selectedModels.length > 0 ? selectedModels : undefined,
-          channels: selectedChannels.length > 0 ? selectedChannels : undefined,
-          statuses: selectedStatuses.length > 0 ? selectedStatuses : undefined,
-        });
-
-        if (seq !== requestSeqRef.current) return;
-
-        setRawItems(resp.items ?? []);
-        setTotalCount(resp.total ?? 0);
-        setCurrentPage(page);
-        const filtersCandidate =
-          resp.filters && typeof resp.filters === "object" ? (resp.filters as any) : null;
-        setFilterOptions({
-          api_keys: Array.isArray(filtersCandidate?.api_keys) ? filtersCandidate.api_keys : [],
-          api_key_names:
-            filtersCandidate?.api_key_names &&
-            typeof filtersCandidate.api_key_names === "object" &&
-            !Array.isArray(filtersCandidate.api_key_names)
-              ? (filtersCandidate.api_key_names as Record<string, string>)
-              : {},
-          models: Array.isArray(filtersCandidate?.models) ? filtersCandidate.models : [],
-          channels: Array.isArray(filtersCandidate?.channels) ? filtersCandidate.channels : [],
-        });
-        setStats({
-          ...DEFAULT_LOG_STATS,
-          ...resp.stats,
-        });
-        setLastUpdatedAt(Date.now());
-      } catch (err) {
-        if (seq !== requestSeqRef.current) return;
-        const message = err instanceof Error ? err.message : t("request_logs.refresh_failed");
-        notify({ type: "error", message });
-      } finally {
-        if (seq === requestSeqRef.current) setLoading(false);
-      }
-    },
-    [timeRange, selectedApiKeys, selectedModels, selectedChannels, selectedStatuses, notify, t],
-  );
-
   // Derive display rows from raw items
   const rows = useMemo<LogRow[]>(
     () => (rawItems ?? []).map((item) => toRequestLogsRow(item)),
     [rawItems],
   );
-
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-
-  const handlePageChange = useCallback(
-    (page: number) => {
-      const clamped = Math.max(1, Math.min(page, totalPages));
-      fetchLogs(clamped, pageSize);
-    },
-    [fetchLogs, pageSize, totalPages],
-  );
-
-  const handlePageSizeChange = useCallback(
-    (newSize: number) => {
-      setPageSize(newSize);
-      fetchLogs(1, newSize);
-    },
-    [fetchLogs],
-  );
-
-  // Fetch page 1 when filters change
-  useEffect(() => {
-    fetchLogs(1, pageSize);
-  }, [timeRange, selectedApiKeys, selectedModels, selectedChannels, selectedStatuses]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Build multi-select options from backend filter data (exclude the "" "all" option)
   const keyOptions = useMemo<SearchableCheckboxMultiSelectOption[]>(() => {
@@ -245,6 +177,119 @@ export function RequestLogsPage() {
       { value: "failed", label: t("request_logs.status_failed"), searchText: "failed" },
     ];
   }, [t]);
+
+  const apiKeyFilterValues = useMemo(() => keyOptions.map((option) => option.value), [keyOptions]);
+  const modelFilterValues = useMemo(
+    () => modelOptions.map((option) => option.value),
+    [modelOptions],
+  );
+  const channelFilterValues = useMemo(
+    () => channelOptions.map((option) => option.value),
+    [channelOptions],
+  );
+  const statusFilterValues = useMemo(
+    () => statusOptions.map((option) => option.value),
+    [statusOptions],
+  );
+
+  const hasActiveFilters =
+    hasPartialFilterSelection(selectedApiKeys, apiKeyFilterValues) ||
+    hasPartialFilterSelection(selectedModels, modelFilterValues) ||
+    hasPartialFilterSelection(selectedChannels, channelFilterValues) ||
+    hasPartialFilterSelection(selectedStatuses, statusFilterValues);
+
+  const resetFilters = useCallback(() => {
+    setSelectedApiKeys([]);
+    setSelectedModels([]);
+    setSelectedChannels([]);
+    setSelectedStatuses([]);
+  }, []);
+
+  // Fetch logs from backend (server-side pagination)
+  const fetchLogs = useCallback(
+    async (page: number, size: number) => {
+      const seq = ++requestSeqRef.current;
+      setLoading(true);
+
+      try {
+        const resp: UsageLogsResponse = await usageApi.getUsageLogs({
+          page,
+          size,
+          days: timeRange,
+          api_keys: toFilterParam(selectedApiKeys, apiKeyFilterValues),
+          models: toFilterParam(selectedModels, modelFilterValues),
+          channels: toFilterParam(selectedChannels, channelFilterValues),
+          statuses: toFilterParam(selectedStatuses, statusFilterValues),
+        });
+
+        if (seq !== requestSeqRef.current) return;
+
+        setRawItems(resp.items ?? []);
+        setTotalCount(resp.total ?? 0);
+        setCurrentPage(page);
+        const filtersCandidate =
+          resp.filters && typeof resp.filters === "object" ? (resp.filters as any) : null;
+        setFilterOptions({
+          api_keys: Array.isArray(filtersCandidate?.api_keys) ? filtersCandidate.api_keys : [],
+          api_key_names:
+            filtersCandidate?.api_key_names &&
+            typeof filtersCandidate.api_key_names === "object" &&
+            !Array.isArray(filtersCandidate.api_key_names)
+              ? (filtersCandidate.api_key_names as Record<string, string>)
+              : {},
+          models: Array.isArray(filtersCandidate?.models) ? filtersCandidate.models : [],
+          channels: Array.isArray(filtersCandidate?.channels) ? filtersCandidate.channels : [],
+        });
+        setStats({
+          ...DEFAULT_LOG_STATS,
+          ...resp.stats,
+        });
+        setLastUpdatedAt(Date.now());
+      } catch (err) {
+        if (seq !== requestSeqRef.current) return;
+        const message = err instanceof Error ? err.message : t("request_logs.refresh_failed");
+        notify({ type: "error", message });
+      } finally {
+        if (seq === requestSeqRef.current) setLoading(false);
+      }
+    },
+    [
+      apiKeyFilterValues,
+      channelFilterValues,
+      modelFilterValues,
+      notify,
+      selectedApiKeys,
+      selectedChannels,
+      selectedModels,
+      selectedStatuses,
+      statusFilterValues,
+      t,
+      timeRange,
+    ],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  const handlePageChange = useCallback(
+    (page: number) => {
+      const clamped = Math.max(1, Math.min(page, totalPages));
+      fetchLogs(clamped, pageSize);
+    },
+    [fetchLogs, pageSize, totalPages],
+  );
+
+  const handlePageSizeChange = useCallback(
+    (newSize: number) => {
+      setPageSize(newSize);
+      fetchLogs(1, newSize);
+    },
+    [fetchLogs],
+  );
+
+  // Fetch page 1 when filters change
+  useEffect(() => {
+    fetchLogs(1, pageSize);
+  }, [timeRange, selectedApiKeys, selectedModels, selectedChannels, selectedStatuses]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const lastUpdatedText = useMemo(() => {
     if (loading) return t("request_logs.refreshing");
