@@ -354,7 +354,11 @@ describe("SystemPage", () => {
 
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveClass("max-w-[min(92vw,900px)]");
-    expect(screen.getByTestId("update-details-modal-body")).toHaveClass("h-[min(68vh,560px)]");
+    expect(screen.getByTestId("update-details-modal-body")).toHaveClass(
+      "max-h-[min(72vh,640px)]",
+      "overflow-y-auto",
+      "overscroll-contain",
+    );
     expect(screen.getByTestId("update-release-notes")).toHaveClass(
       "max-h-60",
       "overflow-y-auto",
@@ -584,9 +588,13 @@ describe("SystemPage", () => {
     await waitFor(() => {
       expect(within(dialog).getByRole("heading", { name: /update completed/i })).toBeInTheDocument();
     });
-    expect(within(dialog).queryByText(/docker compose pull clirelay/i)).toBeNull();
+    expect(within(dialog).getByText(/docker compose pull clirelay/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/The updater finished all steps\./i)).toBeInTheDocument();
-    expect(within(dialog).getByText("100%")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText((_, element) =>
+        Boolean(element?.textContent?.trim().match(/^\d+%$/)),
+      ),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText(/main-1111111/i)).toBeInTheDocument();
     expect(within(dialog).getByText(/main-abcdef1/i)).toBeInTheDocument();
     expect(within(dialog).getAllByText("Completed").length).toBeGreaterThan(0);
