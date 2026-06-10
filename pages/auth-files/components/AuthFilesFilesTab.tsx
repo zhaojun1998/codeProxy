@@ -899,6 +899,35 @@ export function AuthFilesFilesTab({
     ) : (
       selectionActionsMenu
     );
+  const modelOwnerToolbarButton = canSetModelOwnerGroup ? (
+    <HoverTooltip content={t("auth_files.model_owner_group")} placement="top">
+      <Button
+        variant="secondary"
+        size="sm"
+        className={[
+          "!h-8 px-3 text-xs",
+          selectedModelOwner
+            ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/10 dark:text-emerald-100 dark:hover:bg-emerald-400/15"
+            : "",
+        ].join(" ")}
+        onClick={() => {
+          setDraftModelOwner(selectedModelOwner);
+          setModelOwnerDialogOpen(true);
+        }}
+        aria-label={t("auth_files.model_owner_group")}
+        title={t("auth_files.model_owner_group")}
+      >
+        <Settings2 size={14} className="shrink-0" />
+        <span className="min-w-0 truncate">
+          {selectedModelOwnerGroup?.label ??
+            (selectedModelOwner || t("auth_files.auth_file_models_option"))}
+        </span>
+        {selectedModelOwner ? (
+          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+        ) : null}
+      </Button>
+    </HoverTooltip>
+  ) : null;
 
   const paginationBar = (
     <PaginationBar
@@ -984,43 +1013,6 @@ export function AuthFilesFilesTab({
                     />
                   </div>
                 </div>
-
-                {canSetModelOwnerGroup ? (
-                  <div className="w-full">
-                    <div className={FILTER_FIELD_CLASS}>
-                      <p className={FILTER_LABEL_CLASS}>{t("auth_files.model_owner_group")}</p>
-                      <HoverTooltip content={t("auth_files.model_owner_group")} placement="top">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className={[
-                            "relative w-full justify-start px-2.5 text-xs",
-                            selectedModelOwner
-                              ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-400/10 dark:text-emerald-100 dark:hover:bg-emerald-400/15"
-                              : "bg-[#EBEBEC] text-[#3F3F46] hover:bg-[#E4E4E7] dark:bg-[#27272A] dark:text-white/75 dark:hover:bg-[#303036]",
-                          ].join(" ")}
-                          onClick={() => {
-                            setDraftModelOwner(selectedModelOwner);
-                            setModelOwnerDialogOpen(true);
-                          }}
-                          aria-label={t("auth_files.model_owner_group")}
-                        >
-                          <Settings2 size={15} className="shrink-0" />
-                          <span className="min-w-0 flex-1 truncate text-left">
-                            {selectedModelOwnerGroup?.label ??
-                              (selectedModelOwner || t("auth_files.auth_file_models_option"))}
-                          </span>
-                          {selectedModelOwner ? (
-                            <span
-                              aria-hidden="true"
-                              className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500"
-                            />
-                          ) : null}
-                        </Button>
-                      </HoverTooltip>
-                    </div>
-                  </div>
-                ) : null}
 
                 {customTagOptions.length > 0 ? (
                   <div className="w-full">
@@ -1108,6 +1100,7 @@ export function AuthFilesFilesTab({
                   >
                     {renderFilesViewModeTabs}
                   </div>
+                  {modelOwnerToolbarButton}
                   {selectionToolbar}
                 </div>
 
