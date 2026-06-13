@@ -1405,6 +1405,15 @@ export function DataTable<T>({
     const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
     if (maxScrollLeft <= 0) return;
 
+    const dragOffsetX = getColumnReorderDragOffset(
+      active,
+      active.lastClientX,
+      container.scrollLeft,
+    );
+    active.currentToIndex = findColumnReorderTargetIndex(active, dragOffsetX);
+    const canMoveLeft = active.currentToIndex > active.allowedMinIndex;
+    const canMoveRight = active.currentToIndex < active.allowedMaxIndex;
+
     const leftIntensity = Math.max(
       0,
       Math.min(
@@ -1422,9 +1431,9 @@ export function DataTable<T>({
       ),
     );
     const direction =
-      leftIntensity > 0 && container.scrollLeft > 0
+      canMoveLeft && leftIntensity > 0 && container.scrollLeft > 0
         ? -1
-        : rightIntensity > 0 && container.scrollLeft < maxScrollLeft
+        : canMoveRight && rightIntensity > 0 && container.scrollLeft < maxScrollLeft
           ? 1
           : 0;
 

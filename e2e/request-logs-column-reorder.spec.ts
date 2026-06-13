@@ -94,6 +94,19 @@ const readTableState = async (page: Page) =>
     };
   });
 
+const scrollTableNearRightEdge = async (page: Page) =>
+  page.evaluate(() => {
+    const scroller = document.querySelector<HTMLElement>(".table-scrollbar");
+    if (!scroller) throw new Error("Missing table scroller");
+    const maxScrollLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+    scroller.scrollLeft = Math.max(0, maxScrollLeft - 120);
+    scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
+    return {
+      maxScrollLeft,
+      scrollLeft: scroller.scrollLeft,
+    };
+  });
+
 const readDragVisualState = async (page: Page) =>
   page.evaluate(() => {
     const isOpaque = (style: CSSStyleDeclaration, inlineBackground: string) =>
@@ -229,4 +242,45 @@ test("Request Logs: column reorder follows the pointer and auto-scrolls horizont
   await page.waitForTimeout(160);
   const visualAfterDrag = await readDragVisualState(page);
   expect(visualAfterDrag.inlineStylesCleared).toBe(true);
+});
+
+test("Request Logs: last column does not auto-scroll past the right reorder boundary", async ({
+  page,
+}) => {
+  await setAuthed(page);
+  await mockRequestLogsApis(page);
+
+  await page.goto("/manage/#/monitor/request-logs");
+  await page.locator('th[data-vt-column-key="model"]').waitFor({ state: "visible" });
+
+  const nearRight = await scrollTableNearRightEdge(page);
+  expect(nearRight.maxScrollLeft).toBeGreaterThan(160);
+  expect(nearRight.scrollLeft).toBeLessThan(nearRight.maxScrollLeft);
+
+  const dragStart = await page
+    .locator('th[data-vt-column-key="model"] [data-vt-column-reorder-handle]')
+    .evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+  const scrollerRight = await page.locator(".table-scrollbar").evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.right;
+  });
+
+  await page.mouse.move(dragStart.x, dragStart.y);
+  await page.mouse.down();
+  await page.waitForTimeout(130);
+  await page.mouse.move(scrollerRight - 8, dragStart.y, { steps: 8 });
+  await page.waitForTimeout(420);
+
+  const during = await readTableState(page);
+  expect(during.draggingCells).toBeGreaterThan(0);
+  expect(during.scrollLeft).toBeLessThanOrEqual(nearRight.scrollLeft + 2);
+
+  await page.mouse.up();
+
+  const after = await readTableState(page);
+  expect(after.draggingCells).toBe(0);
+  expect(after.order.at(-1)).toBe("model");
 });
