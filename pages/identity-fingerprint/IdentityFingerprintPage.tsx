@@ -98,6 +98,26 @@ function mergeClaude(
   };
 }
 
+function codexFromRecommendation(
+  current: Required<CodexIdentityFingerprint>,
+  recommendation: CodexFingerprintRecommendation,
+): Required<CodexIdentityFingerprint> {
+  const recommended = recommendation.recommended;
+  const nextCustomHeaders = { ...recommended["custom-headers"] };
+  const next: Required<CodexIdentityFingerprint> = {
+    ...current,
+    enabled: true,
+    "session-mode": recommended["session-mode"] ?? "per-request",
+    "session-id": "",
+    "custom-headers": nextCustomHeaders,
+  };
+  if (recommended["user-agent"]) next["user-agent"] = recommended["user-agent"];
+  if (recommended.version) next.version = recommended.version;
+  if (recommended.originator) next.originator = recommended.originator;
+  if (recommended["websocket-beta"]) next["websocket-beta"] = recommended["websocket-beta"];
+  return next;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
@@ -290,28 +310,31 @@ export function IdentityFingerprintPage() {
   }, []);
 
   const applyCodexRecommendation = useCallback(
-    (recommendation: CodexFingerprintRecommendation) => {
-      const recommended = recommendation.recommended;
-      const nextCustomHeaders = { ...recommended["custom-headers"] };
+    async (recommendation: CodexFingerprintRecommendation) => {
+      const nextCodex = codexFromRecommendation(codex, recommendation);
+      const nextCustomHeaders = nextCodex["custom-headers"];
+      setSaving(true);
+      setError("");
+      try {
+        await identityFingerprintApi.update({
+          codex: nextCodex,
+          claude,
+        });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : t("identity_fingerprint.save_failed");
+        setError(message);
+        notify({ type: "error", message });
+        throw err instanceof Error ? err : new Error(message);
+      } finally {
+        setSaving(false);
+      }
       setCustomHeadersText(JSON.stringify(nextCustomHeaders, null, 2));
-      setCodex((current) => {
-        const next: Required<CodexIdentityFingerprint> = {
-          ...current,
-          enabled: true,
-          "session-mode": recommended["session-mode"] ?? "per-request",
-          "session-id": "",
-          "custom-headers": nextCustomHeaders,
-        };
-        if (recommended["user-agent"]) next["user-agent"] = recommended["user-agent"];
-        if (recommended.version) next.version = recommended.version;
-        if (recommended.originator) next.originator = recommended.originator;
-        if (recommended["websocket-beta"]) next["websocket-beta"] = recommended["websocket-beta"];
-        return next;
-      });
+      setCodex(nextCodex);
       setCodexRecommendationsOpen(false);
       notify({ type: "success", message: t("identity_fingerprint.recommend_applied") });
+      await loadPage();
     },
-    [notify, t],
+    [claude, codex, loadPage, notify, t],
   );
 
   const saveConfigYaml = useCallback(

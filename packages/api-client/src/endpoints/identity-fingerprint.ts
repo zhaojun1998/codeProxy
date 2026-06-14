@@ -1,4 +1,4 @@
-import { apiClient } from "../client/client";
+import { apiClient, type RequestOptions } from "../client/client";
 
 export interface CodexIdentityFingerprint {
   enabled?: boolean;
@@ -71,10 +71,13 @@ export interface CodexFingerprintRecommendationsResponse {
 
 export const identityFingerprintApi = {
   get: () => apiClient.get<IdentityFingerprintResponse>("/identity-fingerprint"),
-  getCodexRecommendations: (params?: { days?: number; limit?: number }) =>
+  getCodexRecommendations: (
+    params?: { days?: number; limit?: number },
+    options?: Omit<RequestOptions, "params">,
+  ) =>
     apiClient.get<CodexFingerprintRecommendationsResponse>(
       "/identity-fingerprint/codex/recommendations",
-      { params },
+      { ...options, params },
     ),
   update: (payload: IdentityFingerprintConfig) =>
     apiClient.put<{ status: string }>("/identity-fingerprint", payload),
