@@ -131,6 +131,8 @@ const recommendationsPayload = {
 };
 
 const routeManagementMocks = async (page: Page) => {
+  let currentIdentityPayload = structuredClone(identityPayload);
+
   await page.route("**/v0/management/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname;
@@ -151,6 +153,14 @@ const routeManagementMocks = async (page: Page) => {
 
     if (path.endsWith("/v0/management/identity-fingerprint")) {
       if (route.request().method() === "PUT") {
+        const body = JSON.parse(route.request().postData() || "{}");
+        currentIdentityPayload = {
+          "identity-fingerprint": {
+            codex: body.codex ?? {},
+            claude: body.claude ?? {},
+          },
+          defaults: identityPayload.defaults,
+        };
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -162,7 +172,7 @@ const routeManagementMocks = async (page: Page) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify(identityPayload),
+        body: JSON.stringify(currentIdentityPayload),
       });
       return;
     }
@@ -224,15 +234,17 @@ test("Codex fingerprint recommendations modal stays contained and requires confi
   expect(overflow.bodyWidth).toBeLessThanOrEqual(overflow.viewportWidth + 1);
   expect(overflow.dialogScrollWidth).toBeLessThanOrEqual(overflow.dialogClientWidth + 1);
 
-  await modal.getByRole("button", { name: /Apply selected|应用选中/i }).click();
+  await modal.getByRole("button", { name: /Apply and save|应用并保存/i }).click();
   await expect.poll(() => hasFormValue(page, desktopUserAgent)).toBe(false);
 
   const confirm = page.getByRole("dialog", {
     name: /Apply this recommended fingerprint|应用这条推荐指纹/i,
   });
   await expect(confirm).toBeVisible();
-  await confirm.getByRole("button", { name: /Confirm apply|确认应用/i }).click();
+  await confirm.getByRole("button", { name: /Apply and save|应用并保存/i }).click();
 
+  await expect.poll(() => hasFormValue(page, desktopUserAgent)).toBe(true);
+  await page.reload();
   await expect.poll(() => hasFormValue(page, desktopUserAgent)).toBe(true);
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);

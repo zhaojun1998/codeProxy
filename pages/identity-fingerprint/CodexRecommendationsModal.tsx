@@ -8,6 +8,8 @@ import {
 } from "@code-proxy/api-client/endpoints/identity-fingerprint";
 import { Button, ConfirmModal, DataTable, Modal, type DataTableColumn } from "@code-proxy/ui";
 
+const RECOMMENDATIONS_TIMEOUT_MS = 15000;
+
 type RecommendationDiff = {
   key: string;
   label: string;
@@ -25,7 +27,7 @@ export function CodexRecommendationsModal({
   open: boolean;
   current: Required<CodexIdentityFingerprint>;
   currentCustomHeaders: Record<string, string>;
-  onApply: (recommendation: CodexFingerprintRecommendation) => void;
+  onApply: (recommendation: CodexFingerprintRecommendation) => Promise<void>;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -36,6 +38,7 @@ export function CodexRecommendationsModal({
   const [hasLoaded, setHasLoaded] = useState(false);
   const [error, setError] = useState("");
   const [confirmApplyOpen, setConfirmApplyOpen] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [summary, setSummary] = useState({ inspected: 0, matched: 0, days: 7 });
 
   const selected = useMemo(
@@ -43,16 +46,26 @@ export function CodexRecommendationsModal({
     [items, selectedId],
   );
 
-  const loadRecommendations = useCallback(async () => {
+  const loadRecommendations = useCallback(async (options?: { reset?: boolean }) => {
     const requestId = requestSeqRef.current + 1;
     requestSeqRef.current = requestId;
     setLoading(true);
     setError("");
+    if (options?.reset) {
+      setHasLoaded(false);
+      setItems([]);
+      setSelectedId("");
+    }
     try {
-      const payload = await identityFingerprintApi.getCodexRecommendations({
-        days: 7,
-        limit: 200,
-      });
+      const payload = await identityFingerprintApi.getCodexRecommendations(
+        {
+          days: 7,
+          limit: 200,
+        },
+        {
+          timeoutMs: RECOMMENDATIONS_TIMEOUT_MS,
+        },
+      );
       if (requestSeqRef.current !== requestId) return;
       setItems(payload.items);
       setSummary({
@@ -70,8 +83,10 @@ export function CodexRecommendationsModal({
       setError(
         err instanceof Error ? err.message : t("identity_fingerprint.recommend_load_failed"),
       );
-      setItems([]);
-      setSelectedId("");
+      if (options?.reset) {
+        setItems([]);
+        setSelectedId("");
+      }
     } finally {
       if (requestSeqRef.current === requestId) {
         setLoading(false);
@@ -80,18 +95,30 @@ export function CodexRecommendationsModal({
     }
   }, [t]);
 
+  const confirmApply = useCallback(async () => {
+    if (!selected) return;
+    setApplying(true);
+    setError("");
+    try {
+      await onApply(selected);
+      setConfirmApplyOpen(false);
+    } catch (err: unknown) {
+      setConfirmApplyOpen(false);
+      setError(err instanceof Error ? err.message : t("identity_fingerprint.save_failed"));
+    } finally {
+      setApplying(false);
+    }
+  }, [onApply, selected, t]);
+
   useEffect(() => {
     if (!open) {
       requestSeqRef.current += 1;
       setLoading(false);
       setConfirmApplyOpen(false);
+      setApplying(false);
       return;
     }
-    setHasLoaded(false);
-    setError("");
-    setItems([]);
-    setSelectedId("");
-    void loadRecommendations();
+    void loadRecommendations({ reset: true });
   }, [loadRecommendations, open]);
 
   const diffById = useMemo(() => {
@@ -169,7 +196,7 @@ export function CodexRecommendationsModal({
             <Button
               variant="primary"
               onClick={() => setConfirmApplyOpen(true)}
-              disabled={!selected || loading}
+              disabled={!selected || (loading && items.length === 0) || applying}
             >
               <Check size={15} />
               {t("identity_fingerprint.recommend_apply_selected")}
@@ -189,7 +216,7 @@ export function CodexRecommendationsModal({
               rows={items}
               columns={columns}
               rowKey={(item) => item.id}
-              loading={loading && !hasLoaded}
+              loading={loading && !hasLoaded && items.length === 0}
               rowHeight={58}
               height="h-[220px] sm:h-[300px] lg:h-[430px]"
               minHeight="min-h-[180px]"
@@ -202,7 +229,7 @@ export function CodexRecommendationsModal({
               rowAriaSelected={(item) => item.id === selected?.id}
               rowClassName={(item) =>
                 item.id === selected?.id
-                  ? "[&>td]:!bg-sky-50/90 dark:[&>td]:!bg-sky-400/10 [&>td:first-child]:shadow-[inset_3px_0_0_rgb(2_132_199)] dark:[&>td:first-child]:shadow-[inset_3px_0_0_rgb(56_189_248)]"
+                  ? "[&>td]:!bg-sky-100 dark:[&>td]:!bg-sky-400/15"
                   : "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-sky-500"
               }
             />
@@ -223,12 +250,11 @@ export function CodexRecommendationsModal({
         })}
         confirmText={t("identity_fingerprint.recommend_apply_confirm")}
         variant="primary"
-        onClose={() => setConfirmApplyOpen(false)}
-        onConfirm={() => {
-          if (!selected) return;
-          setConfirmApplyOpen(false);
-          onApply(selected);
+        busy={applying}
+        onClose={() => {
+          if (!applying) setConfirmApplyOpen(false);
         }}
+        onConfirm={() => void confirmApply()}
       />
     </>
   );
