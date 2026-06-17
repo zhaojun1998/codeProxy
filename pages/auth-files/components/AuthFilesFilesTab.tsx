@@ -1107,16 +1107,22 @@ export function AuthFilesFilesTab({
                 </div>
 
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="!h-8 px-2 text-xs"
-                    onClick={openGroupOverview}
-                    disabled={loading || groupOverviewLoading || filteredFiles.length === 0}
-                  >
-                    <BarChart3 size={14} className={groupOverviewLoading ? "animate-pulse" : ""} />
-                    {t("auth_files.group_overview_button")}
-                  </Button>
+                  <HoverTooltip content={t("auth_files.group_overview_button")}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={openGroupOverview}
+                      disabled={groupOverviewLoading}
+                      aria-label={t("auth_files.group_overview_button")}
+                      title={t("auth_files.group_overview_button")}
+                    >
+                      {groupOverviewLoading ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <BarChart3 size={15} />
+                      )}
+                    </Button>
+                  </HoverTooltip>
                   <HoverTooltip content={t("auth_files.refresh")}>
                     <Button
                       variant="secondary"
