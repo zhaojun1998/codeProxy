@@ -174,9 +174,16 @@ export const usageApi = {
   async getChartData(
     days = 7,
     apiKey = "",
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; range?: { start: string; end: string } },
   ): Promise<ChartDataResponse> {
-    const qs = new URLSearchParams({ days: String(days) });
+    const qs = new URLSearchParams();
+    // A custom [start,end] range takes precedence; otherwise fall back to days.
+    if (options?.range?.start && options?.range?.end) {
+      qs.set("start", options.range.start);
+      qs.set("end", options.range.end);
+    } else {
+      qs.set("days", String(days));
+    }
     if (apiKey && apiKey !== "all") qs.set("api_key", apiKey);
     const resp = await apiClient.get<ChartDataResponse>(`/usage/chart-data?${qs.toString()}`, {
       signal: options?.signal,
@@ -352,8 +359,19 @@ export const usageApi = {
     return apiClient.post<UsageImportResponse>("/usage/import", payload);
   },
 
-  getDashboardSummary(days = 7): Promise<DashboardSummary> {
-    return apiClient.get<DashboardSummary>(`/dashboard-summary?days=${days}`);
+  getDashboardSummary(
+    days = 7,
+    range?: { start: string; end: string },
+  ): Promise<DashboardSummary> {
+    const qs = new URLSearchParams();
+    // A custom [start,end] range takes precedence; otherwise fall back to days.
+    if (range?.start && range?.end) {
+      qs.set("start", range.start);
+      qs.set("end", range.end);
+    } else {
+      qs.set("days", String(days));
+    }
+    return apiClient.get<DashboardSummary>(`/dashboard-summary?${qs.toString()}`);
   },
 
   async getLogContent(id: number): Promise<LogContentResponse> {

@@ -1,5 +1,15 @@
 {
   "common": {
+    "date_picker": {
+      "picker": "日期选择器",
+      "open": "打开日期选择器",
+      "previous_month": "上个月",
+      "next_month": "下个月",
+      "today": "今天",
+      "clear": "清空",
+      "hour": "小时",
+      "minute": "分钟"
+    },
     "login": "登录",
     "logout": "登出",
     "back": "返回",
@@ -1748,7 +1758,10 @@
       "last_n_days": "{{n}} 天",
       "custom": "自定义",
       "to": "至",
-      "apply": "应用"
+      "apply": "应用",
+      "start": "开始日期",
+      "end": "结束日期",
+      "invalid_range": "开始日期不能晚于结束日期"
     },
     "failure": {
       "title": "失败来源分析",

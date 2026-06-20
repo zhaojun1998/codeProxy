@@ -47,6 +47,8 @@ export function MonitorPage() {
     compact,
     timeRange,
     setTimeRange,
+    customRange,
+    setCustomRange,
     apiFilterInput,
     setApiFilterInput,
     apiFilter,
@@ -105,6 +107,7 @@ export function MonitorPage() {
     try {
       const chartResp = await usageApi.getChartData(timeRange, apiFilter, {
         signal: abortController.signal,
+        range: customRange ?? undefined,
       });
       if (refreshRequestIdRef.current !== requestId || abortController.signal.aborted) {
         return;
@@ -125,7 +128,7 @@ export function MonitorPage() {
         setIsRefreshing(false);
       }
     }
-  }, [t, timeRange, apiFilter]);
+  }, [t, timeRange, apiFilter, customRange]);
 
   const metrics = useMemo(() => {
     let requests = 0;
@@ -604,6 +607,8 @@ export function MonitorPage() {
         t={t}
         timeRange={timeRange}
         setTimeRange={setTimeRange}
+        customRange={customRange}
+        setCustomRange={setCustomRange}
         apiFilterInput={apiFilterInput}
         setApiFilterInput={setApiFilterInput}
         applyFilter={applyFilter}
@@ -641,26 +646,28 @@ export function MonitorPage() {
         isRefreshing={isRefreshing}
       />
 
-      <MonitorHourlySections
-        t={t}
-        isRefreshing={isRefreshing}
-        modelHourWindow={modelHourWindow}
-        setModelHourWindow={setModelHourWindow}
-        hourlyModelLegendKeys={hourlyModelLegendKeys}
-        hourlyModelOption={hourlyModelOption}
-        hourlySeries={hourlySeries}
-        getHourlyModelSeriesLabel={getHourlyModelSeriesLabel}
-        hourlyModelPalette={hourlyModelPalette}
-        hourlyModelSelected={hourlyModelSelected}
-        toggleHourlyModelLegend={toggleHourlyModelLegend}
-        tokenHourWindow={tokenHourWindow}
-        setTokenHourWindow={setTokenHourWindow}
-        hourlyTokenOption={hourlyTokenOption}
-        hourlyTokenLabels={hourlyTokenLabels}
-        hourlyTokenPalette={hourlyTokenPalette}
-        hourlyTokenSelected={hourlyTokenSelected}
-        toggleHourlyTokenLegend={toggleHourlyTokenLegend}
-      />
+      {!customRange ? (
+        <MonitorHourlySections
+          t={t}
+          isRefreshing={isRefreshing}
+          modelHourWindow={modelHourWindow}
+          setModelHourWindow={setModelHourWindow}
+          hourlyModelLegendKeys={hourlyModelLegendKeys}
+          hourlyModelOption={hourlyModelOption}
+          hourlySeries={hourlySeries}
+          getHourlyModelSeriesLabel={getHourlyModelSeriesLabel}
+          hourlyModelPalette={hourlyModelPalette}
+          hourlyModelSelected={hourlyModelSelected}
+          toggleHourlyModelLegend={toggleHourlyModelLegend}
+          tokenHourWindow={tokenHourWindow}
+          setTokenHourWindow={setTokenHourWindow}
+          hourlyTokenOption={hourlyTokenOption}
+          hourlyTokenLabels={hourlyTokenLabels}
+          hourlyTokenPalette={hourlyTokenPalette}
+          hourlyTokenSelected={hourlyTokenSelected}
+          toggleHourlyTokenLegend={toggleHourlyTokenLegend}
+        />
+      ) : null}
     </div>
   );
 }

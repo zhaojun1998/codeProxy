@@ -44,6 +44,7 @@ import { useToast } from "@code-proxy/ui";
 import { EChart } from "@code-proxy/ui";
 import { ChartLegend } from "@code-proxy/ui";
 import { useInterval } from "@code-proxy/ui";
+import { CustomRangeFields, type CustomRange } from "@code-proxy/ui";
 
 type DashboardRange = 1 | 7 | 30;
 
@@ -435,24 +436,26 @@ function ThroughputTrendChart({
 }
 
 export function DashboardPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { notify } = useToast();
   const { stats, connected } = useSystemStats(5);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const summaryRef = useRef<DashboardSummary | null>(null);
   const [range, setRange] = useState<DashboardRange>(7);
+  const [customRange, setCustomRange] = useState<CustomRange | null>(null);
+  const [showCustom, setShowCustom] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [throughputLegend, setThroughputLegend] = useState({ rpm: true, tpm: true });
 
   const refresh = useCallback(
-    async (days: DashboardRange, silent = false) => {
+    async (days: DashboardRange, rangeOverride: CustomRange | null, silent = false) => {
       if (!silent) {
         setLoading(true);
         setError(null);
       }
       try {
-        const data = await usageApi.getDashboardSummary(days);
+        const data = await usageApi.getDashboardSummary(days, rangeOverride ?? undefined);
         summaryRef.current = data;
         setSummary(data);
         setError(null);
@@ -475,11 +478,13 @@ export function DashboardPage() {
   );
 
   useEffect(() => {
-    void refresh(range);
-  }, [refresh, range]);
+    void refresh(range, customRange);
+  }, [refresh, range, customRange]);
 
   useInterval(() => {
-    void refresh(range, true);
+    // Custom historical ranges are static; skip the silent auto-refresh.
+    if (customRange) return;
+    void refresh(range, null, true);
   }, 5000);
 
   const kpi = summary?.kpi;
@@ -530,22 +535,57 @@ export function DashboardPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Tabs
-            value={String(range)}
-            onValueChange={(next) => setRange(Number(next) as DashboardRange)}
-          >
-            <TabsList>
-              {([1, 7, 30] as DashboardRange[]).map((val) => (
-                <TabsTrigger key={val} value={String(val)}>
-                  {t(RANGE_KEYS[val])}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+          <div className="flex flex-col items-end gap-2">
+            <Tabs
+              value={showCustom ? "custom" : String(range)}
+              onValueChange={(next) => {
+                if (next === "custom") {
+                  setShowCustom(true);
+                  return;
+                }
+                setShowCustom(false);
+                setCustomRange(null);
+                setRange(Number(next) as DashboardRange);
+              }}
+            >
+              <TabsList>
+                {([1, 7, 30] as DashboardRange[]).map((val) => (
+                  <TabsTrigger key={val} value={String(val)}>
+                    {t(RANGE_KEYS[val])}
+                  </TabsTrigger>
+                ))}
+                <TabsTrigger value="custom">{t("monitor.time.custom")}</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {showCustom ? (
+              <CustomRangeFields
+                value={customRange}
+                onApply={setCustomRange}
+                locale={i18n.language}
+                labels={{
+                  start: t("monitor.time.start"),
+                  end: t("monitor.time.end"),
+                  to: t("monitor.time.to"),
+                  apply: t("monitor.time.apply"),
+                  invalidRange: t("monitor.time.invalid_range"),
+                  picker: {
+                    picker: t("common.date_picker.picker"),
+                    open: t("common.date_picker.open"),
+                    previousMonth: t("common.date_picker.previous_month"),
+                    nextMonth: t("common.date_picker.next_month"),
+                    today: t("common.date_picker.today"),
+                    clear: t("common.date_picker.clear"),
+                    hour: t("common.date_picker.hour"),
+                    minute: t("common.date_picker.minute"),
+                  },
+                }}
+              />
+            ) : null}
+          </div>
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => void refresh(range)}
+            onClick={() => void refresh(range, customRange)}
             disabled={loading}
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
@@ -560,7 +600,7 @@ export function DashboardPage() {
           description={error}
           icon={<TriangleAlert size={18} />}
           action={
-            <Button variant="secondary" onClick={() => void refresh(range)}>
+            <Button variant="secondary" onClick={() => void refresh(range, customRange)}>
               <RefreshCw size={14} />
               {t("dashboard.retry")}
             </Button>
@@ -659,18 +699,20 @@ export function DashboardPage() {
         apiKeyCount={summary?.counts.api_keys ?? 0}
       />
 
-      <ThroughputTrendChart
-        title={t("dashboard.throughput_title")}
-        points={throughputSeries}
-        rpm={stats?.total_rpm ?? 0}
-        tpm={stats?.total_tpm ?? 0}
-        connected={connected}
-        showRPM={throughputLegend.rpm}
-        showTPM={throughputLegend.tpm}
-        onToggle={(key) =>
-          setThroughputLegend((prev) => ({ ...prev, [key]: !prev[key as "rpm" | "tpm"] }))
-        }
-      />
+      {!customRange ? (
+        <ThroughputTrendChart
+          title={t("dashboard.throughput_title")}
+          points={throughputSeries}
+          rpm={stats?.total_rpm ?? 0}
+          tpm={stats?.total_tpm ?? 0}
+          connected={connected}
+          showRPM={throughputLegend.rpm}
+          showTPM={throughputLegend.tpm}
+          onToggle={(key) =>
+            setThroughputLegend((prev) => ({ ...prev, [key]: !prev[key as "rpm" | "tpm"] }))
+          }
+        />
+      ) : null}
     </div>
   );
 }

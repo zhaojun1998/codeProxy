@@ -1,5 +1,15 @@
 {
   "common": {
+    "date_picker": {
+      "picker": "Date picker",
+      "open": "Open date picker",
+      "previous_month": "Previous month",
+      "next_month": "Next month",
+      "today": "Today",
+      "clear": "Clear",
+      "hour": "Hour",
+      "minute": "Minute"
+    },
     "login": "Login",
     "logout": "Logout",
     "back": "Back",
@@ -1732,7 +1742,10 @@
       "last_n_days": "{{n}} Days",
       "custom": "Custom",
       "to": "to",
-      "apply": "Apply"
+      "apply": "Apply",
+      "start": "Start date",
+      "end": "End date",
+      "invalid_range": "Start date must not be after end date"
     },
     "failure": {
       "title": "Failure Analysis",
