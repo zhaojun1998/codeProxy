@@ -446,6 +446,12 @@ export interface DashboardSummary {
     total_tokens: number;
     total_cost: number;
     cache_rate: number;
+    avg_ttfb_ms: number;
+    min_ttfb_ms: number;
+    max_ttfb_ms: number;
+    tokens_per_second: number;
+    min_tokens_per_second: number;
+    max_tokens_per_second: number;
   };
   trends?: {
     request_volume?: DashboardTrendPoint[];

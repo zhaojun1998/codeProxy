@@ -147,6 +147,7 @@ export function MonitorPage() {
 
     const success = requests - failed;
     const rate = requests > 0 ? (success / requests) * 100 : 0;
+    const latency = chartData?.latency_throughput;
 
     return {
       totalRequests: requests,
@@ -156,6 +157,12 @@ export function MonitorPage() {
       inputTokens,
       outputTokens,
       totalTokens: inputTokens + outputTokens,
+      avgTtfbMs: latency?.avg_ttfb_ms ?? 0,
+      minTtfbMs: latency?.min_ttfb_ms ?? 0,
+      maxTtfbMs: latency?.max_ttfb_ms ?? 0,
+      tokensPerSecond: latency?.tokens_per_second ?? 0,
+      minTokensPerSecond: latency?.min_tokens_per_second ?? 0,
+      maxTokensPerSecond: latency?.max_tokens_per_second ?? 0,
     };
   }, [chartData]);
 

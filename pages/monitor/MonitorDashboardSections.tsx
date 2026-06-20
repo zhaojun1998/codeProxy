@@ -1,13 +1,17 @@
-import { Activity, ChartSpline, Coins, ShieldCheck, Sigma } from "lucide-react";
+import { Activity, ChartSpline, Clock, Coins, ShieldCheck, Sigma, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { HourWindow } from "@features/monitor-widgets/monitor-constants";
 import { formatNumber, formatRate } from "@features/monitor-widgets/monitor-utils";
+import { formatFixedNumber } from "@code-proxy/domain";
 import { AnimatedNumber } from "@code-proxy/ui";
 import { Reveal } from "@code-proxy/ui";
 import { EChart } from "@code-proxy/ui";
 import { ChartLegend } from "@code-proxy/ui";
 import { Tabs, TabsList, TabsTrigger } from "@code-proxy/ui";
 import { HourWindowSelector, KpiCard, MonitorCard as Card } from "@features/monitor-widgets";
+
+const formatTtfb = (value: number) => `${formatFixedNumber(value, { fractionDigits: 0 })} ms`;
+const formatTps = (value: number) => formatFixedNumber(value, { fractionDigits: 1 });
 
 function useDeferredMount(delayMs = 120) {
   const [mounted, setMounted] = useState(false);
@@ -36,6 +40,12 @@ export function MonitorKpiSection({
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
+    avgTtfbMs: number;
+    minTtfbMs: number;
+    maxTtfbMs: number;
+    tokensPerSecond: number;
+    minTokensPerSecond: number;
+    maxTokensPerSecond: number;
   };
   hasData: boolean;
   isLoading: boolean;
@@ -44,7 +54,7 @@ export function MonitorKpiSection({
   return (
     <>
       <Reveal>
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <KpiCard
             title={t("monitor.total_requests")}
             value={<AnimatedNumber value={metrics.totalRequests} format={formatNumber} />}
@@ -73,6 +83,24 @@ export function MonitorKpiSection({
               count: formatNumber(metrics.inputTokens),
             } as Record<string, unknown>)}
             icon={Coins}
+          />
+          <KpiCard
+            title={t("monitor.avg_ttfb")}
+            value={<AnimatedNumber value={metrics.avgTtfbMs} format={formatTtfb} />}
+            hint={t("monitor.ttfb_hint", {
+              min: formatTtfb(metrics.minTtfbMs),
+              max: formatTtfb(metrics.maxTtfbMs),
+            } as Record<string, unknown>)}
+            icon={Clock}
+          />
+          <KpiCard
+            title={t("monitor.tokens_per_second")}
+            value={<AnimatedNumber value={metrics.tokensPerSecond} format={formatTps} />}
+            hint={t("monitor.tps_hint", {
+              min: formatTps(metrics.minTokensPerSecond),
+              max: formatTps(metrics.maxTokensPerSecond),
+            } as Record<string, unknown>)}
+            icon={Zap}
           />
         </section>
       </Reveal>

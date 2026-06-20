@@ -10,12 +10,14 @@ import {
 import { Trans, useTranslation } from "react-i18next";
 import {
   Activity,
+  Clock,
   Database,
   DollarSign,
   RefreshCw,
   Sigma,
   Sparkles,
   TriangleAlert,
+  Zap,
 } from "lucide-react";
 import type { ECBasicOption } from "echarts/types/dist/shared";
 import {
@@ -128,6 +130,8 @@ const throughputNumberFormatter = new Intl.NumberFormat(undefined, {
 const formatThroughputValue = (value: number) =>
   throughputNumberFormatter.format(Number.isFinite(value) ? value : 0);
 const formatRate = (rate: number) => `${rate.toFixed(2)}%`;
+const formatTtfb = (value: number) => `${formatFixedNumber(value, { fractionDigits: 0 })} ms`;
+const formatTokensPerSecond = (value: number) => formatFixedNumber(value, { fractionDigits: 1 });
 const PANEL_SURFACE =
   "rounded-[18px] border border-slate-200/85 bg-white shadow-[0_10px_26px_rgba(15,23,42,0.05)] dark:border-neutral-800 dark:bg-neutral-950/85 dark:shadow-[0_10px_26px_rgba(0,0,0,0.28)]";
 
@@ -519,6 +523,8 @@ export function DashboardPage() {
     [trends?.failed_requests],
   );
   const cacheRateOption = useMemo(() => createSparklineOption([], "#f59e0b"), []);
+  const avgTtfbOption = useMemo(() => createSparklineOption([], "#6366f1"), []);
+  const tokensPerSecondOption = useMemo(() => createSparklineOption([], "#f97316"), []);
 
   return (
     <div className="space-y-4">
@@ -608,7 +614,7 @@ export function DashboardPage() {
         />
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <DashboardKpiCard
           title={t("dashboard.total_requests")}
           value={<DashboardMetricValue value={kpi?.total_requests ?? 0} animated />}
@@ -689,6 +695,36 @@ export function DashboardPage() {
           accent={{
             iconWrap: "bg-amber-50 dark:bg-amber-500/12",
             iconColor: "text-amber-600 dark:text-amber-400",
+          }}
+        />
+        <DashboardKpiCard
+          title={t("dashboard.avg_ttfb")}
+          value={<AnimatedNumber value={kpi?.avg_ttfb_ms ?? 0} format={formatTtfb} />}
+          hint={t("dashboard.ttfb_hint", {
+            min: formatTtfb(kpi?.min_ttfb_ms ?? 0),
+            max: formatTtfb(kpi?.max_ttfb_ms ?? 0),
+          })}
+          icon={Clock}
+          option={avgTtfbOption}
+          accent={{
+            iconWrap: "bg-indigo-50 dark:bg-indigo-500/12",
+            iconColor: "text-indigo-600 dark:text-indigo-400",
+          }}
+        />
+        <DashboardKpiCard
+          title={t("dashboard.tokens_per_second")}
+          value={
+            <AnimatedNumber value={kpi?.tokens_per_second ?? 0} format={formatTokensPerSecond} />
+          }
+          hint={t("dashboard.tps_hint", {
+            min: formatTokensPerSecond(kpi?.min_tokens_per_second ?? 0),
+            max: formatTokensPerSecond(kpi?.max_tokens_per_second ?? 0),
+          })}
+          icon={Zap}
+          option={tokensPerSecondOption}
+          accent={{
+            iconWrap: "bg-orange-50 dark:bg-orange-500/12",
+            iconColor: "text-orange-600 dark:text-orange-400",
           }}
         />
       </div>
