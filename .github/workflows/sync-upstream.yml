@@ -1,0 +1,33 @@
+name: Sync upstream
+
+# Keep the fork's main in sync with kittors/codeProxy. Merges directly; on
+# conflict the step fails and GitHub emails the failure so it can be resolved
+# by hand. The frontend ships inside the CliRelay image, which clones this
+# repo's main at build time, so no image rebuild is triggered from here.
+
+on:
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge upstream/main
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/kittors/codeProxy.git
+          git fetch upstream main
+          git merge --no-edit FETCH_HEAD
+          git push origin HEAD:main
