@@ -31,6 +31,7 @@ import { useAuthFilesFilesPresentation } from "./hooks/useAuthFilesFilesPresenta
 import { useAuthFilesListState } from "./hooks/useAuthFilesListState";
 import { useAuthFilesModelOwnerGroups } from "./hooks/useAuthFilesModelOwnerGroups";
 import { useAuthFilesQuotaState } from "./hooks/useAuthFilesQuotaState";
+import { useAuthFilesWindowCost } from "./hooks/useAuthFilesWindowCost";
 import { useAuthFilesGroupOverview } from "./hooks/useAuthFilesGroupOverview";
 import { useAuthFilesOAuthConfig } from "./hooks/useAuthFilesOAuthConfig";
 import { consumeCodexResetCredit, resolveQuotaProvider } from "@features/quota-preview/quota-fetch";
@@ -386,6 +387,12 @@ export function AuthFilesPage() {
     refreshUsageDataForFiles,
   });
 
+  const windowCostByFileName = useAuthFilesWindowCost({
+    tab: "files",
+    pageItems,
+    quotaByFileName,
+  });
+
   const refreshQuotaForFiles = useCallback(
     async (targetFiles: AuthFileItem[]) => {
       const targets = targetFiles.flatMap((file) => {
@@ -664,6 +671,7 @@ export function AuthFilesPage() {
         renderRestrictionBadges={renderRestrictionBadges}
         renderSubscriptionBadge={renderSubscriptionBadge}
         renderQuotaBar={renderQuotaBar}
+        windowCostByFileName={windowCostByFileName}
         openTagsEditor={(file) => setTagsEditorFileName(file.name)}
         openDetail={openDetailWithQuotaRefresh}
         downloadAuthFile={downloadAuthFile}

@@ -49,6 +49,9 @@ import {
   type QuotaState,
 } from "@features/quota-preview/quota-helpers";
 
+const formatCurrency = (value: number): string =>
+  `$${(Number.isFinite(value) ? value : 0).toFixed(4)}`;
+
 const KNOWN_QUOTA_TEXT_KEYS = new Set([
   "missing_auth_index",
   "no_model_quota",
@@ -461,11 +464,33 @@ export function useAuthFilesFilesPresentation({
   );
 
   const renderQuotaBar = useCallback(
-    (label: string, item: QuotaItem | null): ReactNode => {
+    (label: string, item: QuotaItem | null, windowCost?: number): ReactNode => {
       const tone = resolveQuotaVisualTone(item?.percent);
       const normalized = tone.normalized;
       const percentText = normalized === null ? "--" : `${Math.round(normalized)}%`;
       const resetText = formatQuotaResetTextCompact(item?.resetAtMs) ?? "--";
+
+      // percent is the *remaining* fraction, so utilisation = 100 - percent. The
+      // estimated window budget = cost-so-far ÷ utilisation; the estimate is
+      // dropped when utilisation is tiny (≈0) because the division explodes.
+      const usedPercent =
+        typeof item?.percent === "number" && Number.isFinite(item.percent)
+          ? 100 - item.percent
+          : null;
+      const cost =
+        typeof windowCost === "number" && Number.isFinite(windowCost) && windowCost > 0
+          ? windowCost
+          : null;
+      let costText: string | null = null;
+      if (cost !== null) {
+        costText =
+          usedPercent !== null && usedPercent >= 3
+            ? t("m_quota.used_with_estimate", {
+                used: formatCurrency(cost),
+                total: formatCurrency(cost / (usedPercent / 100)),
+              })
+            : t("m_quota.used_cost", { value: formatCurrency(cost) });
+      }
 
       return (
         <div key={label} className="space-y-1">
@@ -492,10 +517,15 @@ export function useAuthFilesFilesPresentation({
           <div className="truncate text-[10px] tabular-nums text-slate-500 dark:text-white/45">
             {resetText}
           </div>
+          {costText ? (
+            <div className="truncate text-[10px] tabular-nums text-slate-500 dark:text-white/55">
+              {costText}
+            </div>
+          ) : null}
         </div>
       );
     },
-    [formatQuotaResetTextCompact, translateQuotaText],
+    [formatQuotaResetTextCompact, t, translateQuotaText],
   );
 
   const fileColumns = useMemo<DataTableColumn<AuthFileItem>[]>(() => {

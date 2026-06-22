@@ -101,6 +101,16 @@ export interface AuthFileQuotaSnapshotPayload {
   quota_points?: AuthFileQuotaSnapshotPointPayload[];
 }
 
+export interface AuthFileWindowCostWindow {
+  key: string;
+  since: string; // RFC3339 lower bound of the quota window
+}
+
+export interface AuthFileWindowCostItem {
+  auth_index: string;
+  windows: AuthFileWindowCostWindow[];
+}
+
 export interface EntityStatsScope {
   authIndexes?: string[];
   sources?: string[];
@@ -270,6 +280,19 @@ export const usageApi = {
       hourly_usage: Array.isArray(resp?.hourly_usage) ? resp.hourly_usage : [],
       quota_series: Array.isArray(resp?.quota_series) ? resp.quota_series : [],
     };
+  },
+
+  // Returns per-account request cost accumulated since each quota window's
+  // start (one POST covers the whole page). The caller derives each window's
+  // `since` from the quota item's resetAt minus its window length.
+  async getAuthFileWindowCost(
+    items: AuthFileWindowCostItem[],
+  ): Promise<Record<string, Record<string, number>>> {
+    if (!items.length) return {};
+    const resp = await apiClient.post<{
+      costs?: Record<string, Record<string, number>>;
+    }>("/usage/auth-file-window-cost", { items });
+    return resp?.costs ?? {};
   },
 
   async recordAuthFileQuotaSnapshot(

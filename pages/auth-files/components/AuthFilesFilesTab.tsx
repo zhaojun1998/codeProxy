@@ -523,6 +523,7 @@ interface AuthFilesFilesTabProps {
   filesViewMode: FilesViewMode;
   selectedFileNameSet: Set<string>;
   quotaByFileName: Record<string, QuotaState>;
+  windowCostByFileName?: Record<string, Record<string, number>>;
   resolveQuotaProvider: (file: AuthFileItem) => QuotaProvider | null;
   resolveQuotaCardSlots: (
     provider: QuotaProvider,
@@ -543,7 +544,7 @@ interface AuthFilesFilesTabProps {
   translateQuotaText: (text: string) => string;
   renderRestrictionBadges: (file: AuthFileItem) => ReactNode | null;
   renderSubscriptionBadge: (file: AuthFileItem) => ReactNode | null;
-  renderQuotaBar: (label: string, item: QuotaItem | null) => ReactNode;
+  renderQuotaBar: (label: string, item: QuotaItem | null, windowCost?: number) => ReactNode;
   openTagsEditor: (file: AuthFileItem) => void;
   openDetail: (file: AuthFileItem) => Promise<void>;
   downloadAuthFile: (file: AuthFileItem) => Promise<void>;
@@ -606,6 +607,7 @@ export function AuthFilesFilesTab({
   filesViewMode,
   selectedFileNameSet,
   quotaByFileName,
+  windowCostByFileName,
   resolveQuotaProvider,
   resolveQuotaCardSlots,
   refreshQuota,
@@ -1484,7 +1486,15 @@ export function AuthFilesFilesTab({
                           <div className="text-xs text-slate-400 dark:text-white/40">--</div>
                         ) : slots.length > 0 ? (
                           <div className="space-y-2.5">
-                            {slots.map((slot) => renderQuotaBar(slot.label, slot.item))}
+                            {slots.map((slot) =>
+                              renderQuotaBar(
+                                slot.label,
+                                slot.item,
+                                windowCostByFileName?.[file.name]?.[
+                                  slot.item?.key ?? slot.item?.label ?? ""
+                                ],
+                              ),
+                            )}
                           </div>
                         ) : (
                           <div className="text-xs text-slate-400 dark:text-white/40">--</div>
