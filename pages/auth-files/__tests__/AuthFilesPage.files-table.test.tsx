@@ -2765,7 +2765,7 @@ describe("AuthFilesPage files table", () => {
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 
-  test("cards view does not schedule quota countdown ticks when auto-refresh is off", async () => {
+  test("cards view keeps the quota countdown clock ticking when auto-refresh is off", async () => {
     const now = Date.parse("2026-05-12T08:00:00.000Z");
     vi.spyOn(Date, "now").mockReturnValue(now);
     const intervalSpy = vi.spyOn(window, "setInterval");
@@ -2812,7 +2812,10 @@ describe("AuthFilesPage files table", () => {
 
     const cards = await screen.findByTestId("auth-files-cards");
     expect(within(cards).getByText("10秒")).toBeInTheDocument();
-    expect(intervalSpy.mock.calls.some(([, delay]) => delay === 10_000)).toBe(false);
+    // The countdown clock must keep advancing even with data auto-refresh off,
+    // otherwise nowMs freezes and a later manual refresh inflates the countdown
+    // (e.g. a 5h window rendering as 8h).
+    expect(intervalSpy.mock.calls.some(([, delay]) => delay === 10_000)).toBe(true);
   });
 
   test("cards view keeps weekly quota reset separate from five-hour reset and hides file modified time", async () => {

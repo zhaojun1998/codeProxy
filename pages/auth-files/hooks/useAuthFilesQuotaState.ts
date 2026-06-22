@@ -86,11 +86,17 @@ export function useAuthFilesQuotaState({
     [quotaAutoRefreshMsRaw],
   );
 
+  // The reset countdown clock must advance on its own, independent of whether
+  // quota data auto-refresh is enabled. Otherwise nowMs freezes at mount time
+  // while a manual refresh moves resetAtMs forward, inflating the countdown
+  // (e.g. a 5h window rendering as 8h). Keep the faster cadence when auto-refresh
+  // is on; fall back to a 10s tick when it's off so the clock never stalls.
+  const clockTickMs = quotaAutoRefreshMs > 0 ? Math.min(10_000, quotaAutoRefreshMs) : 10_000;
   useInterval(
     () => {
       setNowMs(Date.now());
     },
-    tab === "files" && quotaAutoRefreshMs > 0 ? Math.min(10_000, quotaAutoRefreshMs) : null,
+    tab === "files" ? clockTickMs : null,
   );
 
   useEffect(() => {
