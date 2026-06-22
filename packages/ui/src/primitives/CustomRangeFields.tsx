@@ -2,8 +2,8 @@ import { useState } from "react";
 import { DateTimePicker, type DateTimePickerLabels } from "./DateTimePicker";
 
 export interface CustomRange {
-  start: string; // YYYY-MM-DD
-  end: string; // YYYY-MM-DD
+  start: string; // YYYY-MM-DDTHH:mm
+  end: string; // YYYY-MM-DDTHH:mm
 }
 
 export interface CustomRangeLabels {
@@ -24,33 +24,38 @@ interface CustomRangeFieldsProps {
 
 const pad2 = (value: number): string => String(value).padStart(2, "0");
 
-const toDateValue = (date: Date): string =>
-  `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+const toDateTimeValue = (date: Date): string =>
+  `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}` +
+  `T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 
-const dateOnly = (value: string): string => value.slice(0, 10);
+// Promote a legacy date-only value ("YYYY-MM-DD") to the datetime form the
+// picker and backend expect; leave already-datetime values untouched.
+const ensureDateTime = (value: string): string =>
+  value.length === 10 ? `${value}T00:00` : value;
 
 const defaultRange = (): CustomRange => {
   const end = new Date();
   const start = new Date();
   start.setDate(end.getDate() - 6);
-  return { start: toDateValue(start), end: toDateValue(end) };
+  start.setHours(0, 0, 0, 0);
+  return { start: toDateTimeValue(start), end: toDateTimeValue(end) };
 };
 
 /**
- * CustomRangeFields lets the user pick an arbitrary [start, end] date range.
+ * CustomRangeFields lets the user pick an arbitrary [start, end] datetime range.
  * It is a presentational control: all copy is provided via `labels` so it can
- * be reused across pages without depending on i18n. Statistics are bucketed by
- * day, so only the date part of each value is emitted on apply.
+ * be reused across pages without depending on i18n. The full "YYYY-MM-DDTHH:mm"
+ * value (including the time of day) is emitted on apply so the backend can
+ * honour minute-level ranges.
  */
 export function CustomRangeFields({ value, onApply, labels, locale }: CustomRangeFieldsProps) {
   const initial = value ?? defaultRange();
-  // DateTimePicker works with "YYYY-MM-DDTHH:mm"; only the date part is used.
-  const [start, setStart] = useState(`${initial.start}T00:00`);
-  const [end, setEnd] = useState(`${initial.end}T00:00`);
+  const [start, setStart] = useState(ensureDateTime(initial.start));
+  const [end, setEnd] = useState(ensureDateTime(initial.end));
 
-  const startDate = dateOnly(start);
-  const endDate = dateOnly(end);
-  const invalid = !startDate || !endDate || startDate > endDate;
+  // ISO "YYYY-MM-DDTHH:mm" strings sort identically as plain text, so a direct
+  // comparison is enough to reject an empty or inverted range.
+  const invalid = !start || !end || start >= end;
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -72,7 +77,7 @@ export function CustomRangeFields({ value, onApply, labels, locale }: CustomRang
       <button
         type="button"
         disabled={invalid}
-        onClick={() => onApply({ start: startDate, end: endDate })}
+        onClick={() => onApply({ start, end })}
         title={invalid ? labels.invalidRange : undefined}
         className="rounded-full bg-[#18181B] px-4 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#27272A] disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-[#18181B] dark:hover:bg-white/90"
       >
