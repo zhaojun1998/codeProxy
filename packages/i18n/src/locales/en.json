@@ -2293,6 +2293,8 @@
     "lookup": "Lookup Usage"
   },
   "m_quota": {
+    "used_cost": "Used {{value}}",
+    "used_with_estimate": "Used {{used}} · est. {{total}}",
     "title": "Quota Management",
     "refresh_all": "Refresh All",
     "refresh_files": "Refresh Files",
