@@ -1,9 +1,22 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const setAuthed = async (page: Page) => {
-  await page.addInitScript(() => {
+const API_KEYS_COLUMN_WIDTH_STORAGE_KEY = "codeProxy.dataTable.columnWidths.v1.api-keys";
+
+type SetAuthedOptions = {
+  columnWidths?: Record<string, number>;
+};
+
+const setAuthed = async (page: Page, options: SetAuthedOptions = {}) => {
+  await page.addInitScript((authOptions: SetAuthedOptions) => {
     localStorage.removeItem("codeProxy.dataTable.columnOrder.v1.api-keys");
-    localStorage.removeItem("codeProxy.dataTable.columnWidths.v1.api-keys");
+    if (authOptions.columnWidths) {
+      localStorage.setItem(
+        "codeProxy.dataTable.columnWidths.v1.api-keys",
+        JSON.stringify(authOptions.columnWidths),
+      );
+    } else {
+      localStorage.removeItem("codeProxy.dataTable.columnWidths.v1.api-keys");
+    }
     localStorage.setItem(
       "code-proxy-admin-auth",
       JSON.stringify({
@@ -13,7 +26,7 @@ const setAuthed = async (page: Page) => {
         expiresAt: Date.now() + 24 * 60 * 60 * 1000,
       }),
     );
-  });
+  }, options);
 };
 
 const mockApiKeysApis = async (page: Page) => {
@@ -197,4 +210,71 @@ test("API Keys: limited model summary truncates inside the rounded pill", async 
   expect(summaryState.textScrollWidth).toBeGreaterThan(summaryState.textClientWidth);
   expect(summaryState.borderRightWidth).toBe("1px");
   expect(Number.parseFloat(summaryState.borderTopRightRadius)).toBeGreaterThan(0);
+});
+
+test("API Keys: restored wider columns keep resize preview at the minimum boundary", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1360, height: 980 });
+  await setAuthed(page, { columnWidths: { createdAt: 360 } });
+  await mockApiKeysApis(page);
+
+  await page.goto("/#/api-keys");
+  const header = page.locator('th[data-vt-column-key="createdAt"]');
+  await header.waitFor({ state: "visible" });
+  await header.scrollIntoViewIfNeeded();
+  await expect
+    .poll(async () =>
+      Math.round(await header.evaluate((element) => element.getBoundingClientRect().width)),
+    )
+    .toBeGreaterThanOrEqual(359);
+
+  const dragStart = await header.locator("[data-vt-column-resizer]").evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const headerRect = element.closest("th")?.getBoundingClientRect();
+    return {
+      x: headerRect ? Math.min(rect.left + rect.width / 2, headerRect.right - 2) : rect.left,
+      y: rect.top + rect.height / 2,
+    };
+  });
+
+  await page.mouse.move(dragStart.x, dragStart.y);
+  await page.mouse.down();
+  await page.mouse.move(dragStart.x - 640, dragStart.y, { steps: 10 });
+  await page.locator("[data-vt-column-resize-preview-line]").waitFor({ state: "visible" });
+
+  const state = await page.evaluate(() => {
+    const headerElement = document.querySelector<HTMLElement>('th[data-vt-column-key="createdAt"]');
+    const previewLine = document.querySelector<HTMLElement>("[data-vt-column-resize-preview-line]");
+    if (!headerElement || !previewLine) throw new Error("Missing resize state");
+
+    const headerRect = headerElement.getBoundingClientRect();
+    const previewRect = previewLine.getBoundingClientRect();
+    const previewCenter = previewRect.left + previewRect.width / 2;
+    return {
+      headerLeft: headerRect.left,
+      headerRight: headerRect.right,
+      headerWidth: headerRect.width,
+      previewCenter,
+      minBoundary: headerRect.left + 168,
+    };
+  });
+  expect(state.previewCenter).toBeGreaterThanOrEqual(state.minBoundary - 1);
+  expect(state.previewCenter).toBeLessThanOrEqual(state.minBoundary + 1);
+
+  await page.mouse.up();
+
+  await expect
+    .poll(async () =>
+      page.evaluate((storageKey) => {
+        const storedWidths = JSON.parse(localStorage.getItem(storageKey) ?? "{}") as Record<
+          string,
+          unknown
+        >;
+        return typeof storedWidths.createdAt === "number"
+          ? Math.round(storedWidths.createdAt)
+          : null;
+      }, API_KEYS_COLUMN_WIDTH_STORAGE_KEY),
+    )
+    .toBe(168);
 });

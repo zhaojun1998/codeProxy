@@ -280,10 +280,15 @@ function resolveWidthClassPx(width: string | undefined, prefix: string) {
 }
 
 function resolveColumnMinWidth<T>(column: DataTableColumn<T>) {
-  return column.minWidthPx ?? resolveWidthClassPx(column.width, "min-w") ?? DEFAULT_MIN_COLUMN_WIDTH;
+  return (
+    column.minWidthPx ?? resolveWidthClassPx(column.width, "min-w") ?? DEFAULT_MIN_COLUMN_WIDTH
+  );
 }
 
-function resolveColumnMaxWidth<T>(column: DataTableColumn<T>, minWidth = resolveColumnMinWidth(column)) {
+function resolveColumnMaxWidth<T>(
+  column: DataTableColumn<T>,
+  minWidth = resolveColumnMinWidth(column),
+) {
   return Math.max(minWidth, column.maxWidthPx ?? DEFAULT_MAX_COLUMN_WIDTH);
 }
 
@@ -351,6 +356,14 @@ function logColumnResizeDebug(event: string, payload: Record<string, unknown>) {
   if (!shouldDebugColumnResize()) return;
   // eslint-disable-next-line no-console
   console.debug("[DataTable resize]", event, payload);
+}
+
+function resolveColumnResizeWidth(active: ColumnResizeState, pointerClientX: number) {
+  const rawBoundaryClientX = pointerClientX + active.pointerBoundaryOffsetClientX;
+  return Math.max(
+    active.minWidth,
+    Math.min(active.maxWidth, Math.round(rawBoundaryClientX - active.startLeftClientX)),
+  );
 }
 
 function shouldAllowColumnResize<T>(
@@ -1078,14 +1091,15 @@ export function DataTable<T>({
       pointerClientX: number,
       pointerClientY: number,
     ): ColumnResizePreview | null => {
-      const minBoundaryClientX = active.startLeftClientX + active.minWidth;
-      const maxBoundaryClientX = active.startLeftClientX + active.maxWidth;
-      const rawBoundaryClientX = pointerClientX + active.pointerBoundaryOffsetClientX;
+      const width = resolveColumnResizeWidth(active, pointerClientX);
+      const headerRect = headerCellsRef.current[active.columnKey]?.getBoundingClientRect();
+      const visualLeftClientX = headerRect?.left ?? active.startLeftClientX;
+      const minBoundaryClientX = visualLeftClientX + active.minWidth;
+      const maxBoundaryClientX = visualLeftClientX + active.maxWidth;
       const lineCenterClientX = Math.max(
         minBoundaryClientX,
-        Math.min(maxBoundaryClientX, rawBoundaryClientX),
+        Math.min(maxBoundaryClientX, visualLeftClientX + width),
       );
-      const width = Math.round(lineCenterClientX - active.startLeftClientX);
       const top = active.previewTop;
       const bottomInset = hasHorizontalOverflow(scrollMetricsRef.current) ? 14 : 0;
       const bottom = Math.max(top, active.previewBottom - bottomInset);
@@ -1142,20 +1156,14 @@ export function DataTable<T>({
 
     pendingColumnResizePointerRef.current = null;
 
-    const minBoundaryClientX = active.startLeftClientX + active.minWidth;
-    const maxBoundaryClientX = active.startLeftClientX + active.maxWidth;
-    const lineCenterClientX = Math.max(
-      minBoundaryClientX,
-      Math.min(maxBoundaryClientX, pointer.clientX + active.pointerBoundaryOffsetClientX),
-    );
-    const roundedWidth = Math.round(lineCenterClientX - active.startLeftClientX);
+    const roundedWidth = resolveColumnResizeWidth(active, pointer.clientX);
 
     active.currentWidth = roundedWidth;
     applyColumnWidthToDom(active.columnKey, roundedWidth);
     const preview = {
       ...(buildColumnResizePreview(active, pointer.clientX, pointer.clientY) ?? {
         width: roundedWidth,
-        left: lineCenterClientX - COLUMN_RESIZE_PREVIEW_LINE_WIDTH / 2,
+        left: active.startLeftClientX + roundedWidth - COLUMN_RESIZE_PREVIEW_LINE_WIDTH / 2,
         top: active.previewTop,
         height: Math.max(0, active.previewBottom - active.previewTop),
         tooltipTop: active.previewTop,
@@ -1245,6 +1253,8 @@ export function DataTable<T>({
       const minWidth = resolveColumnMinWidth(column);
       const maxWidth = resolveColumnMaxWidth(column, minWidth);
       const nextStartWidth = Math.max(minWidth, Math.min(maxWidth, startWidth));
+      const startLeftClientX = rect.right - nextStartWidth;
+      const startBoundaryClientX = startLeftClientX + nextStartWidth;
 
       e.preventDefault();
       e.stopPropagation();
@@ -1253,8 +1263,8 @@ export function DataTable<T>({
       const resizeState = {
         pointerId: e.pointerId,
         columnKey: column.key,
-        startLeftClientX: rect.left,
-        pointerBoundaryOffsetClientX: rect.right - e.clientX,
+        startLeftClientX,
+        pointerBoundaryOffsetClientX: startBoundaryClientX - e.clientX,
         minWidth,
         maxWidth,
         previewTop: Math.max(0, containerRect?.top ?? rect.top),
@@ -1277,7 +1287,7 @@ export function DataTable<T>({
           tableId,
           columnKey: column.key,
           pointerX: Math.round(e.clientX),
-          headerLeft: Math.round(rect.left),
+          headerLeft: Math.round(startLeftClientX),
           headerRight: Math.round(rect.right),
           headerWidth: Math.round(rect.width),
           previewCenterX: preview
@@ -1940,6 +1950,7 @@ export function DataTable<T>({
           <>
             <div
               ref={resizePreviewLineRef}
+              data-vt-column-resize-preview-line
               aria-hidden="true"
               className="pointer-events-none fixed z-[1000] w-0.5 bg-slate-500/70"
               style={{
@@ -1950,6 +1961,7 @@ export function DataTable<T>({
             />
             <div
               ref={resizePreviewTooltipRef}
+              data-vt-column-resize-preview-tooltip
               role="status"
               className="pointer-events-none fixed z-[1001] rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-lg dark:bg-white dark:text-neutral-950"
               style={{
@@ -2089,7 +2101,9 @@ export function DataTable<T>({
                             ? "group-hover/column:pl-5 group-hover/column:transition-[padding] group-focus-within/column:pl-5 data-[vt-reorder-active=true]:pl-5"
                             : ""
                         }`}
-                        data-vt-reorder-active={activeReorderColumnKey === col.key ? "true" : undefined}
+                        data-vt-reorder-active={
+                          activeReorderColumnKey === col.key ? "true" : undefined
+                        }
                       >
                         {col.headerRender ? col.headerRender() : col.label}
                       </div>
@@ -2224,7 +2238,9 @@ export function DataTable<T>({
                             <td
                               key={col.key}
                               data-vt-column-key={col.key}
-                              data-vt-column-settled-cell={isSettledReorderColumn ? true : undefined}
+                              data-vt-column-settled-cell={
+                                isSettledReorderColumn ? true : undefined
+                              }
                               style={resolveColumnStyle(col)}
                               className={`overflow-hidden px-4 py-2.5 align-middle ${
                                 naturalFlow
