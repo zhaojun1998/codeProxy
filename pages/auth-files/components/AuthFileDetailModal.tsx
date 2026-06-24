@@ -720,10 +720,13 @@ export function AuthFileDetailModal({
     const identityFieldRows = [...effectiveRows, ...learnedRows, ...observedHeaderRows];
 
     return (
-      <div className="space-y-4" data-testid="auth-file-identity-fingerprint">
-        <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(17rem,0.78fr)_minmax(0,1.65fr)]">
+      <div
+        className="flex h-full min-h-0 flex-col overflow-hidden"
+        data-testid="auth-file-identity-fingerprint"
+      >
+        <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 overflow-hidden lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] lg:grid-rows-1">
           <aside
-            className="min-w-0 rounded-lg bg-slate-50/80 px-4 py-4 dark:bg-white/[0.04]"
+            className="min-h-0 min-w-0 overflow-hidden rounded-lg bg-slate-50/80 px-4 py-4 dark:bg-white/[0.04]"
             data-testid="auth-file-identity-summary"
           >
             <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
@@ -775,7 +778,10 @@ export function AuthFileDetailModal({
             </div>
           </aside>
 
-          <section className="min-w-0 space-y-3" data-testid="auth-file-identity-fields">
+          <section
+            className="flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden"
+            data-testid="auth-file-identity-fields"
+          >
             {identityFingerprintLoading && !identityFingerprintDetail ? (
               <div
                 className="grid gap-2 rounded-lg bg-slate-50/80 px-3 py-3 dark:bg-white/[0.04]"
@@ -796,7 +802,7 @@ export function AuthFileDetailModal({
 
             {identityFingerprintDetail ? (
               <>
-                <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-slate-900 dark:text-white">
                     {t("auth_files.identity_fingerprint_title")}
                   </p>
@@ -804,21 +810,22 @@ export function AuthFileDetailModal({
                     {t("auth_files.count_items", { count: identityFieldRows.length })}
                   </span>
                 </div>
-                <DataTable<IdentityFingerprintFieldRow>
-                  rows={identityFieldRows}
-                  columns={identityFieldColumns}
-                  rowKey={(row) => row.id}
-                  rowHeight={48}
-                  minWidth="min-w-[920px]"
-                  minHeight="min-h-0"
-                  height="h-auto"
-                  naturalFlow
-                  caption={t("auth_files.identity_fingerprint_title")}
-                  emptyText={t("auth_files.identity_fingerprint_no_fields")}
-                  showAllLoadedMessage={false}
-                  columnReorderable={false}
-                  persistColumnOrder={false}
-                />
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <DataTable<IdentityFingerprintFieldRow>
+                    rows={identityFieldRows}
+                    columns={identityFieldColumns}
+                    rowKey={(row) => row.id}
+                    rowHeight={48}
+                    minWidth="min-w-[920px]"
+                    minHeight="min-h-0"
+                    height="h-full"
+                    caption={t("auth_files.identity_fingerprint_title")}
+                    emptyText={t("auth_files.identity_fingerprint_no_fields")}
+                    showAllLoadedMessage={false}
+                    columnReorderable={false}
+                    persistColumnOrder={false}
+                  />
+                </div>
               </>
             ) : null}
           </section>
@@ -1079,7 +1086,12 @@ export function AuthFileDetailModal({
             </div>
 
             <div
-              className="mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1"
+              className={[
+                "mt-4 min-h-0 flex-1",
+                detailTab === "identity"
+                  ? "overflow-hidden pr-0"
+                  : "overflow-y-auto overscroll-contain pr-1",
+              ].join(" ")}
               data-testid="auth-file-detail-scroll"
             >
               {supportsUsageTrend ? (
@@ -1089,7 +1101,7 @@ export function AuthFileDetailModal({
               ) : null}
 
               {hasIdentityFingerprint ? (
-                <TabsContent value="identity" className="pb-1">
+                <TabsContent value="identity" className="h-full min-h-0 pb-0">
                   {renderIdentityFingerprint()}
                 </TabsContent>
               ) : null}

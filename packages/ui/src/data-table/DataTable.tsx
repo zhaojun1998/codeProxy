@@ -93,7 +93,7 @@ export interface DataTableProps<T> {
   onRowClick?: (row: T, index: number) => void;
   /** Optional selected state for row interaction semantics. */
   rowAriaSelected?: (row: T, index: number) => boolean;
-  /** Let parent scroll containers handle wheel events when this table is already at an edge. */
+  /** Let parent scroll containers handle wheel/touch scroll chaining when this table is already at an edge. */
   allowWheelPropagationAtBoundary?: boolean;
   /** Render the table in normal document flow without any internal table scrollbars. */
   naturalFlow?: boolean;
@@ -2008,7 +2008,9 @@ export function DataTable<T>({
         className={
           naturalFlow
             ? "relative z-10 min-h-0 overflow-visible rounded-xl"
-            : "relative col-start-1 row-start-1 h-full min-h-0 table-scrollbar overflow-auto overscroll-x-none overscroll-y-none"
+            : `relative col-start-1 row-start-1 h-full min-h-0 table-scrollbar overflow-auto overscroll-x-none ${
+                allowWheelPropagationAtBoundary ? "overscroll-y-auto" : "overscroll-y-none"
+              }`
         }
       >
         <div data-vt-scroll-content className={`relative ${scrollContentClassName ?? ""}`}>
