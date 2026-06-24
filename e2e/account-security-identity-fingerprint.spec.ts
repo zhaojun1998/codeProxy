@@ -2,6 +2,18 @@ import { expect, test, type Page } from "@playwright/test";
 
 const codexTerminalUserAgent = "codex_cli_rs/0.125.0 (Mac OS 26.0.1; arm64) Apple_Terminal/464";
 const codexBetaFeatures = "terminal_resize_reflow,memories,goals";
+const codexExtraLearnedFields = Object.fromEntries(
+  Array.from({ length: 18 }, (_, index) => {
+    const number = String(index + 1).padStart(2, "0");
+    return [`x-codex-learned-${number}`, `learned-value-${number}`];
+  }),
+);
+const codexExtraEffectiveFields = Object.fromEntries(
+  Object.entries(codexExtraLearnedFields).map(([key, value]) => [
+    key,
+    { value, source: "learned" },
+  ]),
+);
 
 const identitySummaries = {
   claude: {
@@ -27,9 +39,9 @@ const identitySummaries = {
     enabled: true,
     primary_source: "learned",
     learned: true,
-    learned_fields: 4,
-    effective_fields: 5,
-    source_counts: { learned: 4, preset: 0, builtin_default: 1 },
+    learned_fields: 22,
+    effective_fields: 23,
+    source_counts: { learned: 22, preset: 0, builtin_default: 1 },
     client_product: "codex_cli_rs",
     client_variant: "Codex Desktop",
     version: "0.125.0",
@@ -176,6 +188,7 @@ const accountDetails = {
         version: { value: "0.125.0", source: "learned" },
         originator: { value: "Codex Desktop", source: "learned" },
         "x-codex-beta-features": { value: codexBetaFeatures, source: "learned" },
+        ...codexExtraEffectiveFields,
         "websocket-beta": {
           value: "responses_websockets=2026-02-06",
           source: "builtin_default",
@@ -194,6 +207,7 @@ const accountDetails = {
         version: "0.125.0",
         originator: "Codex Desktop",
         "x-codex-beta-features": codexBetaFeatures,
+        ...codexExtraLearnedFields,
       },
       observed_headers: {
         "User-Agent": codexTerminalUserAgent,
@@ -246,6 +260,46 @@ const setAuthed = async (page: Page, viewMode: "table" | "cards" = "table") => {
     localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify(mode));
     localStorage.setItem("authFilesPage.quotaAutoRefreshMs.v1", JSON.stringify(0));
   }, viewMode);
+};
+
+const swipeVerticallyFromPoint = async (page: Page, x: number, y: number, deltaY: number) => {
+  const client = await page.context().newCDPSession(page);
+  const touchPoint = (nextY: number) => ({
+    x,
+    y: nextY,
+    radiusX: 1,
+    radiusY: 1,
+    force: 1,
+  });
+
+  await client.send("Emulation.setTouchEmulationEnabled", {
+    enabled: true,
+    maxTouchPoints: 1,
+  });
+
+  try {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [touchPoint(y)],
+    });
+
+    const steps = 8;
+    for (let step = 1; step <= steps; step += 1) {
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [touchPoint(y + (deltaY * step) / steps)],
+      });
+      await page.waitForTimeout(16);
+    }
+
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await client.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    await client.detach();
+  }
 };
 
 const routeManagementMocks = async (page: Page) => {
@@ -429,6 +483,30 @@ test("Account & Security shows auth files and account identity fingerprint detai
     throw new Error("identity fingerprint summary and fields columns must be visible");
   }
   expect(fieldsBox.x).toBeGreaterThan(summaryBox.x + summaryBox.width - 8);
+  const identityDetailScroller = dialog.getByTestId("auth-file-detail-scroll");
+  await expect(identityDetailScroller).toHaveCSS("overflow-x", "hidden");
+  await expect(identityDetailScroller).toHaveCSS("overflow-y", "hidden");
+  const identityTableViewport = identityFields.locator('[data-scrollbar-visibility="hover"]');
+  await expect(identityTableViewport).toBeVisible();
+  const desktopTableScrollState = await identityTableViewport.evaluate((node: HTMLElement) => {
+    node.scrollTop = 120;
+    node.scrollLeft = 160;
+    const style = window.getComputedStyle(node);
+    return {
+      canScrollX: node.scrollWidth > node.clientWidth,
+      canScrollY: node.scrollHeight > node.clientHeight,
+      overflowX: style.overflowX,
+      overflowY: style.overflowY,
+      scrollLeft: node.scrollLeft,
+      scrollTop: node.scrollTop,
+    };
+  });
+  expect(desktopTableScrollState.overflowX).toBe("auto");
+  expect(desktopTableScrollState.overflowY).toBe("auto");
+  expect(desktopTableScrollState.canScrollX).toBe(true);
+  expect(desktopTableScrollState.canScrollY).toBe(true);
+  expect(desktopTableScrollState.scrollLeft).toBeGreaterThan(0);
+  expect(desktopTableScrollState.scrollTop).toBeGreaterThan(0);
 
   await dialog.getByRole("button", { name: /^(Close|关闭)$/ }).click();
 
@@ -465,6 +543,80 @@ test("Account & Security keeps card mode usable and redirects old identity route
   ).toBeVisible();
 });
 
+test("Account & Security mobile table scroll chains from the middle of the page", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 640 });
+  await setAuthed(page, "table");
+  await routeManagementMocks(page);
+
+  await page.goto("/#/account-security");
+
+  const filterToggle = page.getByTestId("auth-files-mobile-filter-toggle");
+  await filterToggle.click();
+  await expect(filterToggle).toHaveAttribute("aria-expanded", "true");
+
+  const tableViewport = page.locator('[data-scrollbar-visibility="hover"]').first();
+  await expect(tableViewport).toBeVisible();
+  await expect(tableViewport).toHaveCSS("overscroll-behavior-y", "auto");
+  const tableScrollMetrics = await tableViewport.evaluate((node: HTMLElement) => ({
+    clientHeight: node.clientHeight,
+    scrollHeight: node.scrollHeight,
+    scrollTop: node.scrollTop,
+  }));
+  expect(tableScrollMetrics.scrollHeight).toBeLessThanOrEqual(tableScrollMetrics.clientHeight + 2);
+  expect(tableScrollMetrics.scrollTop).toBe(0);
+  await tableViewport.evaluate((node: HTMLElement) =>
+    node.scrollIntoView({ block: "start", inline: "nearest" }),
+  );
+
+  const shellScrollState = await page.evaluate(() => {
+    const shellScroller = document.getElementById("main-content")?.parentElement;
+    if (!(shellScroller instanceof HTMLElement)) return null;
+    return {
+      clientHeight: shellScroller.clientHeight,
+      scrollHeight: shellScroller.scrollHeight,
+      scrollTop: shellScroller.scrollTop,
+      maxScrollTop: shellScroller.scrollHeight - shellScroller.clientHeight,
+    };
+  });
+  if (!shellScrollState) {
+    throw new Error("Account & Security shell scroll container must exist");
+  }
+  expect(shellScrollState.scrollHeight).toBeGreaterThan(shellScrollState.clientHeight + 20);
+  expect(shellScrollState.scrollTop).toBeGreaterThan(20);
+
+  const box = await tableViewport.boundingBox();
+  const viewportSize = page.viewportSize();
+  if (!box) {
+    throw new Error("Account & Security table viewport must be visible on mobile");
+  }
+  if (!viewportSize) {
+    throw new Error("Account & Security mobile viewport must be available");
+  }
+  const visibleLeft = Math.max(box.x, 16);
+  const visibleRight = Math.min(box.x + box.width, viewportSize.width - 16);
+  const visibleTop = Math.max(box.y, 80);
+  const visibleBottom = Math.min(box.y + box.height, viewportSize.height - 80);
+  expect(visibleRight).toBeGreaterThan(visibleLeft + 20);
+  expect(visibleBottom).toBeGreaterThan(visibleTop + 20);
+  await swipeVerticallyFromPoint(
+    page,
+    (visibleLeft + visibleRight) / 2,
+    (visibleTop + visibleBottom) / 2,
+    260,
+  );
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const shellScroller = document.getElementById("main-content")?.parentElement;
+        return shellScroller instanceof HTMLElement ? shellScroller.scrollTop : 0;
+      }),
+    )
+    .toBeLessThan(shellScrollState.scrollTop);
+});
+
 test("Account & Security identity detail stacks cleanly on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await setAuthed(page, "cards");
@@ -493,6 +645,30 @@ test("Account & Security identity detail stacks cleanly on mobile", async ({ pag
   }
   expect(fieldsBox.y).toBeGreaterThan(summaryBox.y + summaryBox.height - 8);
   expect(Math.abs(fieldsBox.x - summaryBox.x)).toBeLessThanOrEqual(8);
+  const detailScroller = dialog.getByTestId("auth-file-detail-scroll");
+  await expect(detailScroller).toHaveCSS("overflow-x", "hidden");
+  await expect(detailScroller).toHaveCSS("overflow-y", "hidden");
+  const identityTableViewport = identityFields.locator('[data-scrollbar-visibility="hover"]');
+  await expect(identityTableViewport).toBeVisible();
+  const mobileTableScrollState = await identityTableViewport.evaluate((node: HTMLElement) => {
+    node.scrollTop = 120;
+    node.scrollLeft = 160;
+    const style = window.getComputedStyle(node);
+    return {
+      canScrollX: node.scrollWidth > node.clientWidth,
+      canScrollY: node.scrollHeight > node.clientHeight,
+      overflowX: style.overflowX,
+      overflowY: style.overflowY,
+      scrollLeft: node.scrollLeft,
+      scrollTop: node.scrollTop,
+    };
+  });
+  expect(mobileTableScrollState.overflowX).toBe("auto");
+  expect(mobileTableScrollState.overflowY).toBe("auto");
+  expect(mobileTableScrollState.canScrollX).toBe(true);
+  expect(mobileTableScrollState.canScrollY).toBe(true);
+  expect(mobileTableScrollState.scrollLeft).toBeGreaterThan(0);
+  expect(mobileTableScrollState.scrollTop).toBeGreaterThan(0);
 
   const documentOverflowX = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

@@ -373,6 +373,7 @@ describe("AuthFileDetailModal", () => {
     const panel = screen.getByTestId("auth-file-identity-fingerprint");
     const summary = within(panel).getByTestId("auth-file-identity-summary");
     const fields = within(panel).getByTestId("auth-file-identity-fields");
+    const scroller = screen.getByTestId("auth-file-detail-scroll");
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Usage",
       "Identity",
@@ -380,6 +381,10 @@ describe("AuthFileDetailModal", () => {
       "Models",
     ]);
     expect(screen.getByRole("tab", { name: "Identity" })).toBeInTheDocument();
+    expect(scroller.className).toContain("overflow-hidden");
+    expect(scroller.className).not.toContain("overflow-y-auto");
+    expect(panel.className).toContain("h-full");
+    expect(fields.className).toContain("flex");
     expect(summary).toHaveTextContent("codex-account-1");
     expect(within(summary).getByText("auth-subject-1")).toBeInTheDocument();
     expect(within(summary).getByText("codex-tui / terminal")).toBeInTheDocument();
@@ -401,6 +406,13 @@ describe("AuthFileDetailModal", () => {
     expect(within(fields).getByText("websocket-beta")).toBeInTheDocument();
     expect(within(fields).getByText("realtime=v1")).toBeInTheDocument();
     expect(within(panel).queryByText("Custom")).not.toBeInTheDocument();
+    const tableViewport = fields.querySelector('[data-scrollbar-visibility="hover"]');
+    if (!(tableViewport instanceof HTMLElement)) {
+      throw new Error("identity fingerprint fields table must own its scroll viewport");
+    }
+    expect(tableViewport.className).toContain("overflow-auto");
+    expect(tableViewport.className).toContain("overscroll-y-none");
+    expect(fields.querySelector("[data-vt-natural-flow]")).toBeNull();
   });
 
   test("five-hour trend uses only the latest five hourly buckets and maps quota timestamps to local hours", () => {
