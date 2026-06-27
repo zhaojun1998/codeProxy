@@ -2097,6 +2097,8 @@
   "m_quota": {
     "used_cost": "Использовано {{value}}",
     "used_with_estimate": "Использовано {{used}} · оценка {{total}}",
+    "run_out_overuse": "Прогноз {{percent}}% · закончится через ~{{duration}} · перерасход",
+    "run_out_underuse": "Прогноз {{percent}}% · недорасход (запас {{slack}}%)",
     "title": "Quota Management",
     "refresh_all": "Refresh All",
     "refresh_files": "Refresh Files",

@@ -2414,6 +2414,8 @@
   "m_quota": {
     "used_cost": "已用 {{value}}",
     "used_with_estimate": "已用 {{used}} · 估算 {{total}}",
+    "run_out_overuse": "预计用到 {{percent}}% · 约{{duration}}后耗尽 · 超用",
+    "run_out_underuse": "预计用到 {{percent}}% · 少用(富余 {{slack}}%)",
     "title": "配额管理",
     "refresh_all": "一键刷新",
     "refresh_files": "刷新文件",
