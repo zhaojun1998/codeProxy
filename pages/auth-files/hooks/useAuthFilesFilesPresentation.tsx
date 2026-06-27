@@ -557,6 +557,36 @@ export function useAuthFilesFilesPresentation({
             : t("m_quota.used_cost", { value: formatCurrency(cost) });
       }
 
+      // 速率 = 已用% ÷ 周期已过时间，外推到周期结束(resetAtMs)时的预计累计用量 projected：
+      //   projected > 100 → 会在重置前耗尽 = 超用，额外给出"还需多久耗尽"；
+      //   projected ≤ 100 → 到重置都用不满 = 少用，给出富余量(100 - projected)。
+      // 与上面估算同门槛：usedPercent <3 时速率不稳，跳过。
+      const prediction = (() => {
+        if (usedPercent === null || usedPercent < 3 || usedPercent >= 100) return null;
+        const resetAtMs = item?.resetAtMs;
+        const windowSeconds = item?.windowSeconds;
+        if (typeof resetAtMs !== "number" || !Number.isFinite(resetAtMs)) return null;
+        if (
+          typeof windowSeconds !== "number" ||
+          !Number.isFinite(windowSeconds) ||
+          windowSeconds <= 0
+        )
+          return null;
+        const windowMs = windowSeconds * 1000;
+        const periodStart = resetAtMs - windowMs;
+        const elapsed = nowMs - periodStart;
+        if (elapsed <= 0) return null;
+        const projected = usedPercent * (windowMs / elapsed);
+        // 超用时按当前速率推算耗尽时刻，formatQuotaResetTextCompact 取其相对 now 的时长。
+        const runOutAt = periodStart + elapsed * (100 / usedPercent);
+        return {
+          overuse: projected > 100,
+          percent: Math.round(projected),
+          durationText: formatQuotaResetTextCompact(runOutAt) ?? "",
+          slack: Math.max(0, Math.round(100 - projected)),
+        };
+      })();
+
       return (
         <div key={label} className="space-y-1">
           <div className="flex items-center justify-between gap-2">
@@ -587,10 +617,24 @@ export function useAuthFilesFilesPresentation({
               {costText}
             </div>
           ) : null}
+          {prediction ? (
+            <div
+              className={[
+                "truncate text-[10px] tabular-nums",
+                prediction.overuse
+                  ? "text-rose-600 dark:text-rose-300"
+                  : "text-emerald-600 dark:text-emerald-300",
+              ].join(" ")}
+            >
+              {t(prediction.overuse ? "m_quota.run_out_overuse" : "m_quota.run_out_underuse", {
+                duration: prediction.durationText,
+              })}
+            </div>
+          ) : null}
         </div>
       );
     },
-    [formatQuotaResetTextCompact, t, translateQuotaText],
+    [formatQuotaResetTextCompact, nowMs, t, translateQuotaText],
   );
 
   const fileColumns = useMemo<DataTableColumn<AuthFileItem>[]>(() => {
