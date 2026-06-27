@@ -145,6 +145,7 @@ export function useAuthFilesQuotaState({
           });
         }
         if (text.startsWith("claude_quota.")) return t(text);
+        if (text.startsWith("antigravity_quota.")) return t(text);
         return text;
       };
 
@@ -295,9 +296,7 @@ export function useAuthFilesQuotaState({
         const result = await fetchQuota(provider, file);
         const items = Array.isArray(result) ? result : result.items;
         const nextPlanType = Array.isArray(result) ? null : (result.planType ?? null);
-        const nextResetCreditCount = Array.isArray(result)
-          ? undefined
-          : result.resetCreditCount;
+        const nextResetCreditCount = Array.isArray(result) ? undefined : result.resetCreditCount;
         const rawAuthIndex = (file as { auth_index?: unknown }).auth_index ?? file.authIndex;
         const authIndex = normalizeAuthIndexValue(rawAuthIndex);
         if (authIndex) {
