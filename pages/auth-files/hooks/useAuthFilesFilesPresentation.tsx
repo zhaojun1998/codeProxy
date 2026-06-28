@@ -627,7 +627,9 @@ export function useAuthFilesFilesPresentation({
               ].join(" ")}
             >
               {t(prediction.overuse ? "m_quota.run_out_overuse" : "m_quota.run_out_underuse", {
+                percent: prediction.percent,
                 duration: prediction.durationText,
+                slack: prediction.slack,
               })}
             </div>
           ) : null}
