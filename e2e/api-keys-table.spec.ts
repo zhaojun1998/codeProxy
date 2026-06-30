@@ -511,6 +511,12 @@ test("API Keys: fixed columns stay pinned while dragging the horizontal scrollba
     const actionsCellRect = actionsCell.getBoundingClientRect();
     const startRailRect = startRail.getBoundingClientRect();
     const endRailRect = endRail.getBoundingClientRect();
+    const startRailStyle = getComputedStyle(startRail);
+    const endRailStyle = getComputedStyle(endRail);
+    const nameHeaderStyle = getComputedStyle(nameHeader);
+    const actionsHeaderStyle = getComputedStyle(actionsHeader);
+    const nameCellStyle = getComputedStyle(nameCell);
+    const actionsCellStyle = getComputedStyle(actionsCell);
     const nameCellHit = document.elementFromPoint(
       nameCellRect.left + Math.min(24, nameCellRect.width / 2),
       nameCellRect.top + nameCellRect.height / 2,
@@ -536,6 +542,12 @@ test("API Keys: fixed columns stay pinned while dragging the horizontal scrollba
       endRailRight: endRailRect.right,
       startRailZIndex: getComputedStyle(startRail).zIndex,
       endRailZIndex: getComputedStyle(endRail).zIndex,
+      startRailBorderRightWidth: startRailStyle.borderRightWidth,
+      endRailBorderLeftWidth: endRailStyle.borderLeftWidth,
+      nameHeaderBorderRightWidth: nameHeaderStyle.borderRightWidth,
+      actionsHeaderBorderLeftWidth: actionsHeaderStyle.borderLeftWidth,
+      nameCellBorderRightWidth: nameCellStyle.borderRightWidth,
+      actionsCellBorderLeftWidth: actionsCellStyle.borderLeftWidth,
       nameCellHitColumn:
         nameCellHit?.closest<HTMLElement>("[data-vt-column-key]")?.dataset.vtColumnKey ?? null,
       actionsCellHitColumn:
@@ -554,6 +566,12 @@ test("API Keys: fixed columns stay pinned while dragging the horizontal scrollba
   expect(state.endRailRight).toBeLessThanOrEqual(state.containerRight + 1);
   expect(state.startRailZIndex).toBe("0");
   expect(state.endRailZIndex).toBe("0");
+  expect(state.startRailBorderRightWidth).toBe("0px");
+  expect(state.endRailBorderLeftWidth).toBe("0px");
+  expect(state.nameHeaderBorderRightWidth).toBe("1px");
+  expect(state.actionsHeaderBorderLeftWidth).toBe("1px");
+  expect(state.nameCellBorderRightWidth).toBe("1px");
+  expect(state.actionsCellBorderLeftWidth).toBe("1px");
   expect(state.selectHeaderLeft).toBeGreaterThanOrEqual(state.containerLeft - 1);
   expect(state.selectHeaderLeft).toBeLessThanOrEqual(state.containerLeft + 1);
   expect(state.nameHeaderLeft).toBeGreaterThanOrEqual(expectedNameLeft - 1);
