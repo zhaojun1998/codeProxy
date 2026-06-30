@@ -437,16 +437,28 @@ export function ChannelGroupsPage() {
   );
 
   return (
-    <div className="space-y-4 overflow-x-hidden">
-      <Card title={t("channel_groups_page.title")} loading={loading}>
+    <div className="space-y-4 overflow-x-hidden md:flex md:h-[calc(100dvh-112px)] md:min-h-0 md:flex-col">
+      <Card
+        className="md:flex md:min-h-0 md:flex-1 md:flex-col md:overflow-hidden"
+        bodyClassName="md:flex md:min-h-0 md:flex-1 md:flex-col"
+        loading={loading}
+      >
         {error ? (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-400/25 dark:bg-rose-500/15 dark:text-white">
             {error}
           </div>
         ) : null}
 
-        <div className={error ? "mt-4 space-y-4" : "space-y-4"}>
+        <div
+          className={[
+            error ? "mt-4" : null,
+            "space-y-4 md:flex md:min-h-0 md:flex-1 md:flex-col",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
           <RoutingConfigEditor
+            title={t("channel_groups_page.title")}
             values={visualValues}
             disabled={loading || saving}
             availableChannels={availableChannels}
