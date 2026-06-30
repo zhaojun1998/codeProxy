@@ -2491,6 +2491,11 @@ export function DataTable<T>({
                           ]
                             .filter(Boolean)
                             .join(" ");
+                          const hoverChromeClass = naturalFlow
+                            ? ""
+                            : stickyPlacement
+                              ? "group-hover/row:bg-slate-50 dark:group-hover/row:bg-neutral-900"
+                              : "group-hover/row:bg-slate-50 dark:group-hover/row:bg-white/[0.04]";
                           return (
                             <td
                               key={col.key}
@@ -2508,9 +2513,7 @@ export function DataTable<T>({
                                   ? "md:right-[var(--vt-sticky-right)]"
                                   : ""
                               } ${
-                                naturalFlow
-                                  ? ""
-                                  : "group-hover/row:bg-slate-50 dark:group-hover/row:bg-white/[0.04]"
+                                hoverChromeClass
                               } ${col.cellClassName ?? ""} ${roundCls}`}
                             >
                               <div

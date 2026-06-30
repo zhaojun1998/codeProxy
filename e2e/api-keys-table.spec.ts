@@ -219,6 +219,102 @@ test("API Keys: limited model summary truncates inside the rounded pill", async 
   expect(Number.parseFloat(summaryState.borderTopRightRadius)).toBeGreaterThan(0);
 });
 
+test("API Keys: dark hover keeps fixed columns opaque above scrolled content", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1360, height: 980 });
+  await setAuthed(page);
+  await page.addInitScript(() => {
+    localStorage.setItem("code-proxy-admin-theme", "dark");
+  });
+  await mockApiKeysApis(page);
+
+  await page.goto("/#/api-keys");
+  const nameCell = page.locator('td[data-vt-column-key="name"]').first();
+  await nameCell.waitFor({ state: "visible" });
+
+  await page.evaluate(async () => {
+    const scrollContent = document.querySelector<HTMLElement>("[data-vt-scroll-content]");
+    const container = scrollContent?.parentElement;
+    if (!container) throw new Error("Missing API keys table viewport");
+
+    container.scrollLeft = Math.round((container.scrollWidth - container.clientWidth) / 2);
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+  });
+
+  const hoverPoint = await nameCell.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      x: rect.left + Math.min(24, rect.width / 2),
+      y: rect.top + rect.height / 2,
+    };
+  });
+  await page.mouse.move(hoverPoint.x, hoverPoint.y);
+
+  const state = await page.evaluate(() => {
+    const selectCell = document.querySelector<HTMLElement>('td[data-vt-column-key="select"]');
+    const nameCellElement = document.querySelector<HTMLElement>('td[data-vt-column-key="name"]');
+    const keyCell = document.querySelector<HTMLElement>('td[data-vt-column-key="key"]');
+    const actionsCell = document.querySelector<HTMLElement>('td[data-vt-column-key="actions"]');
+    const scrollContent = document.querySelector<HTMLElement>("[data-vt-scroll-content]");
+    const container = scrollContent?.parentElement;
+    if (!selectCell || !nameCellElement || !keyCell || !actionsCell || !container) {
+      throw new Error("Missing dark hover table cells");
+    }
+
+    const alphaOf = (element: HTMLElement) => {
+      const backgroundColor = getComputedStyle(element).backgroundColor;
+      const slashAlpha = backgroundColor.match(/\/\s*([0-9.]+%?)\s*\)?$/)?.[1];
+      const commaAlpha = backgroundColor.startsWith("rgba(")
+        ? backgroundColor.slice(5, -1).split(",").at(3)?.trim()
+        : undefined;
+      const rawAlpha = slashAlpha ?? commaAlpha;
+      const alpha = rawAlpha?.endsWith("%")
+        ? Number(rawAlpha.slice(0, -1)) / 100
+        : Number(rawAlpha ?? 1);
+      return {
+        alpha: Number.isFinite(alpha) ? alpha : 1,
+        backgroundColor,
+      };
+    };
+
+    const nameRect = nameCellElement.getBoundingClientRect();
+    const actionsRect = actionsCell.getBoundingClientRect();
+    const nameHit = document.elementFromPoint(
+      nameRect.left + Math.min(24, nameRect.width / 2),
+      nameRect.top + nameRect.height / 2,
+    );
+    const actionsHit = document.elementFromPoint(
+      actionsRect.right - Math.min(24, actionsRect.width / 2),
+      actionsRect.top + actionsRect.height / 2,
+    );
+
+    return {
+      isDark: document.documentElement.classList.contains("dark"),
+      scrollLeft: container.scrollLeft,
+      selectCell: alphaOf(selectCell),
+      nameCell: alphaOf(nameCellElement),
+      keyCell: alphaOf(keyCell),
+      actionsCell: alphaOf(actionsCell),
+      nameHitColumn:
+        nameHit?.closest<HTMLElement>("[data-vt-column-key]")?.dataset.vtColumnKey ?? null,
+      actionsHitColumn:
+        actionsHit?.closest<HTMLElement>("[data-vt-column-key]")?.dataset.vtColumnKey ?? null,
+    };
+  });
+
+  expect(state.isDark).toBe(true);
+  expect(state.scrollLeft).toBeGreaterThan(0);
+  expect(state.keyCell.alpha).toBeGreaterThan(0);
+  expect(state.keyCell.alpha).toBeLessThan(1);
+  expect(state.selectCell.alpha).toBe(1);
+  expect(state.nameCell.alpha).toBe(1);
+  expect(state.actionsCell.alpha).toBe(1);
+  expect(state.nameHitColumn).toBe("name");
+  expect(state.actionsHitColumn).toBe("actions");
+});
+
 test("API Keys: restored wider columns keep resize preview at the minimum boundary", async ({
   page,
 }) => {
