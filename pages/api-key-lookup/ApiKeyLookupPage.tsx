@@ -316,6 +316,8 @@ export function ApiKeyLookupPage() {
   const [chartData, setChartData] = useState<ChartDataResponse | null>(null);
   const [chartLoading, setChartLoading] = useState(false);
   const chartCacheRef = useRef<Record<string, ChartDataResponse>>({});
+  const chartAbortControllerRef = useRef<AbortController | null>(null);
+  const chartFetchIdRef = useRef(0);
 
   // ── Models state ──
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -434,10 +436,21 @@ export function ApiKeyLookupPage() {
         setLoginModalOpen(false);
       }
 
+      chartAbortControllerRef.current?.abort();
+      const controller = new AbortController();
+      chartAbortControllerRef.current = controller;
+      const myFetchId = ++chartFetchIdRef.current;
+
       setChartLoading(true);
       setError(null);
       try {
-        const data = await fetchPublicChartData({ apiKey: trimmedKey, days });
+        const data = await fetchPublicChartData({
+          apiKey: trimmedKey,
+          days,
+          signal: controller.signal,
+        });
+        if (myFetchId !== chartFetchIdRef.current || controller.signal.aborted) return;
+
         chartCacheRef.current[cacheKey] = data;
         writeStoredChartCache(cacheKey, data);
         const nextName = data.api_key_name?.trim() ?? "";
@@ -447,11 +460,17 @@ export function ApiKeyLookupPage() {
         writeStoredLookupKey(trimmedKey);
         setLoginModalOpen(false);
       } catch (err) {
+        if (controller.signal.aborted || myFetchId !== chartFetchIdRef.current) return;
         if (!cached) {
           setError(localizeLookupError(t, err, "apikey_lookup.query_failed"));
         }
       } finally {
-        setChartLoading(false);
+        if (chartAbortControllerRef.current === controller) {
+          chartAbortControllerRef.current = null;
+        }
+        if (myFetchId === chartFetchIdRef.current && !controller.signal.aborted) {
+          setChartLoading(false);
+        }
       }
     },
     [t],
@@ -596,10 +615,13 @@ export function ApiKeyLookupPage() {
     abortControllerRef.current?.abort();
     fetchIdRef.current += 1;
     paginationInFlightRef.current = false;
+    chartAbortControllerRef.current?.abort();
+    chartFetchIdRef.current += 1;
     chartCacheRef.current = {};
     clearStoredChartCache();
 
     setError(null);
+    setChartLoading(false);
     setModelsError(null);
     setModelsSearchFilter("");
     modelsCacheRef.current = {};
