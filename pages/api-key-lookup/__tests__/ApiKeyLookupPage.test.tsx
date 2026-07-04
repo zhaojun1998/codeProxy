@@ -21,21 +21,39 @@ const mocks = vi.hoisted(() => ({
     },
     filters: { models: [] },
   })),
-  fetchPublicChartData: vi.fn(async () => ({
+  fetchPublicChartData: vi.fn(
+    async (_params?: { apiKey: string; days?: number; signal?: AbortSignal }) => ({
+      daily_series: [],
+      heatmap_series: [],
+      model_distribution: [],
+      api_key_name: "Primary key",
+      stats: {
+        total: 0,
+        success_rate: 0,
+        total_tokens: 0,
+        total_sessions: 0,
+        total_cost: 0,
+      },
+    }),
+  ),
+  fetchAvailableModels: vi.fn(async (): Promise<string[]> => []),
+}));
+
+type ChartResponse = Awaited<ReturnType<typeof mocks.fetchPublicChartData>>;
+
+const chartResponse = (total: number, apiKeyName = "Primary key"): ChartResponse => ({
     daily_series: [],
     heatmap_series: [],
     model_distribution: [],
-    api_key_name: "Primary key",
+    api_key_name: apiKeyName,
     stats: {
-      total: 0,
-      success_rate: 0,
-      total_tokens: 0,
-      total_sessions: 0,
+      total,
+      success_rate: 100,
+      total_tokens: total * 10,
+      total_sessions: 1,
       total_cost: 0,
     },
-  })),
-  fetchAvailableModels: vi.fn(async (): Promise<string[]> => []),
-}));
+  });
 
 vi.mock("../api", () => ({
   fetchPublicLogs: mocks.fetchPublicLogs,
@@ -77,9 +95,7 @@ describe("ApiKeyLookupPage", () => {
       </ThemeProvider>,
     );
 
-    expect(
-      screen.getByRole("dialog", { name: /enter api key/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /enter api key/i })).toBeInTheDocument();
 
     await userEvent.type(
       screen.getByPlaceholderText(/enter api key to lookup usage/i),
@@ -96,10 +112,7 @@ describe("ApiKeyLookupPage", () => {
   });
 
   test("restores the last looked up API key after page refresh and shows its name", async () => {
-    window.sessionStorage.setItem(
-      "apiKeyLookup.lastApiKey.v1",
-      "sk-restored-key",
-    );
+    window.sessionStorage.setItem("apiKeyLookup.lastApiKey.v1", "sk-restored-key");
 
     render(
       <ThemeProvider>
@@ -115,19 +128,12 @@ describe("ApiKeyLookupPage", () => {
       );
     });
     expect(mocks.fetchPublicLogs).not.toHaveBeenCalled();
-    expect(
-      await screen.findByRole("combobox", { name: /primary key/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("dialog", { name: /enter api key/i }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("combobox", { name: /primary key/i })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /enter api key/i })).not.toBeInTheDocument();
   });
 
   test("loads public logs only after switching to the request logs tab", async () => {
-    window.sessionStorage.setItem(
-      "apiKeyLookup.lastApiKey.v1",
-      "sk-restored-key",
-    );
+    window.sessionStorage.setItem("apiKeyLookup.lastApiKey.v1", "sk-restored-key");
 
     render(
       <ThemeProvider>
@@ -151,13 +157,20 @@ describe("ApiKeyLookupPage", () => {
         expect.objectContaining({ apiKey: "sk-restored-key", page: 1 }),
       );
     });
+    expect(screen.getAllByText(/response metrics/i).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("columnheader", { name: /^duration$/i })).not.toBeInTheDocument();
   });
 
-  test("does not duplicate the current key in the header menu", async () => {
-    window.sessionStorage.setItem(
-      "apiKeyLookup.lastApiKey.v1",
-      "sk-restored-key",
-    );
+  test("keeps cached models visible while refreshing the available models tab", async () => {
+    window.sessionStorage.setItem("apiKeyLookup.lastApiKey.v1", "sk-restored-key");
+    let resolveModelsRefresh: (value: string[]) => void = () => {};
+    mocks.fetchAvailableModels
+      .mockResolvedValueOnce(["gpt-5.3-codex", "claude-sonnet-4-5"])
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveModelsRefresh = resolve;
+        }),
+      );
 
     render(
       <ThemeProvider>
@@ -167,13 +180,35 @@ describe("ApiKeyLookupPage", () => {
       </ThemeProvider>,
     );
 
-    await userEvent.click(
-      await screen.findByRole("combobox", { name: /primary key/i }),
+    await screen.findByTestId("usage-tab");
+    await userEvent.click(screen.getByRole("tab", { name: /models/i }));
+
+    expect(await screen.findByText("gpt-5.3-codex")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: /usage/i }));
+    await userEvent.click(screen.getByRole("tab", { name: /models/i }));
+
+    expect(screen.getByText("gpt-5.3-codex")).toBeInTheDocument();
+    expect(mocks.fetchAvailableModels).toHaveBeenCalledTimes(2);
+
+    resolveModelsRefresh(["gpt-5.3-codex", "claude-sonnet-4-5", "deepseek-v4"]);
+    expect(await screen.findByText("deepseek-v4")).toBeInTheDocument();
+  });
+
+  test("does not duplicate the current key in the header menu", async () => {
+    window.sessionStorage.setItem("apiKeyLookup.lastApiKey.v1", "sk-restored-key");
+
+    render(
+      <ThemeProvider>
+        <ToastProvider>
+          <ApiKeyLookupPage />
+        </ToastProvider>
+      </ThemeProvider>,
     );
 
-    expect(
-      screen.queryByRole("option", { name: /primary key/i }),
-    ).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("combobox", { name: /primary key/i }));
+
+    expect(screen.queryByRole("option", { name: /primary key/i })).not.toBeInTheDocument();
     expect(screen.getByRole("option", { name: /logout/i })).toHaveAttribute(
       "aria-selected",
       "false",
@@ -181,10 +216,7 @@ describe("ApiKeyLookupPage", () => {
   });
 
   test("logs out from the header menu and asks for the API key again", async () => {
-    window.sessionStorage.setItem(
-      "apiKeyLookup.lastApiKey.v1",
-      "sk-restored-key",
-    );
+    window.sessionStorage.setItem("apiKeyLookup.lastApiKey.v1", "sk-restored-key");
 
     render(
       <ThemeProvider>
@@ -194,24 +226,15 @@ describe("ApiKeyLookupPage", () => {
       </ThemeProvider>,
     );
 
-    await userEvent.click(
-      await screen.findByRole("combobox", { name: /primary key/i }),
-    );
+    await userEvent.click(await screen.findByRole("combobox", { name: /primary key/i }));
     await userEvent.click(screen.getByRole("option", { name: /logout/i }));
 
-    expect(
-      window.sessionStorage.getItem("apiKeyLookup.lastApiKey.v1"),
-    ).toBeNull();
-    expect(
-      screen.getByRole("dialog", { name: /enter api key/i }),
-    ).toBeInTheDocument();
+    expect(window.sessionStorage.getItem("apiKeyLookup.lastApiKey.v1")).toBeNull();
+    expect(screen.getByRole("dialog", { name: /enter api key/i })).toBeInTheDocument();
   });
 
   test("shows cached usage data while refreshing chart data", async () => {
-    window.sessionStorage.setItem(
-      "apiKeyLookup.lastApiKey.v1",
-      "sk-restored-key",
-    );
+    window.sessionStorage.setItem("apiKeyLookup.lastApiKey.v1", "sk-restored-key");
     window.sessionStorage.setItem(
       "apiKeyLookup.chartCache.v1",
       JSON.stringify({
@@ -266,11 +289,52 @@ describe("ApiKeyLookupPage", () => {
       },
     });
 
-    await waitFor(() =>
-      expect(screen.getByTestId("usage-tab")).toHaveTextContent("24"),
+    await waitFor(() => expect(screen.getByTestId("usage-tab")).toHaveTextContent("24"));
+    expect(window.sessionStorage.getItem("apiKeyLookup.chartCache.v1")).toContain('"total":24');
+  });
+
+  test("ignores stale chart responses after rapid time range changes", async () => {
+    window.sessionStorage.setItem("apiKeyLookup.lastApiKey.v1", "sk-restored-key");
+    const pending: Array<{
+      days: number;
+      signal?: AbortSignal;
+      resolve: (value: ChartResponse) => void;
+    }> = [];
+    mocks.fetchPublicChartData.mockImplementation(
+      (params?: { apiKey: string; days?: number; signal?: AbortSignal }) =>
+        new Promise<ChartResponse>((resolve) => {
+          pending.push({ days: params?.days ?? 7, signal: params?.signal, resolve });
+        }),
     );
-    expect(
-      window.sessionStorage.getItem("apiKeyLookup.chartCache.v1"),
-    ).toContain('"total":24');
+
+    render(
+      <ThemeProvider>
+        <ToastProvider>
+          <ApiKeyLookupPage />
+        </ToastProvider>
+      </ThemeProvider>,
+    );
+
+    await screen.findByRole("tab", { name: /30/i });
+    await userEvent.click(screen.getByRole("tab", { name: /30/i }));
+    await userEvent.click(screen.getByRole("tab", { name: /today|今天/i }));
+    await userEvent.click(screen.getByRole("tab", { name: /7\s*(days|天)/i }));
+
+    await waitFor(() => expect(pending.at(-1)?.days).toBe(7));
+    const latest = pending.at(-1);
+    if (!latest) throw new Error("missing latest chart request");
+
+    latest.resolve(chartResponse(7, "Range 7"));
+    await waitFor(() => expect(screen.getByTestId("usage-tab")).toHaveTextContent("7"));
+
+    for (const request of pending) {
+      if (request !== latest) {
+        request.resolve(chartResponse(request.days * 100, `Range ${request.days}`));
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByTestId("usage-tab")).toHaveTextContent("7");
+    expect(pending.some((request) => request.days === 30 && request.signal?.aborted)).toBe(true);
   });
 });
