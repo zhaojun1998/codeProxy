@@ -1017,11 +1017,16 @@ export function ProvidersPage() {
               renderExtra={(item, idx) => {
                 const queryReady = hasOpenCodeGoUsageQuery(item);
                 const cacheKey = getOpenCodeGoUsageCacheKey(item, idx);
+                const usageEntry = openCodeGoUsageState[cacheKey];
                 return (
                   <OpenCodeGoUsageCardSection
                     queryReady={queryReady}
-                    usageEntry={queryReady ? openCodeGoUsageState[cacheKey] : undefined}
-                    loading={queryReady ? (openCodeGoUsageLoadingState[cacheKey] ?? false) : false}
+                    usageEntry={queryReady ? usageEntry : undefined}
+                    loading={
+                      queryReady
+                        ? (openCodeGoUsageLoadingState[cacheKey] ?? !usageEntry)
+                        : false
+                    }
                   />
                 );
               }}

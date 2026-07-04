@@ -13,6 +13,15 @@ type MockApiCallResult = {
   body: unknown;
 };
 
+type MockOpenCodeGoUsageResponse = {
+  workspace_id: string;
+  usage: { type: string; label: string; percentage: number; resets_in: string }[];
+};
+
+type MockEntityStatsResponse = {
+  source: { entity_name: string; requests: number; failed: number }[];
+};
+
 const mocks = vi.hoisted(() => ({
   getGeminiKeys: vi.fn(async (): Promise<unknown[]> => []),
   getClaudeConfigs: vi.fn(async (): Promise<unknown[]> => []),
@@ -22,6 +31,10 @@ const mocks = vi.hoisted(() => ({
   getOpenCodeGoConfigs: vi.fn(async (): Promise<any[]> => []),
   getClineConfigs: vi.fn(async (): Promise<any[]> => []),
   getOpenAIProviders: vi.fn(async (): Promise<unknown[]> => []),
+  queryOpenCodeGoUsage: vi.fn(async () => ({
+    workspace_id: "workspace-1",
+    usage: [{ type: "rolling", label: "Rolling", percentage: 25, resets_in: "30m" }],
+  })),
   saveOpenCodeGoConfigs: vi.fn(async (_configs: unknown[]) => ({})),
   saveClineConfigs: vi.fn(async (_configs: unknown[]) => ({})),
   getModelDefinitions: vi.fn(async (_channel?: string) => [
@@ -45,7 +58,7 @@ const mocks = vi.hoisted(() => ({
       },
     }),
   ),
-  getEntityStats: vi.fn(async () => ({ source: [] })),
+  getEntityStats: vi.fn(async (): Promise<MockEntityStatsResponse> => ({ source: [] })),
   apiKeyEntriesList: vi.fn(async (): Promise<unknown[]> => []),
   channelGroupsList: vi.fn(async (): Promise<unknown[]> => []),
   proxiesList: vi.fn(async (): Promise<any[]> => []),
@@ -65,6 +78,7 @@ vi.mock("@code-proxy/api-client", async (importOriginal) => {
       getOpenCodeGoConfigs: mocks.getOpenCodeGoConfigs,
       getClineConfigs: mocks.getClineConfigs,
       getOpenAIProviders: mocks.getOpenAIProviders,
+      queryOpenCodeGoUsage: mocks.queryOpenCodeGoUsage,
       saveOpenCodeGoConfigs: mocks.saveOpenCodeGoConfigs,
       saveClineConfigs: mocks.saveClineConfigs,
     },
@@ -112,6 +126,10 @@ describe("ProvidersPage OpenCode Go tab", () => {
     mocks.getOpenCodeGoConfigs.mockImplementation(async () => []);
     mocks.getClineConfigs.mockImplementation(async () => []);
     mocks.getOpenAIProviders.mockImplementation(async () => []);
+    mocks.queryOpenCodeGoUsage.mockImplementation(async () => ({
+      workspace_id: "workspace-1",
+      usage: [{ type: "rolling", label: "Rolling", percentage: 25, resets_in: "30m" }],
+    }));
     mocks.saveOpenCodeGoConfigs.mockImplementation(async () => ({}));
     mocks.saveClineConfigs.mockImplementation(async () => ({}));
     mocks.getModelDefinitions.mockImplementation(async () => [
@@ -137,6 +155,53 @@ describe("ProvidersPage OpenCode Go tab", () => {
     mocks.apiKeyEntriesList.mockImplementation(async () => []);
     mocks.channelGroupsList.mockImplementation(async () => []);
     mocks.proxiesList.mockImplementation(async () => []);
+  });
+
+  test("shows usage loading instead of not queried before the first OpenCode Go usage result", async () => {
+    localStorage.clear();
+    let resolveUsage: ((value: MockOpenCodeGoUsageResponse) => void) | undefined;
+    mocks.getOpenCodeGoConfigs.mockImplementation(async () => [
+      {
+        name: "OpenCode Go",
+        apiKey: "sk-opencode-go",
+        workspaceId: "workspace-1",
+        authCookie: "session=abc",
+      },
+    ]);
+    mocks.getEntityStats.mockImplementation(async () => ({
+      source: [{ entity_name: "sk-opencode-go", requests: 10, failed: 1 }],
+    }));
+    mocks.queryOpenCodeGoUsage.mockImplementation(
+      async () =>
+        new Promise((resolve) => {
+          resolveUsage = resolve;
+        }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/ai-providers"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/ai-providers/*" element={<ProvidersPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(await screen.findByRole("tab", { name: /OpenCode Go/ }));
+    await waitFor(() => expect(screen.getAllByText("OpenCode Go").length).toBeGreaterThan(1));
+    expect(screen.getByText(/Success 9/i)).toBeInTheDocument();
+    expect(screen.getByText(/Failed 1/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Not queried/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Left --/i).length).toBeGreaterThan(0);
+
+    resolveUsage?.({
+      workspace_id: "workspace-1",
+      usage: [{ type: "rolling", label: "Rolling", percentage: 25, resets_in: "30m" }],
+    });
+    expect(await screen.findByText(/Left 75%/i)).toBeInTheDocument();
   });
 
   test("opens OpenCode Go route and saves a key without requiring Base URL", async () => {
