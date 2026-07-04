@@ -21,21 +21,39 @@ const mocks = vi.hoisted(() => ({
     },
     filters: { models: [] },
   })),
-  fetchPublicChartData: vi.fn(async () => ({
+  fetchPublicChartData: vi.fn(
+    async (_params?: { apiKey: string; days?: number; signal?: AbortSignal }) => ({
+      daily_series: [],
+      heatmap_series: [],
+      model_distribution: [],
+      api_key_name: "Primary key",
+      stats: {
+        total: 0,
+        success_rate: 0,
+        total_tokens: 0,
+        total_sessions: 0,
+        total_cost: 0,
+      },
+    }),
+  ),
+  fetchAvailableModels: vi.fn(async (): Promise<string[]> => []),
+}));
+
+type ChartResponse = Awaited<ReturnType<typeof mocks.fetchPublicChartData>>;
+
+const chartResponse = (total: number, apiKeyName = "Primary key"): ChartResponse => ({
     daily_series: [],
     heatmap_series: [],
     model_distribution: [],
-    api_key_name: "Primary key",
+    api_key_name: apiKeyName,
     stats: {
-      total: 0,
-      success_rate: 0,
-      total_tokens: 0,
-      total_sessions: 0,
+      total,
+      success_rate: 100,
+      total_tokens: total * 10,
+      total_sessions: 1,
       total_cost: 0,
     },
-  })),
-  fetchAvailableModels: vi.fn(async (): Promise<string[]> => []),
-}));
+  });
 
 vi.mock("../api", () => ({
   fetchPublicLogs: mocks.fetchPublicLogs,
@@ -273,5 +291,50 @@ describe("ApiKeyLookupPage", () => {
 
     await waitFor(() => expect(screen.getByTestId("usage-tab")).toHaveTextContent("24"));
     expect(window.sessionStorage.getItem("apiKeyLookup.chartCache.v1")).toContain('"total":24');
+  });
+
+  test("ignores stale chart responses after rapid time range changes", async () => {
+    window.sessionStorage.setItem("apiKeyLookup.lastApiKey.v1", "sk-restored-key");
+    const pending: Array<{
+      days: number;
+      signal?: AbortSignal;
+      resolve: (value: ChartResponse) => void;
+    }> = [];
+    mocks.fetchPublicChartData.mockImplementation(
+      (params?: { apiKey: string; days?: number; signal?: AbortSignal }) =>
+        new Promise<ChartResponse>((resolve) => {
+          pending.push({ days: params?.days ?? 7, signal: params?.signal, resolve });
+        }),
+    );
+
+    render(
+      <ThemeProvider>
+        <ToastProvider>
+          <ApiKeyLookupPage />
+        </ToastProvider>
+      </ThemeProvider>,
+    );
+
+    await screen.findByRole("tab", { name: /30/i });
+    await userEvent.click(screen.getByRole("tab", { name: /30/i }));
+    await userEvent.click(screen.getByRole("tab", { name: /today|今天/i }));
+    await userEvent.click(screen.getByRole("tab", { name: /7\s*(days|天)/i }));
+
+    await waitFor(() => expect(pending.at(-1)?.days).toBe(7));
+    const latest = pending.at(-1);
+    if (!latest) throw new Error("missing latest chart request");
+
+    latest.resolve(chartResponse(7, "Range 7"));
+    await waitFor(() => expect(screen.getByTestId("usage-tab")).toHaveTextContent("7"));
+
+    for (const request of pending) {
+      if (request !== latest) {
+        request.resolve(chartResponse(request.days * 100, `Range ${request.days}`));
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.getByTestId("usage-tab")).toHaveTextContent("7");
+    expect(pending.some((request) => request.days === 30 && request.signal?.aborted)).toBe(true);
   });
 });
