@@ -254,6 +254,30 @@ test("Request Logs: centers every header except ID over its column content", asy
     expect(column.justifyContent, column.key ?? undefined).toBe("center");
     expect(column.centerDelta, column.key ?? undefined).toBeLessThanOrEqual(1);
   }
+
+  const channelHeader = page.locator('th[data-vt-column-key="channelName"]');
+  const channelLabel = channelHeader.locator("[data-vt-column-header-content] > span > span");
+  const centerBeforeHover = await channelLabel.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.left + rect.width / 2;
+  });
+
+  await channelHeader.hover();
+  await expect(channelHeader.locator("[data-vt-column-reorder-handle]")).toHaveCSS(
+    "opacity",
+    "1",
+  );
+
+  const hoverState = await channelLabel.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const content = element.closest<HTMLElement>("[data-vt-column-header-content]");
+    return {
+      center: rect.left + rect.width / 2,
+      paddingLeft: content ? getComputedStyle(content).paddingLeft : null,
+    };
+  });
+  expect(hoverState.paddingLeft).toBe("0px");
+  expect(Math.abs(hoverState.center - centerBeforeHover)).toBeLessThanOrEqual(1);
 });
 
 test("Request Logs: response metrics column resize clamps at its minimum width", async ({
