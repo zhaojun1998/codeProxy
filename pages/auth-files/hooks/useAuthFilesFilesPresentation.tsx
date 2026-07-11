@@ -392,7 +392,9 @@ export function useAuthFilesFilesPresentation({
       const days = Math.max(0, Math.abs(status.remainingDays));
       const label = status.expired
         ? t("auth_files.subscription_expired_short", { days })
-        : t("auth_files.subscription_remaining_short", { days });
+        : status.expiresAtMs - nowMs < 24 * 60 * 60 * 1000
+          ? t("auth_files.subscription_remaining_less_than_day")
+          : t("auth_files.subscription_remaining_short", { days });
       const title = t("auth_files.subscription_expires_at_title", {
         start: status.startedAtText,
         date: status.expiresAtText,
