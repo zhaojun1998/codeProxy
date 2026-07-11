@@ -909,6 +909,7 @@
     "subscription_period_yearly": "年订阅",
     "subscription_expires_at_title": "{{period}} · 开始于 {{start}} · 到期于 {{date}}",
     "subscription_remaining_short": "剩余 {{days}} 天",
+    "subscription_remaining_less_than_day": "不足一天",
     "subscription_expired_short": "已过期 {{days}} 天",
     "quota_preview_5h": "5小时",
     "quota_preview_week": "周",

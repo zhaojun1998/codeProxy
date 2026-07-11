@@ -573,6 +573,7 @@
     "subscription_period_yearly": "Ежегодно",
     "subscription_expires_at_title": "{{period}} - начало {{start}} - истекает {{date}}",
     "subscription_remaining_short": "Осталось {{days}} д",
+    "subscription_remaining_less_than_day": "Осталось менее дня",
     "subscription_expired_short": "Истекла {{days}} д назад",
     "restriction_duration_day": "д",
     "restriction_duration_hour": "ч",
