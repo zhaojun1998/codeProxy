@@ -6,6 +6,7 @@ const { Page: ProxiesPage, preload: preloadProxiesPage } = preloadablePage(() =>
 
 export const proxiesRoute = {
   path: "/proxies",
+  component: "proxies",
   element: <ProxiesPage />,
   auth: true,
   layout: "dashboard",

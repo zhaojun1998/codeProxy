@@ -6,6 +6,7 @@ const { Page: ProvidersPage, preload: preloadProvidersPage } = preloadablePage(
 
 export const providersRoute = {
   path: "/ai-providers",
+  component: "providers",
   element: <ProvidersPage />,
   auth: true,
   layout: "dashboard",

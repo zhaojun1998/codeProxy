@@ -6,6 +6,7 @@ const { Page: LogsPage, preload: preloadLogsPage } = preloadablePage(() =>
 
 export const logsRoute = {
   path: "/logs",
+  component: "logs",
   element: <LogsPage />,
   auth: true,
   layout: "dashboard",

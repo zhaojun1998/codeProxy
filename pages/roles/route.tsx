@@ -4,6 +4,7 @@ const { Page, preload } = preloadablePage(() =>
 );
 export const rolesRoute = {
   path: "/roles",
+  component: "roles",
   element: <Page />,
   auth: true,
   layout: "dashboard",

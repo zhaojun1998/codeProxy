@@ -6,6 +6,7 @@ const { Page: AuthFilesPage, preload: preloadAuthFilesPage } = preloadablePage((
 
 export const accountSecurityRoute = {
   path: "/account-security",
+  component: "account-security",
   element: <AuthFilesPage />,
   auth: true,
   layout: "dashboard",

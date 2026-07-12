@@ -6,6 +6,7 @@ const { Page: ApiKeysPage, preload: preloadApiKeysPage } = preloadablePage(() =>
 
 export const apiKeysRoute = {
   path: "/api-keys",
+  component: "api-keys",
   element: <ApiKeysPage />,
   auth: true,
   layout: "dashboard",

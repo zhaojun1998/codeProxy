@@ -6,6 +6,7 @@ const { Page: SystemPage, preload: preloadSystemPage } = preloadablePage(() =>
 
 export const systemRoute = {
   path: "/system",
+  component: "system",
   element: <SystemPage />,
   auth: true,
   layout: "dashboard",

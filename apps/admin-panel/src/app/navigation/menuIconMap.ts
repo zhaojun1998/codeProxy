@@ -1,0 +1,56 @@
+import {
+  Activity,
+  ArrowDownToLine,
+  Bot,
+  Building2,
+  Circle,
+  Copyright,
+  Cpu,
+  ExternalLink,
+  FileText,
+  FolderTree,
+  Image,
+  Info,
+  Layers,
+  LayoutDashboard,
+  Link2,
+  Menu as MenuIcon,
+  Network,
+  ScrollText,
+  Settings,
+  ShieldCheck,
+  Sparkles,
+  UserRound,
+  UsersRound,
+  type LucideIcon,
+} from "lucide-react";
+
+const ICON_MAP: Record<string, LucideIcon> = {
+  activity: Activity,
+  "arrow-down-to-line": ArrowDownToLine,
+  bot: Bot,
+  "building-2": Building2,
+  copyright: Copyright,
+  cpu: Cpu,
+  "external-link": ExternalLink,
+  "file-text": FileText,
+  "folder-tree": FolderTree,
+  image: Image,
+  info: Info,
+  layers: Layers,
+  "layout-dashboard": LayoutDashboard,
+  link: Link2,
+  menu: MenuIcon,
+  network: Network,
+  "scroll-text": ScrollText,
+  settings: Settings,
+  "shield-check": ShieldCheck,
+  sparkles: Sparkles,
+  "user-round": UserRound,
+  "users-round": UsersRound,
+};
+
+export function resolveMenuIcon(name: string | undefined | null): LucideIcon {
+  if (!name) return Circle;
+  return ICON_MAP[name] ?? ICON_MAP[name.toLowerCase()] ?? Circle;
+}
