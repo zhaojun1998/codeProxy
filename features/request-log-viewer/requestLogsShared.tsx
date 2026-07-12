@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { UsageLogItem } from "@code-proxy/api-client/endpoints/usage";
+import { VendorIcon } from "@code-proxy/assets";
 import {
   formatFixedNumber,
   formatUsageMetricCost,
@@ -42,6 +43,8 @@ export type RequestLogsRow = {
   apiKeyName: string;
   isSystemCall: boolean;
   channelName: string;
+  channelProvider?: string;
+  channelAuthType?: string;
   maskedApiKey: string;
   model: string;
   upstreamModel: string;
@@ -57,6 +60,103 @@ export type RequestLogsRow = {
   cost: number;
   hasContent: boolean;
 };
+
+export function normalizeChannelAuthType(
+  authType?: string | null,
+): "oauth" | "api" | "" {
+  const raw = String(authType ?? "")
+    .trim()
+    .toLowerCase();
+  if (raw === "oauth") return "oauth";
+  if (raw === "api" || raw === "api_key" || raw === "apikey") return "api";
+  return "";
+}
+
+function channelAuthTypeBadgeClass(authType: "oauth" | "api" | ""): string {
+  if (authType === "api") {
+    return "bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200";
+  }
+  if (authType === "oauth") {
+    return "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200";
+  }
+  return "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-white/65";
+}
+
+/**
+ * Shared channel identity chip: vendor icon + truncated name + auth-type badge.
+ * Used by request-log filter options and the table channel column so both stay
+ * visually aligned across narrow/wide column widths.
+ */
+export function ChannelIdentityLabel({
+  name,
+  provider,
+  authType,
+  apiLabel,
+  oauthLabel,
+  iconSize = 14,
+  className,
+  nameClassName,
+}: {
+  name: string;
+  provider?: string | null;
+  authType?: string | null;
+  apiLabel: string;
+  oauthLabel: string;
+  iconSize?: number;
+  className?: string;
+  nameClassName?: string;
+}) {
+  const trimmedName = String(name || "").trim();
+  const displayName = trimmedName || "--";
+  const vendor = String(provider ?? "").trim();
+  const normalizedAuth = normalizeChannelAuthType(authType);
+  const badgeLabel =
+    normalizedAuth === "api"
+      ? apiLabel
+      : normalizedAuth === "oauth"
+        ? oauthLabel
+        : "";
+  // Callers can fully override name typography via nameClassName; do not stack
+  // conflicting text-* utilities (plain class join is not Tailwind-merge).
+  const resolvedNameClassName =
+    nameClassName ??
+    [
+      "text-xs font-medium",
+      trimmedName
+        ? "text-slate-700 dark:text-slate-200"
+        : "text-slate-400 dark:text-white/30",
+    ].join(" ");
+
+  return (
+    <span
+      className={[
+        "inline-flex min-w-0 max-w-full items-center gap-1.5",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {vendor ? (
+        <span className="inline-flex shrink-0 items-center" aria-hidden="true">
+          <VendorIcon modelId={vendor} size={iconSize} />
+        </span>
+      ) : null}
+      <span className={["min-w-0 truncate", resolvedNameClassName].join(" ")}>
+        {displayName}
+      </span>
+      {badgeLabel ? (
+        <span
+          className={[
+            "inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-2xs font-semibold leading-none",
+            channelAuthTypeBadgeClass(normalizedAuth),
+          ].join(" ")}
+        >
+          {badgeLabel}
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 const parseLatencyTextToSeconds = (text: string): number | null => {
   const trimmed = String(text || "").trim();
@@ -419,6 +519,7 @@ export const formatOptionalRequestLogLatencyMs = (value: number): string => {
 
 export const toRequestLogsRow = (item: UsageLogItem): RequestLogsRow => {
   const isSystemCall = isSystemRequestLogKey(item.api_key, item.api_key_name);
+  const channelAuthType = normalizeChannelAuthType(item.auth_type);
   return {
     id: String(item.id),
     timestamp: item.timestamp,
@@ -427,6 +528,8 @@ export const toRequestLogsRow = (item: UsageLogItem): RequestLogsRow => {
     apiKeyName: item.api_key_name || "",
     isSystemCall,
     channelName: item.channel_name || "",
+    channelProvider: String(item.provider ?? "").trim() || undefined,
+    channelAuthType: channelAuthType || undefined,
     maskedApiKey: maskRequestLogApiKey(item.api_key),
     model: item.model,
     upstreamModel: item.upstream_model || "",
@@ -528,6 +631,8 @@ export function buildRequestLogsColumns(
   onContentClick?: (logId: number, tab: "input" | "output") => void,
   onErrorClick?: (logId: number, model: string) => void,
 ): RequestLogsTableColumn<RequestLogsRow>[] {
+  const apiLabel = t("request_logs.auth_type_api");
+  const oauthLabel = t("request_logs.auth_type_oauth");
   return [
     {
       key: "id",
@@ -563,21 +668,40 @@ export function buildRequestLogsColumns(
     {
       key: "channelName",
       label: t("request_logs.col_channel"),
-      width: "w-32",
+      // Wider default so icon + name + auth badge can share the cell; DataTable
+      // still lets users resize. Name truncates first; icon/badge stay visible.
+      width: "w-44",
       headerClassName: CENTERED_REQUEST_LOG_HEADER_CLASS,
       cellClassName: "text-center",
-      render: (row) => (
-        <OverflowTooltip
-          content={row.channelName || "--"}
-          className="block min-w-0"
-        >
-          <span
-            className={`block min-w-0 truncate text-xs font-medium ${row.channelName ? "text-violet-600 dark:text-violet-400" : "text-slate-400 dark:text-white/30"}`}
+      render: (row) => {
+        const authLabel =
+          row.channelAuthType === "api"
+            ? apiLabel
+            : row.channelAuthType === "oauth"
+              ? oauthLabel
+              : "";
+        const tooltipParts = [
+          row.channelName || "--",
+          authLabel,
+          row.channelProvider,
+        ].filter(Boolean);
+        return (
+          <OverflowTooltip
+            content={tooltipParts.join(" · ")}
+            className="mx-auto block min-w-0 max-w-full"
           >
-            {row.channelName || "--"}
-          </span>
-        </OverflowTooltip>
-      ),
+            <ChannelIdentityLabel
+              name={row.channelName}
+              provider={row.channelProvider}
+              authType={row.channelAuthType}
+              apiLabel={apiLabel}
+              oauthLabel={oauthLabel}
+              iconSize={14}
+              className="justify-center"
+            />
+          </OverflowTooltip>
+        );
+      },
     },
     {
       key: "status",

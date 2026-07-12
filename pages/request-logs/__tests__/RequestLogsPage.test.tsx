@@ -85,6 +85,8 @@ const buildUsageLogItem = (overrides: Partial<UsageLogItem> = {}): UsageLogItem 
   model: "gpt-5.4",
   source: "codex",
   channel_name: "Codex",
+  provider: "codex",
+  auth_type: "oauth",
   auth_index: "auth-1",
   failed: false,
   latency_ms: 1200,
@@ -199,6 +201,8 @@ describe("RequestLogsPage", () => {
           model: "gpt-5.4",
           source: "codex",
           channel_name: "Codex",
+          provider: "codex",
+          auth_type: "oauth",
           auth_index: "auth-1",
           failed: false,
           streaming: true,
@@ -248,6 +252,40 @@ describe("RequestLogsPage", () => {
 
     await user.hover(within(table).getByLabelText("Duration: 1.20s"));
     expect(await screen.findByRole("tooltip")).toHaveTextContent("First Token Latency: 183ms");
+  });
+
+  test("renders channel column with vendor identity and auth-type badge", async () => {
+    await i18n.changeLanguage("en");
+
+    mocks.getUsageLogs.mockResolvedValue(
+      responseWithRows([
+        buildUsageLogItem({
+          channel_name: "asherandersenloqv@outlook.com",
+          provider: "xai",
+          auth_type: "oauth",
+        }),
+        buildUsageLogItem({
+          id: 2,
+          channel_name: "Relay",
+          provider: "openai",
+          auth_type: "api",
+        }),
+      ]),
+    );
+
+    render(
+      <ThemeProvider>
+        <ToastProvider>
+          <RequestLogsPage />
+        </ToastProvider>
+      </ThemeProvider>,
+    );
+
+    const table = await screen.findByRole("table", { name: "Request Logs Table" });
+    expect(within(table).getByText("asherandersenloqv@outlook.com")).toBeInTheDocument();
+    expect(within(table).getByText("Relay")).toBeInTheDocument();
+    expect(within(table).getAllByText("OAuth").length).toBeGreaterThanOrEqual(1);
+    expect(within(table).getByText("API")).toBeInTheDocument();
   });
 
   test("labels non-streaming logs without rendering a first token placeholder", async () => {
