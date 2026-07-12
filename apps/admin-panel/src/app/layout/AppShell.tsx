@@ -34,7 +34,12 @@ import {
   ThemeToggleButton,
 } from "@code-proxy/ui";
 import { preloadPageRoute } from "@pages/registry";
-import { identityApi, type MenuIdentity, type TenantIdentity } from "@code-proxy/api-client";
+import {
+  identityApi,
+  IDENTITY_TENANTS_UPDATED_EVENT,
+  type MenuIdentity,
+  type TenantIdentity,
+} from "@code-proxy/api-client";
 import { useOptionalAuth } from "@app/providers/AuthProvider";
 import { resolveMenuIcon } from "@app/navigation/menuIconMap";
 
@@ -1075,21 +1080,38 @@ function ShellHeader({
     auth?.state.principal?.platform_admin && auth.state.principal.kind !== "service_credential";
   const [tenants, setTenants] = useState<TenantIdentity[]>([]);
   const [tenantSwitching, setTenantSwitching] = useState(false);
+  // Bumped on IDENTITY_TENANTS_UPDATED_EVENT so create/update/delete refresh the switcher
+  // without remounting the shell.
+  const [tenantsEpoch, setTenantsEpoch] = useState(0);
   useEffect(() => {
     if (!canSwitchTenants) {
       setTenants([]);
       return;
     }
+    let cancelled = false;
     void identityApi
       .tenants()
-      .then((response) =>
+      .then((response) => {
+        if (cancelled) return;
         setTenants(
           (response.items ?? []).filter(
             (tenant) => tenant.type === "system" || tenant.effective_status === "active",
           ),
-        ),
-      )
-      .catch(() => setTenants([]));
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setTenants([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canSwitchTenants, tenantsEpoch]);
+
+  useEffect(() => {
+    if (!canSwitchTenants) return;
+    const onTenantsUpdated = () => setTenantsEpoch((epoch) => epoch + 1);
+    window.addEventListener(IDENTITY_TENANTS_UPDATED_EVENT, onTenantsUpdated);
+    return () => window.removeEventListener(IDENTITY_TENANTS_UPDATED_EVENT, onTenantsUpdated);
   }, [canSwitchTenants]);
 
   const systemTenantLabel = t("shell.system_tenant");
@@ -1124,6 +1146,11 @@ function ShellHeader({
     [auth, effectiveTenantId, tenantSwitching],
   );
 
+  // Single-tenant installs have nothing to switch to — hide the control entirely
+  // (including the system-admin-only bootstrap case).
+  const showTenantSwitcher =
+    Boolean(canSwitchTenants && auth?.state.principal) && tenantOptions.length > 1;
+
   const sidebarLabel = sidebarCollapsed ? t("shell.expand_sidebar") : t("shell.collapse_sidebar");
 
   return (
@@ -1143,7 +1170,7 @@ function ShellHeader({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-          {canSwitchTenants && auth?.state.principal ? (
+          {showTenantSwitcher ? (
             <SearchableSelect
               value={effectiveTenantId}
               onChange={handleTenantChange}

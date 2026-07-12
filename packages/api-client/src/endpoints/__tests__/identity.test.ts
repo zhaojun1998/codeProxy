@@ -1,12 +1,22 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { apiClient } from "../../client/client";
-import { identityApi } from "../identity";
+import { IDENTITY_TENANTS_UPDATED_EVENT, identityApi } from "../identity";
+
+function stubWindowEvents() {
+  const target = new EventTarget();
+  vi.stubGlobal("window", target);
+  return target;
+}
 
 describe("identityApi", () => {
   beforeEach(() => {
     apiClient.setConfig({ apiBase: "http://localhost:8317", managementKey: "" });
     apiClient.setDefaultHeaders({});
     vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   test("logs in through the public auth endpoint", async () => {
@@ -49,12 +59,15 @@ describe("identityApi", () => {
 
   test("creates tenants without a caller-provided identifier", async () => {
     apiClient.setConfig({ apiBase: "http://localhost:8317", managementKey: "cps_test" });
+    const win = stubWindowEvents();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ tenant: {}, admin: {} }), {
         status: 201,
         headers: { "Content-Type": "application/json" },
       }),
     );
+    const eventSpy = vi.fn();
+    win.addEventListener(IDENTITY_TENANTS_UPDATED_EVENT, eventSpy);
     await identityApi.createTenant({
       name: "Tenant A",
       description: "Primary tenant",
@@ -64,6 +77,7 @@ describe("identityApi", () => {
       admin_password: "tenant-password-123",
     });
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).not.toHaveProperty("slug");
+    expect(eventSpy).toHaveBeenCalledOnce();
   });
 
   test("creates roles without a caller-provided code", async () => {
@@ -88,12 +102,15 @@ describe("identityApi", () => {
 
   test("updates tenant details with optimistic versioning", async () => {
     apiClient.setConfig({ apiBase: "http://localhost:8317", managementKey: "cps_test" });
+    const win = stubWindowEvents();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(JSON.stringify({ id: "tenant-a" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
     );
+    const eventSpy = vi.fn();
+    win.addEventListener(IDENTITY_TENANTS_UPDATED_EVENT, eventSpy);
     await identityApi.updateTenant("tenant-a", {
       name: "Tenant A",
       description: "Updated",
@@ -107,6 +124,25 @@ describe("identityApi", () => {
       description: "Updated",
       version: 3,
     });
+    expect(eventSpy).toHaveBeenCalledOnce();
+  });
+
+  test("deletes tenants and notifies shell listeners", async () => {
+    apiClient.setConfig({ apiBase: "http://localhost:8317", managementKey: "cps_test" });
+    const win = stubWindowEvents();
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "tenant-a" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const eventSpy = vi.fn();
+    win.addEventListener(IDENTITY_TENANTS_UPDATED_EVENT, eventSpy);
+    await identityApi.deleteTenant("tenant-a", 2);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(new URL(String(url)).pathname).toBe("/v0/management/tenants/tenant-a");
+    expect(init?.method).toBe("DELETE");
+    expect(eventSpy).toHaveBeenCalledOnce();
   });
   test("updates menu configuration with optimistic versioning", async () => {
     apiClient.setConfig({ apiBase: "http://localhost:8317", managementKey: "cps_test" });
