@@ -7,8 +7,11 @@ import {
   ConfirmModal,
   DataTable,
   DateTimePicker,
+  Form,
+  FormField,
   Modal,
   Select,
+  Textarea,
   TextInput,
   type DataTableColumn,
   useToast,
@@ -407,21 +410,15 @@ export function TenantsPage() {
           </>
         }
       >
-        <form id="edit-tenant-form" onSubmit={saveTenant} className="space-y-4">
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              {t("identity_admin.name")}
-            </span>
+        <Form id="edit-tenant-form" onSubmit={saveTenant}>
+          <FormField label={t("identity_admin.name")} required>
             <TextInput
               value={editForm.name}
               onChange={(event) => setEditForm({ ...editForm, name: event.target.value })}
               required
             />
-          </label>
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              {t("identity_admin.status")}
-            </span>
+          </FormField>
+          <FormField label={t("identity_admin.status")} orientation="horizontal">
             <Select
               value={editForm.status}
               onChange={(status) => setEditForm({ ...editForm, status })}
@@ -431,18 +428,14 @@ export function TenantsPage() {
                 { value: "disabled", label: t("identity_admin.status_disabled") },
               ]}
             />
-          </label>
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              {t("identity_admin.description")}
-            </span>
-            <textarea
+          </FormField>
+          <FormField label={t("identity_admin.description")}>
+            <Textarea
               value={editForm.description}
               onChange={(event) => setEditForm({ ...editForm, description: event.target.value })}
-              className="min-h-28 w-full rounded-2xl border border-black/[0.04] bg-white px-3.5 py-3 text-sm text-slate-700 outline-none shadow-[2px_2px_6px_rgb(0_0_0_/_0.055)] focus:ring-2 focus:ring-slate-300/50 dark:border-transparent dark:bg-[#27272A] dark:text-slate-200"
             />
-          </label>
-        </form>
+          </FormField>
+        </Form>
       </Modal>
 
       <Modal
