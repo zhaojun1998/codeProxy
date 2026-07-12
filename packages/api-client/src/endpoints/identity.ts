@@ -1,6 +1,14 @@
 import { apiClient } from "../client/client";
 
 export const IDENTITY_MENUS_UPDATED_EVENT = "identity-menus-updated";
+/** Fired after tenant create / update / delete so shell switchers can refresh. */
+export const IDENTITY_TENANTS_UPDATED_EVENT = "identity-tenants-updated";
+
+function notifyTenantsUpdated() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(IDENTITY_TENANTS_UPDATED_EVENT));
+  }
+}
 
 export interface TenantIdentity {
   id: string;
@@ -137,15 +145,22 @@ export const identityApi = {
   changePassword: (body: { current_password: string; new_password: string }) =>
     apiClient.put<void>("/../auth/password", body),
   tenants: () => apiClient.get<{ items: TenantIdentity[] }>("/tenants"),
-  createTenant: (body: {
+  createTenant: async (body: {
     name: string;
     description: string;
     expires_at: string;
     admin_username: string;
     admin_display_name: string;
     admin_password: string;
-  }) => apiClient.post<{ tenant: TenantIdentity; admin: UserIdentity }>("/tenants", body),
-  updateTenant: (
+  }) => {
+    const result = await apiClient.post<{ tenant: TenantIdentity; admin: UserIdentity }>(
+      "/tenants",
+      body,
+    );
+    notifyTenantsUpdated();
+    return result;
+  },
+  updateTenant: async (
     id: string,
     body: {
       name?: string;
@@ -154,11 +169,21 @@ export const identityApi = {
       expires_at?: string;
       version: number;
     },
-  ) => apiClient.patch<TenantIdentity>(`/tenants/${encodeURIComponent(id)}`, body),
-  deleteTenant: (id: string, version: number) =>
-    apiClient.delete<TenantIdentity>(`/tenants/${encodeURIComponent(id)}`, {
+  ) => {
+    const tenant = await apiClient.patch<TenantIdentity>(
+      `/tenants/${encodeURIComponent(id)}`,
+      body,
+    );
+    notifyTenantsUpdated();
+    return tenant;
+  },
+  deleteTenant: async (id: string, version: number) => {
+    const tenant = await apiClient.delete<TenantIdentity>(`/tenants/${encodeURIComponent(id)}`, {
       version,
-    }),
+    });
+    notifyTenantsUpdated();
+    return tenant;
+  },
   users: () => apiClient.get<{ items: UserIdentity[] }>("/users"),
   createUser: (body: {
     username: string;

@@ -1,14 +1,37 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ThemeProvider } from "@code-proxy/ui";
-import type { MenuIdentity } from "@code-proxy/api-client";
+import { IDENTITY_TENANTS_UPDATED_EVENT, type MenuIdentity, type TenantIdentity } from "@code-proxy/api-client";
 import { preloadPageRoute } from "@pages/registry";
 import { AppShell } from "./AppShell";
 
 vi.mock("@pages/registry", () => ({
   preloadPageRoute: vi.fn(() => Promise.resolve()),
 }));
+
+const tenantsMock = vi.fn<() => Promise<{ items: TenantIdentity[] }>>();
+
+vi.mock("@code-proxy/api-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@code-proxy/api-client")>();
+  return {
+    ...actual,
+    identityApi: {
+      ...actual.identityApi,
+      tenants: (...args: unknown[]) => tenantsMock(...(args as [])),
+    },
+  };
+});
+
+type AuthPrincipal = {
+  kind?: string;
+  platform_admin?: boolean;
+  menus: MenuIdentity[];
+  user: { display_name: string; username: string; role_codes: string[] };
+  effective_tenant: TenantIdentity;
+};
+
+let authPrincipal: AuthPrincipal;
 
 const menu = (partial: Partial<MenuIdentity> & Pick<MenuIdentity, "code" | "type">): MenuIdentity => ({
   parent_code: "",
@@ -145,15 +168,27 @@ const testMenus: MenuIdentity[] = [
   }),
 ];
 
+const systemTenant: TenantIdentity = {
+  id: "t-system",
+  type: "system",
+  name: "System Administration",
+  slug: "system",
+  effective_status: "active",
+} as TenantIdentity;
+
+const acmeTenant: TenantIdentity = {
+  id: "t-acme",
+  type: "standard",
+  name: "Acme Team",
+  slug: "acme",
+  effective_status: "active",
+} as TenantIdentity;
+
 vi.mock("@app/providers/AuthProvider", () => ({
   useOptionalAuth: () => ({
     can: () => true,
     state: {
-      principal: {
-        menus: testMenus,
-        user: { display_name: "Admin", username: "admin", role_codes: [] },
-        effective_tenant: { type: "system", name: "System" },
-      },
+      principal: authPrincipal,
     },
     actions: {
       switchTenant: vi.fn(),
@@ -179,7 +214,22 @@ function renderShell(initialPath = "/dashboard") {
   );
 }
 
+function defaultPrincipal(overrides: Partial<AuthPrincipal> = {}): AuthPrincipal {
+  return {
+    menus: testMenus,
+    user: { display_name: "Admin", username: "admin", role_codes: [] },
+    effective_tenant: systemTenant,
+    ...overrides,
+  };
+}
+
 describe("AppShell route progress", () => {
+  beforeEach(() => {
+    authPrincipal = defaultPrincipal();
+    tenantsMock.mockReset();
+    tenantsMock.mockResolvedValue({ items: [] });
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.mocked(preloadPageRoute).mockClear();
@@ -383,5 +433,68 @@ describe("AppShell route progress", () => {
       screen.getByRole("button", { name: /Models & Routing|模型与(?:路由|调度)/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Admin" })).toBeInTheDocument();
+  });
+});
+
+describe("AppShell tenant switcher", () => {
+  beforeEach(() => {
+    authPrincipal = defaultPrincipal({ platform_admin: true });
+    tenantsMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  test("hides the tenant switcher when only one tenant is available", async () => {
+    tenantsMock.mockResolvedValue({ items: [systemTenant] });
+    renderShell();
+
+    await waitFor(() => {
+      expect(tenantsMock).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole("combobox", { name: /Switch Tenant|切换租户/i })).not.toBeInTheDocument();
+  });
+
+  test("shows the tenant switcher when multiple tenants are available", async () => {
+    tenantsMock.mockResolvedValue({ items: [systemTenant, acmeTenant] });
+    renderShell();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: /Switch Tenant|切换租户/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  test("refreshes the tenant switcher after tenants are created", async () => {
+    tenantsMock.mockResolvedValueOnce({ items: [systemTenant] });
+    renderShell();
+
+    await waitFor(() => {
+      expect(tenantsMock).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByRole("combobox", { name: /Switch Tenant|切换租户/i })).not.toBeInTheDocument();
+
+    tenantsMock.mockResolvedValueOnce({ items: [systemTenant, acmeTenant] });
+    act(() => {
+      window.dispatchEvent(new Event(IDENTITY_TENANTS_UPDATED_EVENT));
+    });
+
+    await waitFor(() => {
+      expect(tenantsMock).toHaveBeenCalledTimes(2);
+      expect(
+        screen.getByRole("combobox", { name: /Switch Tenant|切换租户/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  test("hides the tenant switcher for non platform admins", async () => {
+    authPrincipal = defaultPrincipal({ platform_admin: false });
+    tenantsMock.mockResolvedValue({ items: [systemTenant, acmeTenant] });
+    renderShell();
+
+    expect(tenantsMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole("combobox", { name: /Switch Tenant|切换租户/i })).not.toBeInTheDocument();
   });
 });
