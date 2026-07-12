@@ -411,7 +411,7 @@ export function TenantsPage() {
         }
       >
         <Form id="edit-tenant-form" onSubmit={saveTenant}>
-          <FormField label={t("identity_admin.name")} required>
+          <FormField label={t("identity_admin.name")} required orientation="horizontal">
             <TextInput
               value={editForm.name}
               onChange={(event) => setEditForm({ ...editForm, name: event.target.value })}
@@ -429,7 +429,7 @@ export function TenantsPage() {
               ]}
             />
           </FormField>
-          <FormField label={t("identity_admin.description")}>
+          <FormField label={t("identity_admin.description")} orientation="horizontal">
             <Textarea
               value={editForm.description}
               onChange={(event) => setEditForm({ ...editForm, description: event.target.value })}

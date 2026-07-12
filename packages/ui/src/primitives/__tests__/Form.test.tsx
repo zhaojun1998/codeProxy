@@ -32,16 +32,27 @@ describe("FormField", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("名称不能为空");
   });
 
-  test("supports horizontal orientation for compact fields", () => {
+  test("supports horizontal orientation with label left and control right", () => {
     const { container } = render(
-      <FormField label="状态" orientation="horizontal" htmlFor="tenant-status">
+      <FormField
+        label="状态"
+        description="租户状态"
+        orientation="horizontal"
+        htmlFor="tenant-status"
+      >
         <TextInput />
       </FormField>,
     );
 
     const field = container.querySelector("[data-slot='form-field']");
+    const label = screen.getByText("状态");
+    const content = container.querySelector("[data-slot='form-field-content']");
     expect(field).toHaveAttribute("data-orientation", "horizontal");
-    expect(field).toHaveClass("items-center");
+    expect(field).toHaveClass("items-start");
+    expect(label).toHaveClass("w-16", "text-left");
+    expect(content).not.toBeNull();
+    expect(content).toContainElement(screen.getByRole("textbox"));
+    expect(content).toContainElement(screen.getByText("租户状态"));
   });
 });
 

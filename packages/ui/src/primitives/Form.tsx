@@ -69,6 +69,9 @@ export type FormFieldProps = PropsWithChildren<
   }
 >;
 
+/** Fixed label column width so multi-field horizontal forms share one left edge. */
+const HORIZONTAL_LABEL_CLASS = "w-16 shrink-0 text-left leading-9";
+
 function FormField({
   children,
   className,
@@ -85,16 +88,19 @@ function FormField({
   const descriptionId = description ? `${id}-description` : undefined;
   const errorId = error ? `${id}-error` : undefined;
   const invalid = Boolean(error);
+  const isHorizontal = orientation === "horizontal";
 
   const contextValue = useMemo<FormFieldContextValue>(
     () => ({ id, descriptionId, errorId, invalid }),
     [descriptionId, errorId, id, invalid],
   );
 
-  const control = (
-    <FormControl className={orientation === "horizontal" ? "min-w-0 flex-1" : undefined}>
-      {children}
-    </FormControl>
+  const control = <FormControl className={isHorizontal ? "min-w-0 w-full" : undefined}>{children}</FormControl>;
+  const meta = (
+    <>
+      {description ? <FormDescription id={descriptionId}>{description}</FormDescription> : null}
+      {error ? <FormError id={errorId}>{error}</FormError> : null}
+    </>
   );
 
   return (
@@ -104,21 +110,27 @@ function FormField({
         data-orientation={orientation}
         data-invalid={invalid || undefined}
         className={cn(
-          orientation === "horizontal"
-            ? "flex flex-wrap items-center gap-x-3 gap-y-1.5"
-            : "flex flex-col gap-1.5",
+          isHorizontal ? "flex items-start gap-x-3" : "flex flex-col gap-1.5",
           className,
         )}
         {...props}
       >
         {label != null && label !== false ? (
-          <FormLabel required={required} className={orientation === "horizontal" ? "shrink-0" : undefined}>
+          <FormLabel required={required} className={isHorizontal ? HORIZONTAL_LABEL_CLASS : undefined}>
             {label}
           </FormLabel>
         ) : null}
-        {control}
-        {description ? <FormDescription id={descriptionId}>{description}</FormDescription> : null}
-        {error ? <FormError id={errorId}>{error}</FormError> : null}
+        {isHorizontal ? (
+          <div data-slot="form-field-content" className="min-w-0 flex-1 space-y-1.5">
+            {control}
+            {meta}
+          </div>
+        ) : (
+          <>
+            {control}
+            {meta}
+          </>
+        )}
       </div>
     </FormFieldContext.Provider>
   );
