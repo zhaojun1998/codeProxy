@@ -32,6 +32,7 @@ import {
   getCompactNumberParts,
   type CompactNumberOptions,
 } from "@code-proxy/domain";
+import { useAuth } from "@app/providers/AuthProvider";
 import { SystemMonitorSection } from "./SystemMonitorSection";
 import { useSystemStats } from "./useSystemStats";
 import { AnimatedNumber } from "@code-proxy/ui";
@@ -437,7 +438,11 @@ function ThroughputTrendChart({
 export function DashboardPage() {
   const { t } = useTranslation();
   const { notify } = useToast();
-  const { stats, connected } = useSystemStats(5);
+  const { can } = useAuth();
+  // Host-level system monitor is gated by platform permission (and thus menus/roles).
+  // Throughput trends stay on dashboard.read and are always tenant-scoped via dashboard-summary.
+  const canViewSystemMonitor = can("system.status.read");
+  const { stats, connected } = useSystemStats(5, canViewSystemMonitor);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const summaryRef = useRef<DashboardSummary | null>(null);
   const [range, setRange] = useState<DashboardRange>(7);
@@ -492,6 +497,10 @@ export function DashboardPage() {
     () => trends?.throughput_series ?? [],
     [trends?.throughput_series],
   );
+  // Latest minute from tenant-scoped series (not host-wide system-stats RPM/TPM).
+  const latestThroughput = throughputSeries[throughputSeries.length - 1];
+  const tenantRpm = latestThroughput?.rpm ?? 0;
+  const tenantTpm = latestThroughput?.tpm ?? 0;
 
   const totalRequestOption = useMemo(
     () => createSparklineOption(trends?.request_volume ?? [], "#2563eb"),
@@ -653,18 +662,21 @@ export function DashboardPage() {
         />
       </div>
 
-      <SystemMonitorSection
-        stats={stats}
-        connected={connected}
-        apiKeyCount={summary?.counts.api_keys ?? 0}
-      />
+      {canViewSystemMonitor ? (
+        <SystemMonitorSection
+          stats={stats}
+          connected={connected}
+          apiKeyCount={summary?.counts.api_keys ?? 0}
+        />
+      ) : null}
 
       <ThroughputTrendChart
         title={t("dashboard.throughput_title")}
         points={throughputSeries}
-        rpm={stats?.total_rpm ?? 0}
-        tpm={stats?.total_tpm ?? 0}
-        connected={connected}
+        rpm={tenantRpm}
+        tpm={tenantTpm}
+        // Series comes from dashboard-summary polling, not the system-stats websocket.
+        connected={false}
         showRPM={throughputLegend.rpm}
         showTPM={throughputLegend.tpm}
         onToggle={(key) =>
