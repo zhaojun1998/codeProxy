@@ -253,6 +253,9 @@ function toLogRow(item: PublicLogItem): RequestLogsRow {
     apiKeyName: item.api_key_name || "",
     isSystemCall: false,
     channelName: item.channel_name || "",
+    // Public lookup logs do not currently expose provider/auth metadata.
+    channelProvider: undefined,
+    channelAuthType: undefined,
     maskedApiKey: maskRequestLogApiKey(item.api_key || ""),
     model: item.model,
     upstreamModel: item.upstream_model || "",
