@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getDashboardSummary: vi.fn(),
   notify: vi.fn(),
   useSystemStats: vi.fn(),
+  can: vi.fn((permission: string) => permission === "system.status.read" || permission === "dashboard.read"),
   intervalCallback: null as null | (() => void),
 }));
 
@@ -14,6 +15,14 @@ vi.mock("@code-proxy/api-client/endpoints/usage", () => ({
   usageApi: {
     getDashboardSummary: mocks.getDashboardSummary,
   },
+}));
+
+vi.mock("@app/providers/AuthProvider", () => ({
+  useAuth: () => ({
+    can: mocks.can,
+    state: { principal: null },
+    actions: {},
+  }),
 }));
 
 vi.mock("../useSystemStats", () => ({
@@ -113,11 +122,15 @@ describe("DashboardPage", () => {
     await i18n.changeLanguage("en");
     mocks.notify.mockReset();
     mocks.getDashboardSummary.mockReset();
+    mocks.can.mockReset();
+    mocks.can.mockImplementation(
+      (permission: string) => permission === "system.status.read" || permission === "dashboard.read",
+    );
     mocks.intervalCallback = null;
     mocks.useSystemStats.mockReturnValue({
       stats: {
-        total_rpm: 12,
-        total_tpm: 345,
+        total_rpm: 99,
+        total_tpm: 999,
       },
       connected: true,
       error: null,
@@ -191,5 +204,33 @@ describe("DashboardPage", () => {
     expect(tooltipValues).toContain("2,819,900,000.00");
     expect(tooltipValues).toContain("13,100,000.00");
     expect(tooltipValues).toContain("$12,345.6789");
+  });
+
+  test("hides system monitor without system.status.read but still shows tenant throughput", async () => {
+    mocks.can.mockImplementation((permission: string) => permission === "dashboard.read");
+    mocks.getDashboardSummary.mockResolvedValueOnce(summary);
+
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Throughput Trend")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByTestId("system-monitor-section")).toBeNull();
+    // RPM/TPM cards use the latest tenant-scoped series point, not host system-stats.
+    expect(screen.getByText("12")).toBeInTheDocument();
+    expect(screen.getByText("345")).toBeInTheDocument();
+    expect(mocks.useSystemStats).toHaveBeenCalledWith(5, false);
+  });
+
+  test("shows system monitor when system.status.read is granted", async () => {
+    mocks.getDashboardSummary.mockResolvedValueOnce(summary);
+
+    render(<DashboardPage />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("system-monitor-section")).toBeInTheDocument();
+    });
+    expect(mocks.useSystemStats).toHaveBeenCalledWith(5, true);
   });
 });

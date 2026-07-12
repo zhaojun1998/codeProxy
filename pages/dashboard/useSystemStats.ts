@@ -66,7 +66,11 @@ function buildWsUrl(apiBase: string, managementKey: string): string | null {
   }
 }
 
-export function useSystemStats(interval = 3): {
+export function useSystemStats(
+  interval = 3,
+  /** When false, skip WebSocket/HTTP and expose an empty idle state. */
+  enabled = true,
+): {
   stats: SystemStats | null;
   connected: boolean;
   error: string | null;
@@ -164,6 +168,14 @@ export function useSystemStats(interval = 3): {
 
   useEffect(() => {
     mountedRef.current = true;
+    if (!enabled) {
+      setStats(null);
+      setConnected(false);
+      setError(null);
+      return () => {
+        mountedRef.current = false;
+      };
+    }
     connect();
     return () => {
       mountedRef.current = false;
@@ -174,7 +186,11 @@ export function useSystemStats(interval = 3): {
         wsRef.current = null;
       }
     };
-  }, [connect, stopHttpFallback]);
+  }, [connect, enabled, stopHttpFallback]);
+
+  if (!enabled) {
+    return { stats: null, connected: false, error: null };
+  }
 
   return { stats, connected, error };
 }
