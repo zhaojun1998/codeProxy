@@ -16,20 +16,48 @@ export interface TenantIdentity {
   updated_at: string;
 }
 
+export type MenuType = "directory" | "menu" | "button" | "embed" | "link";
+
 export interface MenuIdentity {
   code: string;
   parent_code: string;
-  type: "directory" | "menu";
+  type: MenuType;
   path: string;
+  component: string;
+  link_url: string;
   label_key: string;
+  title: string;
   icon: string;
   permission_code: string;
   sort_order: number;
   visible: boolean;
   enabled: boolean;
+  badge_type: string;
+  badge_content: string;
+  hide_menu: boolean;
   system_protected: boolean;
   version: number;
 }
+
+export type MenuWriteBody = {
+  code?: string;
+  parent_code: string;
+  type: MenuType;
+  path: string;
+  component: string;
+  link_url: string;
+  label_key: string;
+  title: string;
+  icon: string;
+  permission_code: string;
+  sort_order: number;
+  visible: boolean;
+  enabled: boolean;
+  badge_type: string;
+  badge_content: string;
+  hide_menu: boolean;
+  version?: number;
+};
 
 export interface UserIdentity {
   id: string;
@@ -149,14 +177,22 @@ export const identityApi = {
   deleteUser: (id: string) => apiClient.delete<void>(`/users/${encodeURIComponent(id)}`),
   roles: () => apiClient.get<{ items: RoleIdentity[] }>("/roles"),
   menus: () => apiClient.get<{ items: MenuIdentity[] }>("/menus"),
-  updateMenu: async (
-    code: string,
-    body: { visible: boolean; enabled: boolean; sort_order: number; version: number },
-  ) => {
+  createMenu: async (body: MenuWriteBody) => {
+    const menu = await apiClient.post<MenuIdentity>("/menus", body);
+    if (typeof window !== "undefined")
+      window.dispatchEvent(new Event(IDENTITY_MENUS_UPDATED_EVENT));
+    return menu;
+  },
+  updateMenu: async (code: string, body: MenuWriteBody) => {
     const menu = await apiClient.patch<MenuIdentity>(`/menus/${encodeURIComponent(code)}`, body);
     if (typeof window !== "undefined")
       window.dispatchEvent(new Event(IDENTITY_MENUS_UPDATED_EVENT));
     return menu;
+  },
+  deleteMenu: async (code: string, version: number) => {
+    await apiClient.delete<void>(`/menus/${encodeURIComponent(code)}`, { version });
+    if (typeof window !== "undefined")
+      window.dispatchEvent(new Event(IDENTITY_MENUS_UPDATED_EVENT));
   },
   permissions: () => apiClient.get<{ items: PermissionIdentity[] }>("/permissions"),
   createRole: (body: { name: string; description: string; permissions: string[] }) =>

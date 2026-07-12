@@ -35,6 +35,8 @@ export interface PageRoute {
   hasWildcard?: boolean;
   preload?: () => Promise<unknown>;
   requiredPermission?: string;
+  /** Stable key for dynamic menu component binding */
+  component?: string;
 }
 
 export const pageRoutes: PageRoute[] = [

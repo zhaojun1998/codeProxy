@@ -8,6 +8,7 @@ const { Page: ApiKeyPermissionsPage, preload: preloadApiKeyPermissionsPage } = p
 
 export const apiKeyPermissionsRoute = {
   path: "/api-key-permissions",
+  component: "api-key-permissions",
   element: <ApiKeyPermissionsPage />,
   auth: true,
   layout: "dashboard",

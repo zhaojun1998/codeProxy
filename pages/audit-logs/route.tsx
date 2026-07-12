@@ -4,6 +4,7 @@ const { Page, preload } = preloadablePage(() =>
 );
 export const auditLogsRoute = {
   path: "/audit-logs",
+  component: "audit-logs",
   element: <Page />,
   auth: true,
   layout: "dashboard",

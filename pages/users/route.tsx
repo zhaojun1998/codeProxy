@@ -4,6 +4,7 @@ const { Page, preload } = preloadablePage(() =>
 );
 export const usersRoute = {
   path: "/users",
+  component: "users",
   element: <Page />,
   auth: true,
   layout: "dashboard",

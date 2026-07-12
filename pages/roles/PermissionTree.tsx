@@ -5,7 +5,7 @@ import type { MenuIdentity, PermissionIdentity } from "@code-proxy/api-client";
 
 export interface PermissionTreeNode {
   id: string;
-  kind: "directory" | "menu" | "permission";
+  kind: "directory" | "menu" | "button" | "embed" | "link" | "permission";
   label: string;
   description: string;
   permissionCodes: string[];
@@ -68,9 +68,9 @@ export function buildPermissionTree({
     if (direct.length === 0 && actions.length === 0 && children.length === 0) return null;
     return {
       id: `menu:${menu.code}`,
-      kind: menu.type,
+      kind: menu.type === "directory" ? "directory" : menu.type === "button" ? "button" : "menu",
       label: menuLabel(menu),
-      description: menu.path || menu.code,
+      description: menu.path || menu.permission_code || menu.code,
       permissionCodes: direct.map((permission) => permission.code),
       children: [...children, ...actions],
     };
@@ -149,7 +149,8 @@ export function PermissionTree({
     const indeterminate = selectedCount > 0 && !checked;
     const hasChildren = node.children.length > 0;
     const isExpanded = expanded.has(node.id);
-    const Icon = node.kind === "directory" ? Folder : node.kind === "menu" ? PanelTop : FileKey2;
+    const Icon =
+      node.kind === "directory" ? Folder : node.kind === "permission" ? FileKey2 : PanelTop;
 
     return (
       <li

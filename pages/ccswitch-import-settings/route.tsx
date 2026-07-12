@@ -9,6 +9,7 @@ const { Page: CcSwitchImportSettingsPage, preload: preloadCcSwitchImportSettings
 
 export const ccswitchImportSettingsRoute = {
   path: "/ccswitch-import-settings",
+  component: "ccswitch-import-settings",
   element: <CcSwitchImportSettingsPage />,
   auth: true,
   layout: "dashboard",

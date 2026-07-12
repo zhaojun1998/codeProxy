@@ -8,6 +8,7 @@ const { Page: ChannelGroupsPage, preload: preloadChannelGroupsPage } = preloadab
 
 export const channelGroupsRoute = {
   path: "/channel-groups",
+  component: "channel-groups",
   element: <ChannelGroupsPage />,
   auth: true,
   layout: "dashboard",

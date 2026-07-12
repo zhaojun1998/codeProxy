@@ -14,28 +14,14 @@ import {
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  Activity,
-  ArrowDownToLine,
-  Bot,
   Building2,
   Check,
   ChevronDown,
-  Cpu,
-  Image,
-  Layers,
   LayoutDashboard,
-  FileText,
-  Info,
   LogOut,
-  Menu as MenuIcon,
-  Network,
   PanelLeft,
-  ScrollText,
   Settings,
   ShieldCheck,
-  UserRound,
-  UsersRound,
-  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -47,8 +33,9 @@ import {
   ThemeToggleButton,
 } from "@code-proxy/ui";
 import { preloadPageRoute } from "@pages/registry";
-import { identityApi, type TenantIdentity } from "@code-proxy/api-client";
+import { identityApi, type MenuIdentity, type TenantIdentity } from "@code-proxy/api-client";
 import { useOptionalAuth } from "@app/providers/AuthProvider";
+import { resolveMenuIcon } from "@app/navigation/menuIconMap";
 
 interface ShellContextState {
   state: {
@@ -74,6 +61,7 @@ interface SidebarNavItem {
   i18nKey: string;
   icon: LucideIcon;
   permission: string;
+  external?: boolean;
 }
 
 interface SidebarNavGroup {
@@ -84,223 +72,95 @@ interface SidebarNavGroup {
   items: readonly SidebarNavItem[];
 }
 
-const DASHBOARD_NAV_ITEM = {
-  menuCode: "dashboard",
-  to: "/dashboard",
-  i18nKey: "shell.nav_dashboard",
-  icon: LayoutDashboard,
-  permission: "dashboard.read",
-} satisfies SidebarNavItem;
+const isSidebarLeaf = (menu: MenuIdentity) =>
+  (menu.type === "menu" || menu.type === "embed" || menu.type === "link") &&
+  !menu.hide_menu &&
+  Boolean(menu.path);
 
-const NAV_GROUPS = [
+const menuLabelKey = (menu: MenuIdentity) => menu.label_key || menu.title || menu.code;
+
+const toSidebarItem = (menu: MenuIdentity): SidebarNavItem => ({
+  menuCode: menu.code,
+  to: menu.type === "link" ? menu.link_url || menu.path : menu.path,
+  i18nKey: menuLabelKey(menu),
+  icon: resolveMenuIcon(menu.icon),
+  permission: menu.permission_code || "",
+  external: menu.type === "link",
+});
+
+const FALLBACK_NAV_GROUPS: readonly SidebarNavGroup[] = [
   {
-    id: "runtime",
-    menuCode: "group.runtime",
-    i18nKey: "shell.nav_group_runtime",
-    icon: Activity,
-    items: [
-      {
-        menuCode: "runtime.monitor",
-        to: "/monitor",
-        i18nKey: "shell.nav_monitor",
-        icon: Activity,
-        permission: "monitor.read",
-      },
-      {
-        menuCode: "runtime.request-logs",
-        to: "/monitor/request-logs",
-        i18nKey: "shell.nav_request_logs",
-        icon: ScrollText,
-        permission: "request_logs.read",
-      },
-      {
-        menuCode: "runtime.logs",
-        to: "/logs",
-        i18nKey: "shell.nav_logs",
-        icon: FileText,
-        permission: "system.logs.read",
-      },
-      {
-        menuCode: "runtime.system",
-        to: "/system",
-        i18nKey: "shell.nav_system",
-        icon: Info,
-        permission: "system.status.read",
-      },
-    ],
-  },
-  {
-    id: "access",
-    menuCode: "group.access",
-    i18nKey: "shell.nav_group_access",
-    icon: Bot,
-    items: [
-      {
-        menuCode: "access.providers",
-        to: "/ai-providers",
-        i18nKey: "shell.nav_ai_providers",
-        icon: Bot,
-        permission: "providers.read",
-      },
-      {
-        menuCode: "access.api-keys",
-        to: "/api-keys",
-        i18nKey: "shell.nav_api_keys",
-        icon: Sparkles,
-        permission: "api_keys.read",
-      },
-      {
-        menuCode: "access.ccswitch",
-        to: "/ccswitch-import-settings",
-        i18nKey: "shell.nav_ccswitch_import_settings",
-        icon: ArrowDownToLine,
-        permission: "system.config.read",
-      },
-    ],
-  },
-  {
-    id: "models",
-    menuCode: "group.models",
-    i18nKey: "shell.nav_group_models",
-    icon: Layers,
-    items: [
-      {
-        menuCode: "models.catalog",
-        to: "/models",
-        i18nKey: "shell.nav_models",
-        icon: Cpu,
-        permission: "models.read",
-      },
-      {
-        menuCode: "models.image-generation",
-        to: "/image-generation",
-        i18nKey: "shell.nav_image_generation",
-        icon: Image,
-        permission: "system.config.read",
-      },
-      {
-        menuCode: "models.channel-groups",
-        to: "/channel-groups",
-        i18nKey: "shell.nav_channel_groups",
-        icon: Layers,
-        permission: "routing.read",
-      },
-      {
-        menuCode: "models.proxies",
-        to: "/proxies",
-        i18nKey: "shell.nav_proxies",
-        icon: Network,
-        permission: "proxies.read",
-      },
-    ],
-  },
-  {
-    id: "governance",
-    menuCode: "group.governance",
-    i18nKey: "shell.nav_group_governance",
-    icon: UsersRound,
-    items: [
-      {
-        menuCode: "governance.tenants",
-        to: "/tenants",
-        i18nKey: "shell.nav_tenants",
-        icon: Building2,
-        permission: "platform.tenants.read",
-      },
-      {
-        menuCode: "governance.users",
-        to: "/users",
-        i18nKey: "shell.nav_users",
-        icon: UserRound,
-        permission: "tenant.users.read",
-      },
-      {
-        menuCode: "governance.roles",
-        to: "/roles",
-        i18nKey: "shell.nav_roles",
-        icon: ShieldCheck,
-        permission: "tenant.roles.read",
-      },
-      {
-        menuCode: "governance.audit",
-        to: "/audit-logs",
-        i18nKey: "shell.nav_audit_logs",
-        icon: FileText,
-        permission: "tenant.audit.read",
-      },
-    ],
-  },
-  {
-    id: "system",
+    id: "group.system",
     menuCode: "group.system",
     i18nKey: "shell.nav_group_system",
-    icon: Settings,
+    icon: resolveMenuIcon("settings"),
     items: [
-      {
-        menuCode: "system.account-security",
-        to: "/account-security",
-        i18nKey: "shell.nav_account_security",
-        icon: ShieldCheck,
-        permission: "auth_files.read",
-      },
-      {
-        menuCode: "system.api-key-permissions",
-        to: "/api-key-permissions",
-        i18nKey: "shell.nav_api_key_permissions",
-        icon: ShieldCheck,
-        permission: "api_key_profiles.read",
-      },
-      {
-        menuCode: "system.config",
-        to: "/config",
-        i18nKey: "shell.nav_config",
-        icon: Settings,
-        permission: "system.config.read",
-      },
       {
         menuCode: "system.menus",
         to: "/menu-management",
         i18nKey: "shell.nav_menu_management",
-        icon: MenuIcon,
+        icon: resolveMenuIcon("menu"),
         permission: "platform.menus.read",
       },
     ],
   },
-] satisfies readonly SidebarNavGroup[];
+];
 
-const getPageTitleKey = (pathname: string): string => {
+const FALLBACK_DASHBOARD_ITEM: SidebarNavItem = {
+  menuCode: "dashboard",
+  to: "/dashboard",
+  i18nKey: "shell.nav_dashboard",
+  icon: resolveMenuIcon("layout-dashboard"),
+  permission: "dashboard.read",
+};
+
+function buildSidebarFromMenus(menus: MenuIdentity[]): {
+  primaryItems: SidebarNavItem[];
+  groups: SidebarNavGroup[];
+} {
+  const byParent = new Map<string, MenuIdentity[]>();
+  for (const menu of menus) {
+    const parent = menu.parent_code || "";
+    byParent.set(parent, [...(byParent.get(parent) ?? []), menu]);
+  }
+  for (const siblings of byParent.values()) {
+    siblings.sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code));
+  }
+
+  const primaryItems: SidebarNavItem[] = [];
+  const groups: SidebarNavGroup[] = [];
+  for (const root of byParent.get("") ?? []) {
+    if (root.type === "directory") {
+      const items = (byParent.get(root.code) ?? [])
+        .filter(isSidebarLeaf)
+        .map(toSidebarItem);
+      if (items.length === 0) continue;
+      groups.push({
+        id: root.code,
+        menuCode: root.code,
+        i18nKey: menuLabelKey(root),
+        icon: resolveMenuIcon(root.icon),
+        items,
+      });
+      continue;
+    }
+    if (isSidebarLeaf(root)) primaryItems.push(toSidebarItem(root));
+  }
+  return { primaryItems, groups };
+}
+
+const getPageTitleKey = (pathname: string, menus?: MenuIdentity[] | null): string => {
+  if (menus?.length) {
+    const ranked = menus
+      .filter((menu) => menu.path)
+      .sort((a, b) => b.path.length - a.path.length);
+    const hit = ranked.find(
+      (menu) => pathname === menu.path || pathname.startsWith(`${menu.path}/`),
+    );
+    if (hit) return menuLabelKey(hit);
+  }
   if (pathname.startsWith("/dashboard")) return "shell.nav_dashboard";
-  if (pathname.startsWith("/monitor/request-logs")) return "shell.nav_request_logs";
-  if (pathname.startsWith("/monitor")) return "shell.nav_monitor";
-  if (pathname.startsWith("/ai-providers")) return "shell.nav_ai_providers";
-  if (pathname.startsWith("/account-security") || pathname.startsWith("/auth-files"))
-    return "shell.nav_account_security";
-  if (pathname.startsWith("/api-keys")) return "shell.page_api_keys";
-  if (
-    pathname.startsWith("/api-key-permissions") ||
-    pathname.startsWith("/manage/api-key-permissions")
-  )
-    return "shell.page_api_key_permissions";
-  if (
-    pathname.startsWith("/ccswitch-import-settings") ||
-    pathname.startsWith("/manage/ccswitch-import-settings")
-  )
-    return "shell.nav_ccswitch_import_settings";
-  if (pathname.startsWith("/image-generation")) return "shell.nav_image_generation";
-  if (pathname.startsWith("/channel-groups")) return "shell.page_channel_groups";
-  if (
-    pathname.startsWith("/identity-fingerprint") ||
-    pathname.startsWith("/manage/identity-fingerprint")
-  )
-    return "shell.nav_account_security";
-  if (pathname.startsWith("/models") || pathname.startsWith("/manage/models"))
-    return "shell.nav_models";
-  if (pathname.startsWith("/proxies") || pathname.startsWith("/manage/proxies"))
-    return "shell.nav_proxies";
   if (pathname.startsWith("/menu-management")) return "shell.nav_menu_management";
-  if (pathname.startsWith("/config")) return "shell.nav_config";
-  if (pathname.startsWith("/system")) return "shell.nav_system";
-  if (pathname.startsWith("/logs")) return "shell.nav_logs";
   return "shell.page_home";
 };
 
@@ -337,6 +197,27 @@ function SidebarChildLink({
   onSelect?: () => void;
 }) {
   const Icon = item.icon;
+  const className =
+    "flex h-9 min-w-0 items-center gap-3 rounded-xl px-3 text-sm whitespace-nowrap transition-colors duration-150 " +
+    (active
+      ? "bg-slate-100 font-semibold text-slate-950 dark:bg-white/10 dark:text-white"
+      : "font-medium text-slate-600 hover:bg-slate-100/80 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-white");
+  if (item.external) {
+    return (
+      <a
+        href={item.to}
+        target="_blank"
+        rel="noreferrer"
+        tabIndex={tabIndex}
+        role={role}
+        onClick={() => onSelect?.()}
+        className={className}
+      >
+        <Icon size={15} className="shrink-0 opacity-80" />
+        <span className="min-w-0 truncate">{label}</span>
+      </a>
+    );
+  }
   return (
     <Link
       to={item.to}
@@ -350,12 +231,7 @@ function SidebarChildLink({
       }}
       onMouseEnter={() => onWarm(item.to)}
       onFocus={() => onWarm(item.to)}
-      className={
-        "flex h-9 min-w-0 items-center gap-3 rounded-xl px-3 text-sm whitespace-nowrap transition-colors duration-150 " +
-        (active
-          ? "bg-slate-100 font-semibold text-slate-950 dark:bg-white/10 dark:text-white"
-          : "font-medium text-slate-600 hover:bg-slate-100/80 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-white")
-      }
+      className={className}
     >
       <Icon size={15} className="shrink-0 opacity-80" />
       <span className="min-w-0 truncate">{label}</span>
@@ -485,7 +361,7 @@ function SidebarGroupFlyout({
             key={item.to}
             item={item}
             active={activeTo === item.to}
-            label={t(item.i18nKey)}
+            label={t(item.i18nKey, { defaultValue: item.i18nKey })}
             onClick={onClick}
             onWarm={onWarm}
             onSelect={onSelect}
@@ -528,7 +404,7 @@ function SidebarMenuGroup({
   const suppressUntilPointerLeave = useRef(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const GroupIcon = group.icon;
-  const groupLabel = t(group.i18nKey);
+  const groupLabel = t(group.i18nKey, { defaultValue: group.i18nKey });
   const contentId = `sidebar-${mode}-${group.id}`;
   const showInlineItems = inlineOpen && labelsVisible && !visualRailCollapsed;
 
@@ -658,7 +534,7 @@ function SidebarMenuGroup({
                 key={item.to}
                 item={item}
                 active={activeTo === item.to}
-                label={t(item.i18nKey)}
+                label={t(item.i18nKey, { defaultValue: item.i18nKey })}
                 onClick={onClick}
                 onWarm={onWarm}
                 tabIndex={showInlineItems ? undefined : -1}
@@ -707,35 +583,41 @@ function ShellSidebar({
   const menuIsVisible = useCallback(
     (code: string) => {
       if (!menuByCode) return true;
-      const menu = menuByCode.get(code);
-      if (!menu?.enabled || !menu.visible) return false;
-      const parent = menu.parent_code ? menuByCode.get(menu.parent_code) : null;
-      return !parent || (parent.enabled && parent.visible);
+      let current = menuByCode.get(code);
+      while (current) {
+        if (!current.enabled || !current.visible || current.hide_menu) return false;
+        current = current.parent_code ? menuByCode.get(current.parent_code) : undefined;
+      }
+      return true;
     },
     [menuByCode],
   );
-  const menuOrder = useCallback(
-    (code: string) => menuByCode?.get(code)?.sort_order ?? 0,
-    [menuByCode],
+  const builtNav = useMemo(() => {
+    if (principal?.menus?.length) return buildSidebarFromMenus(principal.menus);
+    return { primaryItems: [FALLBACK_DASHBOARD_ITEM], groups: [...FALLBACK_NAV_GROUPS] };
+  }, [principal?.menus]);
+  const visiblePrimaryItems = useMemo(
+    () =>
+      builtNav.primaryItems.filter(
+        (item) => (!item.permission || can(item.permission)) && menuIsVisible(item.menuCode),
+      ),
+    [builtNav.primaryItems, can, menuIsVisible],
   );
   const visibleNavGroups = useMemo(
     () =>
-      NAV_GROUPS.map((group) => ({
-        ...group,
-        items: group.items
-          .filter((item) => can(item.permission) && menuIsVisible(item.menuCode))
-          .sort((a, b) => menuOrder(a.menuCode) - menuOrder(b.menuCode)),
-      }))
-        .filter((group) => menuIsVisible(group.menuCode) && group.items.length > 0)
-        .sort((a, b) => menuOrder(a.menuCode) - menuOrder(b.menuCode)),
-    [can, menuIsVisible, menuOrder],
+      builtNav.groups
+        .map((group) => ({
+          ...group,
+          items: group.items.filter(
+            (item) => (!item.permission || can(item.permission)) && menuIsVisible(item.menuCode),
+          ),
+        }))
+        .filter((group) => menuIsVisible(group.menuCode) && group.items.length > 0),
+    [builtNav.groups, can, menuIsVisible],
   );
   const visibleNavItems = useMemo(
-    () =>
-      [DASHBOARD_NAV_ITEM, ...visibleNavGroups.flatMap((group) => group.items)].filter(
-        (item) => can(item.permission) && menuIsVisible(item.menuCode),
-      ),
-    [can, menuIsVisible, visibleNavGroups],
+    () => [...visiblePrimaryItems, ...visibleNavGroups.flatMap((group) => group.items)],
+    [visibleNavGroups, visiblePrimaryItems],
   );
   const accountName = principal?.user.role_codes?.includes("platform_super_admin")
     ? t("identity_admin.super_administrator")
@@ -782,7 +664,7 @@ function ShellSidebar({
     () => visibleNavGroups.find((group) => group.items.some((item) => item.to === activeTo))?.id,
     [activeTo, visibleNavGroups],
   );
-  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["runtime"]));
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["group.runtime"]));
 
   useEffect(() => {
     if (!activeGroupId) return;
@@ -952,17 +834,18 @@ function ShellSidebar({
             scrollbarTrackInset={16}
           >
             <nav className="space-y-1 pb-4 pt-3">
-              {can(DASHBOARD_NAV_ITEM.permission) && menuIsVisible(DASHBOARD_NAV_ITEM.menuCode) ? (
+              {visiblePrimaryItems.map((item) => (
                 <SidebarPrimaryLink
-                  item={DASHBOARD_NAV_ITEM}
-                  active={activeTo === DASHBOARD_NAV_ITEM.to}
+                  key={item.menuCode}
+                  item={item}
+                  active={activeTo === item.to}
                   collapsed={visualRailCollapsed}
                   labelVisible={sidebarLabelsVisible}
-                  label={t(DASHBOARD_NAV_ITEM.i18nKey)}
+                  label={t(item.i18nKey, { defaultValue: item.i18nKey })}
                   onClick={handleNavClick}
                   onWarm={warmPageRoute}
                 />
-              ) : null}
+              ))}
               <div className="space-y-1 pt-1">
                 {visibleNavGroups.map((group) => (
                   <SidebarMenuGroup
@@ -1341,16 +1224,17 @@ export function AppShell({ children, onLogout }: PropsWithChildren<{ onLogout?: 
     setDesktopSidebarCollapsed((prev) => !prev);
   }, [isMobile]);
 
+  const auth = useOptionalAuth();
   const value = useMemo<ShellContextState>(
     () => ({
       state: {
-        titleKey: getPageTitleKey(location.pathname),
+        titleKey: getPageTitleKey(location.pathname, auth?.state.principal?.menus),
       },
       actions: {
         logout,
       },
     }),
-    [location.pathname, logout],
+    [auth?.state.principal?.menus, location.pathname, logout],
   );
 
   const sidebarCollapsed = isMobile ? !mobileSidebarOpen : desktopSidebarCollapsed;

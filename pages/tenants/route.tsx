@@ -4,6 +4,7 @@ const { Page, preload } = preloadablePage(() =>
 );
 export const tenantsRoute = {
   path: "/tenants",
+  component: "tenants",
   element: <Page />,
   auth: true,
   layout: "dashboard",

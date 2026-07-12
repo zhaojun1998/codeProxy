@@ -6,6 +6,7 @@ const { Page: RequestLogsPage, preload: preloadRequestLogsPage } = preloadablePa
 
 export const requestLogsRoute = {
   path: "/monitor/request-logs",
+  component: "request-logs",
   element: <RequestLogsPage />,
   auth: true,
   layout: "dashboard",

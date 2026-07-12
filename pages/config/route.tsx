@@ -6,6 +6,7 @@ const { Page: ConfigPage, preload: preloadConfigPage } = preloadablePage(() =>
 
 export const configRoute = {
   path: "/config",
+  component: "config",
   element: <ConfigPage />,
   auth: true,
   layout: "dashboard",

@@ -8,6 +8,7 @@ import { AutoUpdatePrompt } from "@app/update/AutoUpdatePrompt";
 import { dismissAppLoader } from "@/app/bootstrap/dismissAppLoader";
 import { pageRoutes, type PageRoute } from "@pages/registry";
 import { ForbiddenPage } from "@pages/forbidden/ForbiddenPage";
+import { EmbedPage } from "@pages/embed/EmbedPage";
 
 const RouteFallback = () => null;
 
@@ -37,14 +38,54 @@ const readyRoute = (element: React.ReactElement) => (
   <InitialRouteReady>{element}</InitialRouteReady>
 );
 
+function menuChainEnabled(
+  menus:
+    | Array<{ code: string; parent_code: string; path: string; enabled: boolean }>
+    | undefined,
+  path: string,
+) {
+  if (!menus?.length) return true;
+  const byCode = new Map(menus.map((item) => [item.code, item]));
+  const menu = menus.find((item) => item.path === path);
+  if (!menu) return true;
+  let current: (typeof menu) | undefined = menu;
+  while (current) {
+    if (!current.enabled) return false;
+    current = current.parent_code ? byCode.get(current.parent_code) : undefined;
+  }
+  return true;
+}
+
 function AuthorizedPage({ route }: { route: PageRoute }) {
   const { can, state } = useAuth();
   if (route.requiredPermission && !can(route.requiredPermission)) return <ForbiddenPage />;
-  const menus = state.principal?.menus;
-  const menu = menus?.find((item) => item.path === route.path);
-  const parent = menu?.parent_code ? menus?.find((item) => item.code === menu.parent_code) : null;
-  if (menu && (!menu.enabled || (parent && !parent.enabled))) return <ForbiddenPage />;
+  if (!menuChainEnabled(state.principal?.menus, route.path)) return <ForbiddenPage />;
   return readyRoute(route.element);
+}
+
+function DynamicEmbedRoutes() {
+  const { state } = useAuth();
+  const embeds =
+    state.principal?.menus?.filter(
+      (menu) => menu.type === "embed" && menu.path && menu.enabled && menu.visible,
+    ) ?? [];
+  return (
+    <>
+      {embeds.map((menu) => (
+        <Route
+          key={`embed:${menu.code}`}
+          path={menu.path}
+          element={
+            menuChainEnabled(state.principal?.menus, menu.path) ? (
+              readyRoute(<EmbedPage />)
+            ) : (
+              <ForbiddenPage />
+            )
+          }
+        />
+      ))}
+    </>
+  );
 }
 
 export function AppRouter() {
@@ -120,6 +161,7 @@ export function AppRouter() {
                               )),
                             )}
                             {/* Wildcard for /ai-providers/* */}
+                            <DynamicEmbedRoutes />
                             {authDashboardRoutes
                               .filter((r) => r.hasWildcard)
                               .map((route) => (

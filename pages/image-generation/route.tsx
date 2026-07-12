@@ -8,6 +8,7 @@ const { Page: ImageGenerationPage, preload: preloadImageGenerationPage } = prelo
 
 export const imageGenerationRoute = {
   path: "/image-generation",
+  component: "image-generation",
   element: <ImageGenerationPage />,
   auth: true,
   layout: "dashboard",

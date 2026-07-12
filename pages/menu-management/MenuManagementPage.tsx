@@ -1,27 +1,119 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronRight, FileText, FolderTree, Settings2 } from "lucide-react";
-import { identityApi, type MenuIdentity } from "@code-proxy/api-client";
+import {
+  ChevronRight,
+  ExternalLink,
+  FileText,
+  FolderTree,
+  Link2,
+  MousePointerClick,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
+import {
+  identityApi,
+  type MenuIdentity,
+  type MenuType,
+  type MenuWriteBody,
+} from "@code-proxy/api-client";
 import {
   Button,
+  ConfirmModal,
   DataTable,
-  Modal,
+  Drawer,
+  Select,
   TextInput,
   ToggleSwitch,
   type DataTableColumn,
   useToast,
 } from "@code-proxy/ui";
+import { useAuth } from "@app/providers/AuthProvider";
+import { pageRoutes } from "@pages/registry";
+
+type DrawerMode = "create" | "edit";
+
+const emptyForm = (): MenuWriteBody => ({
+  code: "",
+  parent_code: "",
+  type: "menu",
+  path: "",
+  component: "",
+  link_url: "",
+  label_key: "",
+  title: "",
+  icon: "",
+  permission_code: "",
+  sort_order: 10,
+  visible: true,
+  enabled: true,
+  badge_type: "",
+  badge_content: "",
+  hide_menu: false,
+});
+
+const toWriteBody = (menu: MenuIdentity): MenuWriteBody => ({
+  parent_code: menu.parent_code ?? "",
+  type: menu.type,
+  path: menu.path ?? "",
+  component: menu.component ?? "",
+  link_url: menu.link_url ?? "",
+  label_key: menu.label_key,
+  title: menu.title ?? "",
+  icon: menu.icon ?? "",
+  permission_code: menu.permission_code ?? "",
+  sort_order: menu.sort_order,
+  visible: menu.visible,
+  enabled: menu.enabled,
+  badge_type: menu.badge_type ?? "",
+  badge_content: menu.badge_content ?? "",
+  hide_menu: menu.hide_menu ?? false,
+  version: menu.version,
+});
+
+const typeBadgeClass = (type: MenuType) => {
+  switch (type) {
+    case "directory":
+      return "bg-blue-500/15 text-blue-600 dark:text-blue-300";
+    case "menu":
+      return "bg-slate-500/15 text-slate-600 dark:text-slate-300";
+    case "button":
+      return "bg-rose-500/15 text-rose-600 dark:text-rose-300";
+    case "embed":
+      return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300";
+    case "link":
+      return "bg-amber-500/15 text-amber-700 dark:text-amber-300";
+    default:
+      return "bg-slate-500/15 text-slate-600";
+  }
+};
 
 export function MenuManagementPage() {
   const { t } = useTranslation();
   const { notify } = useToast();
+  const { can } = useAuth();
+  const canUpdate = can("platform.menus.update");
   const [menus, setMenus] = useState<MenuIdentity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<MenuIdentity | null>(null);
-  const [sortOrder, setSortOrder] = useState("0");
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const expansionInitialized = useRef(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState<DrawerMode>("create");
+  const [editing, setEditing] = useState<MenuIdentity | null>(null);
+  const [form, setForm] = useState<MenuWriteBody>(emptyForm);
+  const [deleteTarget, setDeleteTarget] = useState<MenuIdentity | null>(null);
+
+  const componentOptions = useMemo(
+    () =>
+      pageRoutes
+        .filter((route) => route.auth && route.layout === "dashboard" && route.component)
+        .map((route) => ({
+          value: route.component!,
+          label: `${route.component} (${route.path})`,
+        })),
+    [],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,7 +129,8 @@ export function MenuManagementPage() {
   const childrenByParent = useMemo(() => {
     const children = new Map<string, MenuIdentity[]>();
     for (const menu of menus) {
-      children.set(menu.parent_code, [...(children.get(menu.parent_code) ?? []), menu]);
+      const parent = menu.parent_code ?? "";
+      children.set(parent, [...(children.get(parent) ?? []), menu]);
     }
     for (const siblings of children.values()) {
       siblings.sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code));
@@ -70,19 +163,39 @@ export function MenuManagementPage() {
     return result;
   }, [childrenByParent, expanded]);
 
-  const updateMenu = useCallback(
-    async (
-      menu: MenuIdentity,
-      patch: Partial<Pick<MenuIdentity, "visible" | "enabled" | "sort_order">>,
-    ) => {
+  const parentOptions = useMemo(
+    () => [
+      { value: "", label: t("identity_admin.menu_parent_none") },
+      ...menus
+        .filter((menu) => menu.type === "directory" || menu.type === "menu")
+        .map((menu) => ({
+          value: menu.code,
+          label: `${t(menu.label_key, { defaultValue: menu.title || menu.code })} (${menu.code})`,
+        })),
+    ],
+    [menus, t],
+  );
+
+  const openCreate = (parentCode = "") => {
+    setDrawerMode("create");
+    setEditing(null);
+    setForm({ ...emptyForm(), parent_code: parentCode });
+    setDrawerOpen(true);
+  };
+
+  const openEdit = (menu: MenuIdentity) => {
+    setDrawerMode("edit");
+    setEditing(menu);
+    setForm(toWriteBody(menu));
+    setDrawerOpen(true);
+  };
+
+  const patchMenu = useCallback(
+    async (menu: MenuIdentity, patch: Partial<MenuWriteBody>) => {
+      if (!canUpdate) return false;
       setBusy(true);
       try {
-        await identityApi.updateMenu(menu.code, {
-          visible: patch.visible ?? menu.visible,
-          enabled: patch.enabled ?? menu.enabled,
-          sort_order: patch.sort_order ?? menu.sort_order,
-          version: menu.version,
-        });
+        await identityApi.updateMenu(menu.code, { ...toWriteBody(menu), ...patch, version: menu.version });
         await load();
         notify({ type: "success", message: t("identity_admin.menu_updated") });
         return true;
@@ -96,24 +209,92 @@ export function MenuManagementPage() {
         setBusy(false);
       }
     },
-    [load, notify, t],
+    [canUpdate, load, notify, t],
   );
+
+  const saveDrawer = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!canUpdate) return;
+    setBusy(true);
+    try {
+      if (drawerMode === "create") {
+        await identityApi.createMenu({
+          ...form,
+          code: form.code?.trim() || undefined,
+        });
+        notify({ type: "success", message: t("identity_admin.menu_created") });
+      } else if (editing) {
+        await identityApi.updateMenu(editing.code, { ...form, version: editing.version });
+        notify({ type: "success", message: t("identity_admin.menu_updated") });
+      }
+      setDrawerOpen(false);
+      await load();
+    } catch (error) {
+      notify({
+        type: "error",
+        message: error instanceof Error ? error.message : t("identity_admin.operation_failed"),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || !canUpdate) return;
+    setBusy(true);
+    try {
+      await identityApi.deleteMenu(deleteTarget.code, deleteTarget.version);
+      notify({ type: "success", message: t("identity_admin.menu_deleted") });
+      setDeleteTarget(null);
+      await load();
+    } catch (error) {
+      notify({
+        type: "error",
+        message: error instanceof Error ? error.message : t("identity_admin.operation_failed"),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const typeLabel = (type: MenuType) => {
+    switch (type) {
+      case "directory":
+        return t("identity_admin.menu_directory");
+      case "menu":
+        return t("identity_admin.menu_page");
+      case "button":
+        return t("identity_admin.menu_button");
+      case "embed":
+        return t("identity_admin.menu_embed");
+      case "link":
+        return t("identity_admin.menu_link");
+      default:
+        return type;
+    }
+  };
 
   const columns = useMemo<DataTableColumn<(typeof rows)[number]>[]>(
     () => [
       {
         key: "menu",
         label: t("identity_admin.menu"),
-        width: "w-56",
+        width: "w-64",
         render: (menu) => {
           const isExpanded = expanded.has(menu.code);
-          const label = t(menu.label_key, { defaultValue: menu.code });
-          const Icon = menu.type === "directory" ? FolderTree : FileText;
+          const label = t(menu.label_key, { defaultValue: menu.title || menu.code });
+          const Icon =
+            menu.type === "directory"
+              ? FolderTree
+              : menu.type === "button"
+                ? MousePointerClick
+                : menu.type === "link"
+                  ? ExternalLink
+                  : menu.type === "embed"
+                    ? Link2
+                    : FileText;
           return (
-            <div
-              className="flex min-w-0 items-center gap-2"
-              style={{ paddingLeft: menu.depth * 22 }}
-            >
+            <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: menu.depth * 22 }}>
               {menu.hasChildren ? (
                 <Button
                   size="xs"
@@ -133,9 +314,7 @@ export function MenuManagementPage() {
                 >
                   <ChevronRight
                     size={15}
-                    className={
-                      isExpanded ? "rotate-90 transition-transform" : "transition-transform"
-                    }
+                    className={isExpanded ? "rotate-90 transition-transform" : "transition-transform"}
                   />
                 </Button>
               ) : (
@@ -143,8 +322,13 @@ export function MenuManagementPage() {
               )}
               <Icon size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
               <span className="min-w-0">
-                <span className="block truncate font-medium text-slate-900 dark:text-white">
-                  {label}
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate font-medium text-slate-900 dark:text-white">{label}</span>
+                  {menu.badge_content ? (
+                    <span className="shrink-0 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                      {menu.badge_content}
+                    </span>
+                  ) : null}
                 </span>
                 <span className="block truncate text-xs text-slate-400">{menu.code}</span>
               </span>
@@ -155,98 +339,137 @@ export function MenuManagementPage() {
       {
         key: "type",
         label: t("identity_admin.menu_type"),
-        width: "w-20",
-        render: (menu) =>
-          menu.type === "directory"
-            ? t("identity_admin.menu_directory")
-            : t("identity_admin.menu_page"),
+        width: "w-24",
+        render: (menu) => (
+          <span
+            className={`inline-flex rounded-md px-2 py-0.5 text-xs font-medium ${typeBadgeClass(menu.type)}`}
+          >
+            {typeLabel(menu.type)}
+          </span>
+        ),
+      },
+      {
+        key: "permission",
+        label: t("identity_admin.permission_code"),
+        width: "w-40",
+        render: (menu) => (
+          <span className="truncate text-xs text-slate-600 dark:text-slate-300">
+            {menu.permission_code || "—"}
+          </span>
+        ),
       },
       {
         key: "route",
-        label: t("identity_admin.route_permission"),
-        width: "w-56",
+        label: t("identity_admin.route_address"),
+        width: "w-40",
         render: (menu) => (
           <div className="min-w-0 text-xs">
             <div className="truncate text-slate-700 dark:text-slate-200">{menu.path || "—"}</div>
-            <div className="truncate text-slate-400">{menu.permission_code || "—"}</div>
+            {menu.link_url ? (
+              <div className="truncate text-slate-400">{menu.link_url}</div>
+            ) : null}
           </div>
         ),
       },
       {
-        key: "visible",
-        label: t("identity_admin.menu_visible"),
-        width: "w-20",
+        key: "component",
+        label: t("identity_admin.page_component"),
+        width: "w-36",
         render: (menu) => (
-          <ToggleSwitch
-            checked={menu.visible}
-            disabled={busy || menu.code === "system.menus" || menu.code === "group.system"}
-            ariaLabel={t("identity_admin.change_menu_visible", {
-              name: t(menu.label_key, { defaultValue: menu.code }),
-            })}
-            onCheckedChange={(visible) => void updateMenu(menu, { visible })}
-          />
+          <span className="truncate text-xs text-slate-600 dark:text-slate-300">
+            {menu.component || "—"}
+          </span>
         ),
       },
       {
-        key: "enabled",
-        label: t("identity_admin.menu_enabled"),
-        width: "w-20",
-        render: (menu) => (
-          <ToggleSwitch
-            checked={menu.enabled}
-            disabled={busy || menu.code === "system.menus" || menu.code === "group.system"}
-            ariaLabel={t("identity_admin.change_menu_enabled", {
-              name: t(menu.label_key, { defaultValue: menu.code }),
-            })}
-            onCheckedChange={(enabled) => void updateMenu(menu, { enabled })}
-          />
-        ),
+        key: "status",
+        label: t("identity_admin.status"),
+        width: "w-36",
+        render: (menu) => {
+          const locked = menu.code === "system.menus" || menu.code === "group.system";
+          return (
+            <div className="flex items-center gap-3">
+              <ToggleSwitch
+                checked={menu.visible}
+                disabled={busy || !canUpdate || locked}
+                ariaLabel={t("identity_admin.change_menu_visible", {
+                  name: t(menu.label_key, { defaultValue: menu.code }),
+                })}
+                onCheckedChange={(visible) => void patchMenu(menu, { visible })}
+              />
+              <ToggleSwitch
+                checked={menu.enabled}
+                disabled={busy || !canUpdate || locked}
+                ariaLabel={t("identity_admin.change_menu_enabled", {
+                  name: t(menu.label_key, { defaultValue: menu.code }),
+                })}
+                onCheckedChange={(enabled) => void patchMenu(menu, { enabled })}
+              />
+            </div>
+          );
+        },
       },
       {
-        key: "sort",
-        label: t("identity_admin.sort_order"),
-        minWidthPx: 96,
+        key: "actions",
+        label: t("identity_admin.actions"),
+        width: "w-28",
         render: (menu) => (
-          <div className="flex items-center gap-2">
-            <span className="min-w-5 text-sm tabular-nums text-slate-600 dark:text-slate-300">
-              {menu.sort_order}
-            </span>
+          <div className="flex items-center gap-1">
             <Button
               size="xs"
               variant="ghost"
-              onClick={() => {
-                setEditing(menu);
-                setSortOrder(String(menu.sort_order));
-              }}
-              tooltip={t("identity_admin.adjust_order")}
+              disabled={!canUpdate || menu.type === "button" || menu.type === "link"}
+              tooltip={t("identity_admin.menu_add_child")}
+              onClick={() => openCreate(menu.code)}
             >
-              <Settings2 size={14} />
+              <Plus size={15} />
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              disabled={!canUpdate}
+              tooltip={t("identity_admin.edit")}
+              onClick={() => openEdit(menu)}
+            >
+              <Pencil size={15} />
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              disabled={!canUpdate || menu.system_protected}
+              tooltip={t("identity_admin.delete")}
+              onClick={() => setDeleteTarget(menu)}
+            >
+              <Trash2 size={15} />
             </Button>
           </div>
         ),
       },
     ],
-    [busy, expanded, t, updateMenu],
+    [busy, canUpdate, expanded, patchMenu, t],
   );
 
-  const saveOrder = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!editing) return;
-    const next = Number.parseInt(sortOrder, 10);
-    if (!Number.isInteger(next)) return;
-    if (await updateMenu(editing, { sort_order: next })) setEditing(null);
-  };
+  const showPath = form.type === "menu" || form.type === "embed" || form.type === "link";
+  const showComponent = form.type === "menu";
+  const showLink = form.type === "embed" || form.type === "link";
+  const showPermission = form.type !== "directory";
 
   return (
     <section className="flex flex-1 flex-col">
       <div className="flex flex-1 flex-col rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgb(15_23_42_/_0.035)] dark:border-white/[0.06] dark:bg-neutral-950/70 dark:shadow-[0_1px_2px_rgb(0_0_0_/_0.22)]">
-        <div className="px-5 pt-5 pb-3">
-          <h2 className="text-base font-semibold text-slate-950 dark:text-white">
-            {t("identity_admin.menu_management_title")}
-          </h2>
-          <p className="text-sm text-slate-500">
-            {t("identity_admin.menu_management_description")}
-          </p>
+        <div className="flex items-start justify-between gap-3 px-5 pt-5 pb-3">
+          <div>
+            <h2 className="text-base font-semibold text-slate-950 dark:text-white">
+              {t("identity_admin.menu_management_title")}
+            </h2>
+            <p className="text-sm text-slate-500">{t("identity_admin.menu_management_description")}</p>
+          </div>
+          {canUpdate ? (
+            <Button variant="primary" size="sm" onClick={() => openCreate("")}>
+              <Plus size={15} className="mr-1" />
+              {t("identity_admin.menu_create")}
+            </Button>
+          ) : null}
         </div>
         <div className="relative h-[calc(100dvh-250px)] min-h-[420px] overflow-hidden px-5 pb-5">
           <DataTable<(typeof rows)[number]>
@@ -259,7 +482,7 @@ export function MenuManagementPage() {
             rowHeight={60}
             height="h-full"
             minHeight="min-h-full"
-            minWidth="min-w-[820px]"
+            minWidth="min-w-[1100px]"
             emptyText={t("identity_admin.no_menus")}
             showAllLoadedMessage={false}
             columnReorderable={false}
@@ -267,35 +490,230 @@ export function MenuManagementPage() {
         </div>
       </div>
 
-      <Modal
-        open={Boolean(editing)}
-        title={t("identity_admin.adjust_order")}
-        description={editing ? t(editing.label_key, { defaultValue: editing.code }) : ""}
-        onClose={() => setEditing(null)}
-        maxWidth="max-w-md"
+      <Drawer
+        open={drawerOpen}
+        title={
+          drawerMode === "create"
+            ? t("identity_admin.menu_create")
+            : t("identity_admin.menu_edit")
+        }
+        onClose={() => setDrawerOpen(false)}
         footer={
           <>
-            <Button onClick={() => setEditing(null)}>{t("common.cancel")}</Button>
-            <Button type="submit" form="menu-order-form" variant="primary" disabled={busy}>
+            <Button onClick={() => setDrawerOpen(false)}>{t("common.cancel")}</Button>
+            <Button type="submit" form="menu-form" variant="primary" disabled={busy}>
               {t("identity_admin.save")}
             </Button>
           </>
         }
       >
-        <form id="menu-order-form" onSubmit={saveOrder} className="space-y-1.5">
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-            {t("identity_admin.sort_order")}
-          </span>
-          <TextInput
-            type="number"
-            min={0}
-            max={10000}
-            value={sortOrder}
-            onChange={(event) => setSortOrder(event.target.value)}
-            required
-          />
+        <form id="menu-form" onSubmit={saveDrawer} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="space-y-1.5 sm:col-span-2">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {t("identity_admin.menu_type")}
+            </span>
+            <Select
+              value={form.type}
+              onChange={(value) => setForm((current) => ({ ...current, type: value as MenuType }))}
+              options={[
+                { value: "directory", label: t("identity_admin.menu_directory") },
+                { value: "menu", label: t("identity_admin.menu_page") },
+                { value: "button", label: t("identity_admin.menu_button") },
+                { value: "embed", label: t("identity_admin.menu_embed") },
+                { value: "link", label: t("identity_admin.menu_link") },
+              ]}
+              disabled={drawerMode === "edit" && Boolean(editing?.system_protected)}
+            />
+          </label>
+          {drawerMode === "create" ? (
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {t("identity_admin.menu_code")}
+              </span>
+              <TextInput
+                value={form.code ?? ""}
+                onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
+                required
+                placeholder="custom.feature"
+              />
+            </label>
+          ) : (
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {t("identity_admin.menu_code")}
+              </span>
+              <TextInput value={editing?.code ?? ""} disabled />
+            </label>
+          )}
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {t("identity_admin.menu_parent")}
+            </span>
+            <Select
+              value={form.parent_code}
+              onChange={(value) => setForm((current) => ({ ...current, parent_code: value }))}
+              options={parentOptions.filter((option) => option.value !== editing?.code)}
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {t("identity_admin.menu_label_key")}
+            </span>
+            <TextInput
+              value={form.label_key}
+              onChange={(event) => setForm((current) => ({ ...current, label_key: event.target.value }))}
+              required
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {t("identity_admin.menu_title")}
+            </span>
+            <TextInput
+              value={form.title}
+              onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {t("identity_admin.menu_icon")}
+            </span>
+            <TextInput
+              value={form.icon}
+              onChange={(event) => setForm((current) => ({ ...current, icon: event.target.value }))}
+              placeholder="layout-dashboard"
+            />
+          </label>
+          {showPath ? (
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {t("identity_admin.route_address")}
+              </span>
+              <TextInput
+                value={form.path}
+                onChange={(event) => setForm((current) => ({ ...current, path: event.target.value }))}
+                required
+                placeholder="/feature"
+              />
+            </label>
+          ) : null}
+          {showComponent ? (
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {t("identity_admin.page_component")}
+              </span>
+              <Select
+                value={form.component}
+                onChange={(value) => setForm((current) => ({ ...current, component: value }))}
+                options={[
+                  { value: "", label: t("identity_admin.please_select") },
+                  ...componentOptions,
+                ]}
+              />
+            </label>
+          ) : null}
+          {showLink ? (
+            <label className="space-y-1.5 sm:col-span-2">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {t("identity_admin.link_url")}
+              </span>
+              <TextInput
+                value={form.link_url}
+                onChange={(event) => setForm((current) => ({ ...current, link_url: event.target.value }))}
+                required
+                placeholder="https://"
+              />
+            </label>
+          ) : null}
+          {showPermission ? (
+            <label className="space-y-1.5">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                {t("identity_admin.permission_code")}
+              </span>
+              <TextInput
+                value={form.permission_code}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, permission_code: event.target.value }))
+                }
+                placeholder="feature.read"
+              />
+            </label>
+          ) : null}
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {t("identity_admin.sort_order")}
+            </span>
+            <TextInput
+              type="number"
+              min={0}
+              max={10000}
+              value={String(form.sort_order)}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  sort_order: Number.parseInt(event.target.value || "0", 10) || 0,
+                }))
+              }
+              required
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {t("identity_admin.badge_content")}
+            </span>
+            <TextInput
+              value={form.badge_content}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, badge_content: event.target.value }))
+              }
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-6 sm:col-span-2">
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <ToggleSwitch
+                checked={form.visible}
+                onCheckedChange={(visible) => setForm((current) => ({ ...current, visible }))}
+                ariaLabel={t("identity_admin.menu_visible")}
+              />
+              {t("identity_admin.menu_visible")}
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <ToggleSwitch
+                checked={form.enabled}
+                onCheckedChange={(enabled) => setForm((current) => ({ ...current, enabled }))}
+                ariaLabel={t("identity_admin.menu_enabled")}
+              />
+              {t("identity_admin.menu_enabled")}
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <ToggleSwitch
+                checked={form.hide_menu}
+                onCheckedChange={(hide_menu) => setForm((current) => ({ ...current, hide_menu }))}
+                ariaLabel={t("identity_admin.hide_menu")}
+              />
+              {t("identity_admin.hide_menu")}
+            </label>
+          </div>
         </form>
-      </Modal>
+      </Drawer>
+
+      <ConfirmModal
+        open={Boolean(deleteTarget)}
+        title={t("identity_admin.delete")}
+        description={
+          deleteTarget
+            ? t("identity_admin.delete_menu_confirm", {
+                name: t(deleteTarget.label_key, {
+                  defaultValue: deleteTarget.title || deleteTarget.code,
+                }),
+              })
+            : ""
+        }
+        confirmText={t("identity_admin.delete")}
+        onConfirm={() => void confirmDelete()}
+        onClose={() => setDeleteTarget(null)}
+        busy={busy}
+      />
     </section>
   );
 }

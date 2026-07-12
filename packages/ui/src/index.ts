@@ -36,6 +36,7 @@ export type {
 } from "./navigation/PaginationBar";
 
 export { ConfirmModal } from "./overlays/ConfirmModal";
+export { Drawer } from "./overlays/Drawer";
 export { ImagePreviewOverlay } from "./overlays/ImagePreviewOverlay";
 export { Modal } from "./overlays/Modal";
 export {

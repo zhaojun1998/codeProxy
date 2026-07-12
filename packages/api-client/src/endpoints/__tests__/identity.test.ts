@@ -117,19 +117,32 @@ describe("identityApi", () => {
       }),
     );
     await identityApi.updateMenu("system.menus", {
+      parent_code: "group.system",
+      type: "menu",
+      path: "/menu-management",
+      component: "menu-management",
+      link_url: "",
+      label_key: "shell.nav_menu_management",
+      title: "",
+      icon: "menu",
+      permission_code: "platform.menus.read",
+      sort_order: 40,
       visible: true,
       enabled: true,
-      sort_order: 40,
+      badge_type: "",
+      badge_content: "",
+      hide_menu: false,
       version: 2,
     });
     const [url, init] = fetchMock.mock.calls[0];
     expect(new URL(String(url)).pathname).toBe("/v0/management/menus/system.menus");
     expect(init?.method).toBe("PATCH");
-    expect(JSON.parse(String(init?.body))).toEqual({
+    expect(JSON.parse(String(init?.body))).toMatchObject({
       visible: true,
       enabled: true,
       sort_order: 40,
       version: 2,
+      component: "menu-management",
     });
   });
 

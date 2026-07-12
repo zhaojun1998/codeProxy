@@ -6,6 +6,7 @@ const { Page: MonitorPage, preload: preloadMonitorPage } = preloadablePage(() =>
 
 export const monitorRoute = {
   path: "/monitor",
+  component: "monitor",
   element: <MonitorPage />,
   auth: true,
   layout: "dashboard",
