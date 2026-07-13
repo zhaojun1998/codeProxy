@@ -113,7 +113,9 @@ export function TabsList({
       className={[
         // w-fit + self-start: stay content-sized even when parent is flex-col
         // (default align-items:stretch would stretch the pill bar full width)
-        "scrollbar-hidden relative inline-flex w-fit max-w-full shrink-0 self-start gap-0.5 overflow-x-auto whitespace-nowrap rounded-full bg-[#EBEBEC] p-0.5 dark:bg-[#27272A]",
+        // overscroll-x-contain: keep edge bounce on the tab strip only; without it,
+        // horizontal overscroll chains to the viewport and rubber-bands PageBackground.
+        "scrollbar-hidden relative inline-flex w-fit max-w-full shrink-0 self-start gap-0.5 overflow-x-auto overscroll-x-contain whitespace-nowrap rounded-full bg-[#EBEBEC] p-0.5 dark:bg-[#27272A]",
         tabsListHeightBySize[size],
         className,
       ].join(" ")}
