@@ -6,6 +6,7 @@ import {
   AUTH_FILES_DATA_CACHE_KEY,
   AUTH_FILES_UI_STATE_KEY,
   buildUsageIndex,
+  DEFAULT_CACHE_TENANT_ID,
   pickQuotaPreviewItem,
   readAuthFilesDataCache,
   readAuthFilesUiState,
@@ -21,6 +22,8 @@ import {
   resolveFileType,
   resolveAuthFileStats,
   sanitizeAuthFilesForCache,
+  setActiveCacheTenantId,
+  setCacheTenantResolver,
   shouldShowAuthFileDisplayTag,
   shouldShowAuthFilePlanBadge,
   writeAuthFilesDataCache,
@@ -68,6 +71,8 @@ describe("Auth Files helper coverage", () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
+    setCacheTenantResolver(null);
+    setActiveCacheTenantId(DEFAULT_CACHE_TENANT_ID);
     mocks.getOauthExcludedModels.mockReset();
     mocks.getOauthModelAlias.mockReset();
     mocks.downloadText.mockReset();
@@ -88,6 +93,50 @@ describe("Auth Files helper coverage", () => {
   afterEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
+    setCacheTenantResolver(null);
+    setActiveCacheTenantId(DEFAULT_CACHE_TENANT_ID);
+  });
+
+  test("keeps auth-files UI state isolated per tenant and migrates legacy unscoped payload", () => {
+    // Legacy unscoped v3 shape migrates into the default tenant only.
+    window.localStorage.setItem(
+      AUTH_FILES_UI_STATE_KEY,
+      JSON.stringify({ tab: "files", filter: "xai", search: "old", page: 2 }),
+    );
+    setActiveCacheTenantId(DEFAULT_CACHE_TENANT_ID);
+    expect(readAuthFilesUiState()).toEqual({
+      tab: "files",
+      filter: "xai",
+      search: "old",
+      page: 2,
+    });
+    setActiveCacheTenantId("tenant-b");
+    expect(readAuthFilesUiState()).toBeNull();
+
+    writeAuthFilesUiState(
+      { tab: "files", filter: "codex", search: "tenant-a", page: 1 },
+      "tenant-a",
+    );
+    writeAuthFilesUiState(
+      { tab: "files", filter: "qwen", search: "tenant-b", page: 4 },
+      "tenant-b",
+    );
+    expect(readAuthFilesUiState("tenant-a")).toEqual({
+      tab: "files",
+      filter: "codex",
+      search: "tenant-a",
+      page: 1,
+    });
+    expect(readAuthFilesUiState("tenant-b")).toEqual({
+      tab: "files",
+      filter: "qwen",
+      search: "tenant-b",
+      page: 4,
+    });
+    // Writing for one tenant must not clobber the other bucket.
+    writeAuthFilesUiState({ filter: "gemini", page: 1 }, "tenant-a");
+    expect(readAuthFilesUiState("tenant-b")?.filter).toBe("qwen");
+    expect(readAuthFilesUiState("tenant-a")?.filter).toBe("gemini");
   });
 
   test("round-trips ui state and sanitized session cache", () => {
@@ -97,6 +146,7 @@ describe("Auth Files helper coverage", () => {
       search: "oauth",
       page: 3,
     });
+    expect(window.localStorage.getItem(AUTH_FILES_UI_STATE_KEY)).toContain('"byTenant"');
     expect(window.localStorage.getItem(AUTH_FILES_UI_STATE_KEY)).toContain('"filter":"codex"');
     expect(readAuthFilesUiState()).toEqual({
       tab: "files",

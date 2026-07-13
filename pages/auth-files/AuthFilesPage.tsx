@@ -44,6 +44,7 @@ import {
 } from "@features/quota-preview/quota-fetch";
 import {
   AUTH_FILE_STATUS_FILTERS,
+  getActiveCacheTenantId,
   normalizeAuthIndexValue,
   normalizeProviderKey,
   normalizeQuotaAutoRefreshMs,
@@ -330,7 +331,9 @@ export function AuthFilesPage() {
   });
 
   useEffect(() => {
-    const state = readAuthFilesUiState();
+    // DashboardLayout remounts on tenant switch; pin to the active cache tenant
+    // so file-group / status / search / page never leak across tenants.
+    const state = readAuthFilesUiState(getActiveCacheTenantId());
     if (!state) return;
     if (typeof state.filter === "string") setFilter(state.filter);
     if (typeof state.tagFilter === "string") setTagFilter(state.tagFilter);
@@ -372,14 +375,17 @@ export function AuthFilesPage() {
   }, [canReadProxies]);
 
   useEffect(() => {
-    writeAuthFilesUiState({
-      tab: "files",
-      filter,
-      tagFilter,
-      statusFilter,
-      search,
-      page,
-    });
+    writeAuthFilesUiState(
+      {
+        tab: "files",
+        filter,
+        tagFilter,
+        statusFilter,
+        search,
+        page,
+      },
+      getActiveCacheTenantId(),
+    );
   }, [filter, page, search, statusFilter, tagFilter]);
 
   useEffect(() => {

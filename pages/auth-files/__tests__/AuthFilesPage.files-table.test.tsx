@@ -14,11 +14,11 @@ import type {
 import {
   AUTH_FILES_DATA_CACHE_KEY,
   AUTH_FILES_QUOTA_AUTO_REFRESH_KEY,
-  AUTH_FILES_UI_STATE_KEY,
   DEFAULT_CACHE_TENANT_ID,
   setActiveCacheTenantId,
   setCacheTenantResolver,
   writeAuthFilesDataCache,
+  writeAuthFilesUiState,
 } from "@code-proxy/domain";
 import i18n from "@code-proxy/i18n";
 
@@ -1254,10 +1254,7 @@ describe("AuthFilesPage files table", () => {
       disabled: false,
     };
 
-    window.localStorage.setItem(
-      AUTH_FILES_UI_STATE_KEY,
-      JSON.stringify({ tab: "files", filter: "xai", search: "", page: 1 }),
-    );
+    writeAuthFilesUiState({ tab: "files", filter: "xai", search: "", page: 1 });
     mocks.list.mockImplementation(async () => ({ files: [xaiFile] }));
 
     render(
@@ -2440,10 +2437,7 @@ describe("AuthFilesPage files table", () => {
 
     window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
     window.localStorage.setItem("authFilesPage.quotaAutoRefreshMs.v1", JSON.stringify(10000));
-    window.localStorage.setItem(
-      AUTH_FILES_UI_STATE_KEY,
-      JSON.stringify({ tab: "files", filter: "codex", search: "", page: 1 }),
-    );
+    writeAuthFilesUiState({ tab: "files", filter: "codex", search: "", page: 1 });
     window.localStorage.setItem(
       AUTH_FILES_DATA_CACHE_KEY,
       JSON.stringify({
@@ -2514,10 +2508,7 @@ describe("AuthFilesPage files table", () => {
 
     window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
     window.localStorage.setItem("authFilesPage.quotaAutoRefreshMs.v1", JSON.stringify(0));
-    window.localStorage.setItem(
-      AUTH_FILES_UI_STATE_KEY,
-      JSON.stringify({ tab: "files", filter: "qwen", search: "", page: 1 }),
-    );
+    writeAuthFilesUiState({ tab: "files", filter: "qwen", search: "", page: 1 });
     window.localStorage.setItem(
       AUTH_FILES_DATA_CACHE_KEY,
       JSON.stringify({
@@ -3923,10 +3914,7 @@ describe("AuthFilesPage files table", () => {
     });
 
     window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
-    window.localStorage.setItem(
-      AUTH_FILES_UI_STATE_KEY,
-      JSON.stringify({ tab: "files", filter: "qwen", search: "", page: 1 }),
-    );
+    writeAuthFilesUiState({ tab: "files", filter: "qwen", search: "", page: 1 });
     window.localStorage.setItem(
       AUTH_FILES_DATA_CACHE_KEY,
       JSON.stringify({
