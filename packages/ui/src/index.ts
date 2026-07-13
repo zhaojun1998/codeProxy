@@ -36,6 +36,7 @@ export type {
 } from "./navigation/PaginationBar";
 
 export { ConfirmModal } from "./overlays/ConfirmModal";
+export { Drawer } from "./overlays/Drawer";
 export { ImagePreviewOverlay } from "./overlays/ImagePreviewOverlay";
 export { Modal } from "./overlays/Modal";
 export {
@@ -54,6 +55,16 @@ export { DateTimePicker } from "./primitives/DateTimePicker";
 export { DropdownMenu } from "./primitives/DropdownMenu";
 export type { DropdownMenuRootProps } from "./primitives/DropdownMenu";
 export { Fieldset } from "./primitives/Fieldset";
+export { Form, FormField, FormLabel, FormControl, FormDescription, FormError } from "./primitives/Form";
+export type {
+  FormProps,
+  FormFieldProps,
+  FormFieldOrientation,
+  FormLabelProps,
+  FormControlProps,
+  FormDescriptionProps,
+  FormErrorProps,
+} from "./primitives/Form";
 export { TextInput } from "./primitives/Input";
 export { MultiSelect } from "./primitives/MultiSelect";
 export type { MultiSelectOption } from "./primitives/MultiSelect";
@@ -68,6 +79,8 @@ export type { SearchableSelectOption, SearchableSelectProps } from "./primitives
 export { Select } from "./primitives/Select";
 export type { SelectOption, SelectProps } from "./primitives/Select";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./primitives/Tabs";
+export { Textarea } from "./primitives/Textarea";
+export type { TextareaProps } from "./primitives/Textarea";
 export { ToggleSwitch } from "./primitives/ToggleSwitch";
 
 export { ThemeProvider, useTheme, ThemeToggleButton } from "./theme/ThemeProvider";

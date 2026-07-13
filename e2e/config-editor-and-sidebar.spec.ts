@@ -57,7 +57,7 @@ test("Config: page should not horizontally scroll; editor should allow horizonta
     });
   });
 
-  await page.goto("/#/config");
+  await page.goto("/#/system/config");
   await page.getByRole("tab", { name: /Source Editor|源码编辑/i }).click();
 
   const editor = page.getByLabel(/config\.yaml (editor|编辑器)/i);
@@ -104,7 +104,7 @@ test("Sidebar: collapse/expand should keep nav items nowrap and slide out of vie
     });
   });
 
-  await page.goto("/#/config");
+  await page.goto("/#/system/config");
 
   const dashboardLink = page.getByRole("link", { name: /Dashboard|仪表盘/i });
   await expect(dashboardLink).toBeVisible();
@@ -361,6 +361,7 @@ test("Sidebar: collapse/expand should keep nav items nowrap and slide out of vie
       /Operations|运行监控/i,
       /Access|接入管理/i,
       /Models & Routing|模型与路由/i,
+      /Governance|租户治理/i,
       /System|系统管理/i,
     ].map(async (name) => page.getByRole("button", { name }).boundingBox()),
   );
@@ -401,8 +402,8 @@ test("Sidebar: collapse/expand should keep nav items nowrap and slide out of vie
   await expect(accountMenu).toHaveClass(/code-proxy-floating-surface/);
   await expect(accountMenu).toHaveCSS("border-radius", "12px");
   await expect(
-    page.getByRole("menuitem", { name: /Account & Security|账号与安全/i }),
-  ).toBeVisible();
+    page.getByRole("menuitem", { name: /Account & Security|账号与安全|AI Accounts|AI 账号/i }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("menuitem", { name: /^Config|配置面板$/i }),
   ).toBeVisible();
@@ -581,7 +582,7 @@ test("Config: source editor save should persist edited yaml through save path", 
     });
   });
 
-  await page.goto("/#/config");
+  await page.goto("/#/system/config");
   await page.getByRole("tab", { name: /源代码编辑|Source Editor/i }).click();
 
   const editor = page.getByLabel(/config\.yaml (editor|编辑器)/i);
@@ -718,7 +719,7 @@ test("Config: global Codex OAuth allowed-client preset should persist through ru
     });
   });
 
-  await page.goto("/#/config");
+  await page.goto("/#/system/config");
 
   const panel = page.getByTestId("codex-oauth-global-admission-panel");
   await expect(panel).toBeVisible();

@@ -8,7 +8,6 @@ import type {
   UsageLogItem,
   UsageLogsResponse,
 } from "@code-proxy/api-client/endpoints/usage";
-import { VendorIcon } from "@code-proxy/assets";
 import {
   formatUsageMetricNumber,
   formatUsageMetricRate,
@@ -31,6 +30,7 @@ import type { SearchableCheckboxMultiSelectOption } from "@code-proxy/ui";
 import {
   buildRequestLogKeyOptions,
   buildRequestLogsColumns,
+  ChannelIdentityLabel,
   DEFAULT_REQUEST_LOG_PAGE_SIZE,
   hasActiveFilterSelection,
   normalizeFilterSelection,
@@ -62,52 +62,6 @@ const DEFAULT_CLEAR_OPTIONS: ClearUsageLogsPayload = {
 const isRequestCancelled = (err: unknown, signal?: AbortSignal) =>
   signal?.aborted ||
   (err instanceof Error && err.message === "Request was cancelled");
-
-function authTypeBadgeClass(authType?: string): string {
-  if (authType === "api") {
-    return "bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200";
-  }
-  if (authType === "oauth") {
-    return "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200";
-  }
-  return "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-white/65";
-}
-
-function ChannelFilterOptionLabel({
-  option,
-  apiLabel,
-  oauthLabel,
-}: {
-  option: UsageChannelFilterOption;
-  apiLabel: string;
-  oauthLabel: string;
-}) {
-  const authType = String(option.auth_type ?? "").toLowerCase();
-  const badgeLabel =
-    authType === "api" ? apiLabel : authType === "oauth" ? oauthLabel : "";
-  const provider = String(option.provider ?? "").trim();
-
-  return (
-    <span className="flex min-w-0 items-center gap-2">
-      {provider ? (
-        <span className="inline-flex shrink-0 items-center" aria-hidden="true">
-          <VendorIcon modelId={provider} size={14} />
-        </span>
-      ) : null}
-      <span className="min-w-0 truncate">{option.label}</span>
-      {badgeLabel ? (
-        <span
-          className={[
-            "inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-2xs font-semibold leading-none",
-            authTypeBadgeClass(authType),
-          ].join(" ")}
-        >
-          {badgeLabel}
-        </span>
-      ) : null}
-    </span>
-  );
-}
 
 function RequestLogsRecordsCount({ count }: { count: number }) {
   const { t } = useTranslation();
@@ -281,10 +235,14 @@ export function RequestLogsPage() {
       return {
         value: option.value,
         label: (
-          <ChannelFilterOptionLabel
-            option={option}
+          <ChannelIdentityLabel
+            name={option.label}
+            provider={option.provider}
+            authType={option.auth_type}
             apiLabel={apiLabel}
             oauthLabel={oauthLabel}
+            className="w-full"
+            nameClassName="text-sm font-normal text-inherit"
           />
         ),
         searchText: [option.label, provider, authType, option.value]

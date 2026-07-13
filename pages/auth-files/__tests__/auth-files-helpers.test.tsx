@@ -295,6 +295,7 @@ describe("Auth Files helper coverage", () => {
     expect(JSON.stringify(sanitized)).not.toContain("should-not-persist");
 
     writeAuthFilesDataCache({
+      tenantId: "tenant-a",
       savedAtMs: 123,
       files: sanitized,
       quotaByFileName: {
@@ -307,7 +308,9 @@ describe("Auth Files helper coverage", () => {
       },
     });
     expect(window.localStorage.getItem(AUTH_FILES_DATA_CACHE_KEY)).toContain('"savedAtMs":123');
-    expect(readAuthFilesDataCache()).toEqual({
+    expect(window.localStorage.getItem(AUTH_FILES_DATA_CACHE_KEY)).toContain("byTenant");
+    expect(readAuthFilesDataCache("tenant-a")).toEqual({
+      tenantId: "tenant-a",
       savedAtMs: 123,
       files: sanitized,
       quotaByFileName: {
@@ -319,6 +322,8 @@ describe("Auth Files helper coverage", () => {
         },
       },
     });
+    // Different tenant must not see tenant-a's list/quota payload.
+    expect(readAuthFilesDataCache("tenant-b")).toBeNull();
   });
 
   test("keeps xAI identity fingerprint summary in sanitized cache", () => {
@@ -551,7 +556,32 @@ describe("Auth Files helper coverage", () => {
     );
   });
 
-  test("shows auth-level quota recovery records as 429 restriction badges", () => {
+  
+  test("shows a clear reason for 429 badges without status_message", () => {
+    const file = {
+      name: "xai.json",
+      restrictions: [
+        {
+          scope: "auth",
+          http_status: 429,
+          quota_exceeded: true,
+          reason: "quota",
+          status: "error",
+          unavailable: true,
+        },
+      ],
+    } as AuthFileItem;
+
+    expect(resolveAuthFileRestrictionBadges(file, Date.now())).toEqual([
+      expect.objectContaining({
+        label: "429 Error",
+        reason: "rate limited (HTTP 429)",
+        quotaLimited: true,
+      }),
+    ]);
+  });
+
+test("shows auth-level quota recovery records as 429 restriction badges", () => {
     const file = {
       name: "codex.json",
       restrictions: [
@@ -576,6 +606,7 @@ describe("Auth Files helper coverage", () => {
         quotaWindow: "5h",
         quotaWindowMinutes: 300,
         reason: "usage limit",
+        quotaLimited: true,
         recoverAtMs: Date.parse("2026-05-06T13:00:00.000Z"),
       }),
     ]);
