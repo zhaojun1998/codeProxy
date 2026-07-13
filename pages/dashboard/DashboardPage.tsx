@@ -11,12 +11,14 @@ import { Trans, useTranslation } from "react-i18next";
 import {
   Activity,
   CircleAlert,
+  Clock,
   Database,
   DollarSign,
   RefreshCw,
   Sigma,
   Sparkles,
   TriangleAlert,
+  Zap,
 } from "lucide-react";
 import type { ECBasicOption } from "echarts/types/dist/shared";
 import {
@@ -46,6 +48,7 @@ import { useToast } from "@code-proxy/ui";
 import { EChart } from "@code-proxy/ui";
 import { ChartLegend } from "@code-proxy/ui";
 import { useInterval } from "@code-proxy/ui";
+import { CustomRangeFields, type CustomRange } from "@code-proxy/ui";
 
 type DashboardRange = 1 | 7 | 30;
 
@@ -129,6 +132,8 @@ const throughputNumberFormatter = new Intl.NumberFormat(undefined, {
 const formatThroughputValue = (value: number) =>
   throughputNumberFormatter.format(Number.isFinite(value) ? value : 0);
 const formatRate = (rate: number) => `${rate.toFixed(2)}%`;
+const formatTtfb = (value: number) => `${formatFixedNumber(value, { fractionDigits: 0 })} ms`;
+const formatTokensPerSecond = (value: number) => formatFixedNumber(value, { fractionDigits: 1 });
 const PANEL_SURFACE =
   "rounded-2xl border border-slate-200/85 bg-white shadow-[0_10px_26px_rgba(15,23,42,0.05)] dark:border-neutral-800 dark:bg-neutral-950/85 dark:shadow-[0_10px_26px_rgba(0,0,0,0.28)]";
 
@@ -456,7 +461,7 @@ function ThroughputTrendChart({
 }
 
 export function DashboardPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { notify } = useToast();
   const {
     can,
@@ -469,18 +474,20 @@ export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const summaryRef = useRef<DashboardSummary | null>(null);
   const [range, setRange] = useState<DashboardRange>(7);
+  const [customRange, setCustomRange] = useState<CustomRange | null>(null);
+  const [showCustom, setShowCustom] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [throughputLegend, setThroughputLegend] = useState({ rpm: true, tpm: true });
 
   const refresh = useCallback(
-    async (days: DashboardRange, silent = false) => {
+    async (days: DashboardRange, rangeOverride: CustomRange | null, silent = false) => {
       if (!silent) {
         setLoading(true);
         setError(null);
       }
       try {
-        const data = await usageApi.getDashboardSummary(days);
+        const data = await usageApi.getDashboardSummary(days, rangeOverride ?? undefined);
         summaryRef.current = data;
         setSummary(data);
         setError(null);
@@ -503,11 +510,12 @@ export function DashboardPage() {
   );
 
   useEffect(() => {
-    void refresh(range);
-  }, [refresh, range]);
+    void refresh(range, customRange);
+  }, [refresh, range, customRange]);
 
   useInterval(() => {
-    void refresh(range, true);
+    if (customRange) return;
+    void refresh(range, null, true);
   }, 5000);
 
   const kpi = summary?.kpi;
@@ -548,6 +556,8 @@ export function DashboardPage() {
     [trends?.failed_requests],
   );
   const cacheRateOption = useMemo(() => createSparklineOption([], "#f59e0b"), []);
+  const avgTtfbOption = useMemo(() => createSparklineOption([], "#6366f1"), []);
+  const tokensPerSecondOption = useMemo(() => createSparklineOption([], "#f97316"), []);
 
   return (
     <div className="space-y-4">
@@ -564,22 +574,55 @@ export function DashboardPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Tabs
-            value={String(range)}
-            onValueChange={(next) => setRange(Number(next) as DashboardRange)}
-          >
-            <TabsList>
-              {([1, 7, 30] as DashboardRange[]).map((val) => (
-                <TabsTrigger key={val} value={String(val)}>
-                  {t(RANGE_KEYS[val])}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+          <div className="flex flex-col items-end gap-2">
+            <Tabs
+              value={showCustom ? "custom" : String(range)}
+              onValueChange={(next) => {
+                if (next === "custom") {
+                  setShowCustom(true);
+                  return;
+                }
+                setShowCustom(false);
+                setCustomRange(null);
+                setRange(Number(next) as DashboardRange);
+              }}
+            >
+              <TabsList>
+                {([1, 7, 30] as DashboardRange[]).map((val) => (
+                  <TabsTrigger key={val} value={String(val)}>{t(RANGE_KEYS[val])}</TabsTrigger>
+                ))}
+                <TabsTrigger value="custom">{t("monitor.time.custom")}</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {showCustom ? (
+              <CustomRangeFields
+                value={customRange}
+                onApply={setCustomRange}
+                locale={i18n.language}
+                labels={{
+                  start: t("monitor.time.start"),
+                  end: t("monitor.time.end"),
+                  to: t("monitor.time.to"),
+                  apply: t("monitor.time.apply"),
+                  invalidRange: t("monitor.time.invalid_range"),
+                  picker: {
+                    picker: t("common.date_picker.picker"),
+                    open: t("common.date_picker.open"),
+                    previousMonth: t("common.date_picker.previous_month"),
+                    nextMonth: t("common.date_picker.next_month"),
+                    today: t("common.date_picker.today"),
+                    clear: t("common.date_picker.clear"),
+                    hour: t("common.date_picker.hour"),
+                    minute: t("common.date_picker.minute"),
+                  },
+                }}
+              />
+            ) : null}
+          </div>
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => void refresh(range)}
+            onClick={() => void refresh(range, customRange)}
             disabled={loading}
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
@@ -594,7 +637,7 @@ export function DashboardPage() {
           description={error}
           icon={<TriangleAlert size={18} />}
           action={
-            <Button variant="secondary" onClick={() => void refresh(range)}>
+            <Button variant="secondary" onClick={() => void refresh(range, customRange)}>
               <RefreshCw size={14} />
               {t("dashboard.retry")}
             </Button>
@@ -602,7 +645,7 @@ export function DashboardPage() {
         />
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <DashboardKpiCard
           title={t("dashboard.total_requests")}
           value={<DashboardMetricValue value={kpi?.total_requests ?? 0} animated />}
@@ -685,6 +728,34 @@ export function DashboardPage() {
             iconColor: "text-amber-600 dark:text-amber-400",
           }}
         />
+        <DashboardKpiCard
+          title={t("dashboard.avg_ttfb")}
+          value={<AnimatedNumber value={kpi?.avg_ttfb_ms ?? 0} format={formatTtfb} />}
+          hint={t("dashboard.ttfb_hint", {
+            min: formatTtfb(kpi?.min_ttfb_ms ?? 0),
+            max: formatTtfb(kpi?.max_ttfb_ms ?? 0),
+          })}
+          icon={Clock}
+          option={avgTtfbOption}
+          accent={{
+            iconWrap: "bg-indigo-50 dark:bg-indigo-500/12",
+            iconColor: "text-indigo-600 dark:text-indigo-400",
+          }}
+        />
+        <DashboardKpiCard
+          title={t("dashboard.tokens_per_second")}
+          value={<AnimatedNumber value={kpi?.tokens_per_second ?? 0} format={formatTokensPerSecond} />}
+          hint={t("dashboard.tps_hint", {
+            min: formatTokensPerSecond(kpi?.min_tokens_per_second ?? 0),
+            max: formatTokensPerSecond(kpi?.max_tokens_per_second ?? 0),
+          })}
+          icon={Zap}
+          option={tokensPerSecondOption}
+          accent={{
+            iconWrap: "bg-orange-50 dark:bg-orange-500/12",
+            iconColor: "text-orange-600 dark:text-orange-400",
+          }}
+        />
       </div>
 
       {canViewSystemMonitor ? (
@@ -695,20 +766,21 @@ export function DashboardPage() {
         />
       ) : null}
 
-      <ThroughputTrendChart
-        title={t("dashboard.throughput_title")}
-        points={throughputSeries}
-        rpm={tenantRpm}
-        tpm={tenantTpm}
-        // Series from dashboard-summary polling; latest point is rolling 60s RPM/TPM.
-        connected={false}
-        showRPM={throughputLegend.rpm}
-        showTPM={throughputLegend.tpm}
-        allTenantsScope={throughputAllTenants}
-        onToggle={(key) =>
-          setThroughputLegend((prev) => ({ ...prev, [key]: !prev[key as "rpm" | "tpm"] }))
-        }
-      />
+      {!customRange ? (
+        <ThroughputTrendChart
+          title={t("dashboard.throughput_title")}
+          points={throughputSeries}
+          rpm={tenantRpm}
+          tpm={tenantTpm}
+          connected={false}
+          showRPM={throughputLegend.rpm}
+          showTPM={throughputLegend.tpm}
+          allTenantsScope={throughputAllTenants}
+          onToggle={(key) =>
+            setThroughputLegend((prev) => ({ ...prev, [key]: !prev[key as "rpm" | "tpm"] }))
+          }
+        />
+      ) : null}
     </div>
   );
 }

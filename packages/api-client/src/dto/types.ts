@@ -227,6 +227,15 @@ export interface ChartDataResponse {
   }[];
   hourly_models: { hour: string; model: string; requests: number }[];
   apikey_distribution: { api_key: string; name: string; requests: number; tokens: number }[];
+  latency_throughput?: {
+    avg_ttfb_ms: number;
+    min_ttfb_ms: number;
+    max_ttfb_ms: number;
+    tokens_per_second: number;
+    min_tokens_per_second: number;
+    max_tokens_per_second: number;
+    sample_count: number;
+  };
 }
 
 export interface EntityStatPoint {

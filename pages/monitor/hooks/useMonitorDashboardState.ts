@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { CustomRange } from "@code-proxy/ui";
 import type { HourWindow, TimeRange } from "@features/monitor-widgets/monitor-constants";
 
 export type MonitorMetric = "requests" | "tokens";
@@ -25,6 +26,7 @@ export function useMonitorDashboardState() {
   }, []);
 
   const [timeRange, setTimeRange] = useState<TimeRange>(7);
+  const [customRange, setCustomRange] = useState<CustomRange | null>(null);
   const [apiFilterInput, setApiFilterInput] = useState("");
   const [apiFilter, setApiFilter] = useState("");
   const [modelHourWindow, setModelHourWindow] = useState<HourWindow>(24);
@@ -40,6 +42,8 @@ export function useMonitorDashboardState() {
     compact,
     timeRange,
     setTimeRange,
+    customRange,
+    setCustomRange,
     apiFilterInput,
     setApiFilterInput,
     apiFilter,

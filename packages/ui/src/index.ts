@@ -52,6 +52,11 @@ export { Button, buttonClassName } from "./primitives/Button";
 export { Card } from "./primitives/Card";
 export { Checkbox } from "./primitives/Checkbox";
 export { DateTimePicker } from "./primitives/DateTimePicker";
+export {
+  CustomRangeFields,
+  type CustomRange,
+  type CustomRangeLabels,
+} from "./primitives/CustomRangeFields";
 export { DropdownMenu } from "./primitives/DropdownMenu";
 export type { DropdownMenuRootProps } from "./primitives/DropdownMenu";
 export { Fieldset } from "./primitives/Fieldset";

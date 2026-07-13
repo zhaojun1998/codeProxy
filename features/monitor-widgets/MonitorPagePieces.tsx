@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import { useState, type ComponentType, type ReactNode } from "react";
 import { useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import {
@@ -7,7 +7,14 @@ import {
   type HourWindow,
   type TimeRange,
 } from "@features/monitor-widgets/monitor-constants";
-import { Tabs, TabsList, TabsTrigger, useResizeLayoutAnimation } from "@code-proxy/ui";
+import {
+  CustomRangeFields,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  type CustomRange,
+  useResizeLayoutAnimation,
+} from "@code-proxy/ui";
 
 export const KpiCard = ({
   title,
@@ -43,24 +50,64 @@ export const KpiCard = ({
 export const TimeRangeSelector = ({
   value,
   onChange,
+  customRange = null,
+  onCustomApply,
+  onClearCustom,
 }: {
   value: TimeRange;
   onChange: (next: TimeRange) => void;
+  customRange?: CustomRange | null;
+  onCustomApply?: (range: CustomRange) => void;
+  onClearCustom?: () => void;
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const [showCustom, setShowCustom] = useState(customRange != null);
+
+  const handleChange = (next: string) => {
+    if (next === "custom") {
+      setShowCustom(true);
+      return;
+    }
+    setShowCustom(false);
+    onClearCustom?.();
+    onChange(Number(next) as TimeRange);
+  };
   return (
-    <Tabs value={String(value)} onValueChange={(next) => onChange(Number(next) as TimeRange)}>
-      <TabsList>
-        {TIME_RANGES.map((range) => {
-          const label = range === 1 ? t("monitor.today") : t("monitor.n_days", { count: range });
-          return (
-            <TabsTrigger key={range} value={String(range)}>
-              {label}
-            </TabsTrigger>
-          );
-        })}
-      </TabsList>
-    </Tabs>
+    <div className="flex flex-col gap-2">
+      <Tabs value={onCustomApply && showCustom ? "custom" : String(value)} onValueChange={handleChange}>
+        <TabsList>
+          {TIME_RANGES.map((range) => {
+            const label = range === 1 ? t("monitor.today") : t("monitor.n_days", { count: range });
+            return <TabsTrigger key={range} value={String(range)}>{label}</TabsTrigger>;
+          })}
+          {onCustomApply ? <TabsTrigger value="custom">{t("monitor.time.custom")}</TabsTrigger> : null}
+        </TabsList>
+      </Tabs>
+      {onCustomApply && showCustom ? (
+        <CustomRangeFields
+          value={customRange}
+          onApply={onCustomApply}
+          locale={i18n.language}
+          labels={{
+            start: t("monitor.time.start"),
+            end: t("monitor.time.end"),
+            to: t("monitor.time.to"),
+            apply: t("monitor.time.apply"),
+            invalidRange: t("monitor.time.invalid_range"),
+            picker: {
+              picker: t("common.date_picker.picker"),
+              open: t("common.date_picker.open"),
+              previousMonth: t("common.date_picker.previous_month"),
+              nextMonth: t("common.date_picker.next_month"),
+              today: t("common.date_picker.today"),
+              clear: t("common.date_picker.clear"),
+              hour: t("common.date_picker.hour"),
+              minute: t("common.date_picker.minute"),
+            },
+          }}
+        />
+      ) : null}
+    </div>
   );
 };
 

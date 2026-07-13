@@ -1,5 +1,15 @@
 {
   "common": {
+    "date_picker": {
+      "picker": "Date picker",
+      "open": "Open date picker",
+      "previous_month": "Previous month",
+      "next_month": "Next month",
+      "today": "Today",
+      "clear": "Clear",
+      "hour": "Hour",
+      "minute": "Minute"
+    },
     "login": "Login",
     "logout": "Logout",
     "back": "Back",
@@ -226,7 +236,11 @@
     "summary_providers": "Providers",
     "summary_auth_files": "Auth Files",
     "updated_fallback": "Just now",
-    "cache_rate": "Cache Token Ratio"
+    "cache_rate": "Cache Token Ratio",
+    "avg_ttfb": "Average TTFB",
+    "ttfb_hint": "Min {{min}} · Max {{max}}",
+    "tokens_per_second": "Output Tokens/s",
+    "tps_hint": "Min {{min}} · Max {{max}}"
   },
   "basic_settings": {
     "title": "Basic Settings",
@@ -1876,7 +1890,10 @@
       "last_n_days": "{{n}} Days",
       "custom": "Custom",
       "to": "to",
-      "apply": "Apply"
+      "apply": "Apply",
+      "start": "Start date",
+      "end": "End date",
+      "invalid_range": "Start date must not be after end date"
     },
     "failure": {
       "title": "Failure Analysis",
@@ -1960,6 +1977,10 @@
     "success_count": "Success {{success}} / Failed {{failed}}",
     "input_output_hint": "Input + Output + Reasoning + Cached",
     "input_tokens_hint": "Input Tokens: {{count}}",
+    "avg_ttfb": "Average TTFB",
+    "ttfb_hint": "Min {{min}} · Max {{max}}",
+    "tokens_per_second": "Output Tokens/s",
+    "tps_hint": "Min {{min}} · Max {{max}}",
     "filter_placeholder": "Filter by API key",
     "refresh": "Refresh",
     "refreshing": "Refreshing",

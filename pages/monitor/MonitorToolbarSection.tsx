@@ -1,5 +1,5 @@
 import { ChartSpline, Filter, RefreshCw, Search } from "lucide-react";
-import { TextInput } from "@code-proxy/ui";
+import { TextInput, type CustomRange } from "@code-proxy/ui";
 import { TimeRangeSelector } from "@features/monitor-widgets";
 import type { TimeRange } from "@features/monitor-widgets/monitor-constants";
 
@@ -7,6 +7,8 @@ export function MonitorToolbarSection({
   t,
   timeRange,
   setTimeRange,
+  customRange,
+  setCustomRange,
   apiFilterInput,
   setApiFilterInput,
   applyFilter,
@@ -17,6 +19,8 @@ export function MonitorToolbarSection({
   t: (key: string, options?: Record<string, unknown>) => string;
   timeRange: TimeRange;
   setTimeRange: (value: TimeRange) => void;
+  customRange: CustomRange | null;
+  setCustomRange: (value: CustomRange | null) => void;
   apiFilterInput: string;
   setApiFilterInput: (value: string) => void;
   applyFilter: () => void;
@@ -34,7 +38,13 @@ export function MonitorToolbarSection({
           </h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <TimeRangeSelector value={timeRange} onChange={setTimeRange} />
+          <TimeRangeSelector
+            value={timeRange}
+            onChange={setTimeRange}
+            customRange={customRange}
+            onCustomApply={setCustomRange}
+            onClearCustom={() => setCustomRange(null)}
+          />
           <TextInput
             value={apiFilterInput}
             onChange={(event) => setApiFilterInput(event.target.value)}
