@@ -2619,6 +2619,17 @@
     "administrator_role": "Администратор",
     "tenant_administrator_role": "Администратор арендатора",
     "super_administrator": "Суперадминистратор",
-    "more_actions": "Другие действия"
+    "more_actions": "Другие действия",
+    "what_happened": "Что сделано",
+    "result_success": "Успех",
+    "result_failed": "Ошибка",
+    "request_id": "ID запроса",
+    "call_chain": "Цепочка вызовов",
+    "project_method": "Метод проекта",
+    "no_call_chain": "Цепочка вызовов не записана.",
+    "no_project_method": "Метод проекта не записан.",
+    "audit_log_detail_title": "Детали журнала аудита",
+    "delete_audit_log_confirm": "Удалить эту запись аудита?",
+    "audit_log_deleted": "Запись аудита удалена."
   }
 }

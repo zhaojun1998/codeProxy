@@ -124,17 +124,62 @@ export interface PermissionIdentity {
   sensitive: boolean;
 }
 
+export interface AuditLogCallChainStep {
+  step?: number;
+  layer?: string;
+  name?: string;
+  detail?: string;
+  package?: string;
+  method?: string;
+  resource?: string;
+  resource_id?: string;
+  [key: string]: unknown;
+}
+
+export interface AuditLogProjectMethod {
+  package?: string;
+  handler?: string;
+  method?: string;
+  resource?: string;
+  route?: string;
+  [key: string]: unknown;
+}
+
+export interface AuditLogChanges {
+  http?: {
+    method?: string;
+    path?: string;
+    status?: number;
+  };
+  permission?: string;
+  call_chain?: AuditLogCallChainStep[];
+  project_method?: AuditLogProjectMethod;
+  [key: string]: unknown;
+}
+
 export interface AuditLogIdentity {
   id: number;
   tenant_id: string | null;
+  tenant_name?: string;
+  tenant_slug?: string;
   actor_kind: string;
   actor_user_id: string | null;
+  actor_username?: string;
+  actor_display_name?: string;
   action: string;
   resource_type: string;
   resource_id: string;
   result: string;
   request_id: string;
+  changes?: AuditLogChanges;
   created_at: string;
+}
+
+export interface AuditLogsResponse {
+  items: AuditLogIdentity[];
+  total: number;
+  page: number;
+  size: number;
 }
 
 export const identityApi = {
@@ -222,7 +267,17 @@ export const identityApi = {
   permissions: () => apiClient.get<{ items: PermissionIdentity[] }>("/permissions"),
   createRole: (body: { name: string; description: string; permissions: string[] }) =>
     apiClient.post<RoleIdentity>("/roles", body),
-  auditLogs: () => apiClient.get<{ items: AuditLogIdentity[] }>("/audit-logs"),
+  auditLogs: (params?: { page?: number; size?: number }) =>
+    apiClient.get<AuditLogsResponse>("/audit-logs", {
+      params: {
+        page: params?.page ?? 1,
+        size: params?.size ?? 50,
+      },
+    }),
+  auditLog: (id: number) =>
+    apiClient.get<AuditLogIdentity>(`/audit-logs/${encodeURIComponent(String(id))}`),
+  deleteAuditLog: (id: number) =>
+    apiClient.delete<void>(`/audit-logs/${encodeURIComponent(String(id))}`),
   deleteRole: (id: string) => apiClient.delete<void>(`/roles/${encodeURIComponent(id)}`),
   replaceRolePermissions: (id: string, permissions: string[], version: number) =>
     apiClient.put<RoleIdentity>(`/roles/${encodeURIComponent(id)}/permissions`, {

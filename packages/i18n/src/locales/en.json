@@ -4436,6 +4436,17 @@
     "administrator_role": "Administrator",
     "tenant_administrator_role": "Tenant Administrator",
     "super_administrator": "Super Administrator",
-    "more_actions": "More actions"
+    "more_actions": "More actions",
+    "what_happened": "What happened",
+    "result_success": "Success",
+    "result_failed": "Failed",
+    "request_id": "Request ID",
+    "call_chain": "Call chain",
+    "project_method": "Project method",
+    "no_call_chain": "No call chain recorded.",
+    "no_project_method": "No project method recorded.",
+    "audit_log_detail_title": "Audit log detail",
+    "delete_audit_log_confirm": "Delete this audit log?",
+    "audit_log_deleted": "Audit log deleted."
   }
 }
