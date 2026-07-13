@@ -76,41 +76,37 @@ export const buildModelsEndpoint = (baseUrl: string): string => {
 
 /** Default bases when the provider key leaves base URL empty (official endpoints). */
 export const DEFAULT_CLAUDE_MODELS_BASE = "https://api.anthropic.com";
-export const DEFAULT_CODEX_MODELS_BASE = "https://api.openai.com";
 export const DEFAULT_CLAUDE_ANTHROPIC_VERSION = "2023-06-01";
 
 /**
- * Build the upstream /models URL for a provider key type.
- * Claude uses Anthropic-style `/v1/models`; Codex/OpenAI-compatible use `/models`
- * (or `/v1/models` when the base already ends with `/v1`).
+ * Build the upstream /models URL for Claude provider keys.
+ * Claude uses Anthropic-style `/v1/models`. Codex intentionally has no live
+ * discovery path — incomplete upstream catalogs must not replace the static list.
  */
 export const buildProviderModelsEndpoint = (
-  providerType: "claude" | "codex" | "openai",
+  providerType: "claude" | "openai",
   baseUrl: string,
 ): string => {
-  const fallback =
-    providerType === "claude"
-      ? DEFAULT_CLAUDE_MODELS_BASE
-      : providerType === "codex"
-        ? DEFAULT_CODEX_MODELS_BASE
-        : "";
-  const normalized = normalizeOpenAIBaseUrl(baseUrl || fallback);
+  if (providerType === "claude") {
+    const normalized = normalizeOpenAIBaseUrl(baseUrl || DEFAULT_CLAUDE_MODELS_BASE);
+    if (!normalized) return "";
+    const lower = normalized.toLowerCase();
+    if (lower.endsWith("/models") || lower.includes("/models?")) {
+      return normalized;
+    }
+    if (lower.endsWith("/v1")) return `${normalized}/models`;
+    return `${normalized}/v1/models`;
+  }
+  // OpenAI-compatible: prefer /v1/models when base has no path tail.
+  const normalized = normalizeOpenAIBaseUrl(baseUrl);
   if (!normalized) return "";
   const lower = normalized.toLowerCase();
   if (lower.endsWith("/models") || lower.includes("/models?")) {
     return normalized;
   }
-  if (providerType === "claude") {
-    if (lower.endsWith("/v1")) return `${normalized}/models`;
-    return `${normalized}/v1/models`;
-  }
-  // Codex / OpenAI-compatible: prefer /v1/models when base has no path tail.
   if (lower.endsWith("/v1")) return `${normalized}/models`;
-  if (lower.includes("api.openai.com") || providerType === "codex") {
-    // Official OpenAI and typical Codex API-key bases expect /v1/models.
-    if (!/\/v\d+(\/|$)/i.test(lower)) {
-      return `${normalized}/v1/models`;
-    }
+  if (lower.includes("api.openai.com") && !/\/v\d+(\/|$)/i.test(lower)) {
+    return `${normalized}/v1/models`;
   }
   return `${normalized}/models`;
 };

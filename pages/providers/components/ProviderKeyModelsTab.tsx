@@ -99,7 +99,7 @@ export function ProviderKeyModelsTab({
   const isOllamaCloud = editKeyType === "ollama-cloud";
   const isModelAccessProvider = isOpenCodeGo || isCline || isOllamaCloud;
   const supportsLiveDiscovery =
-    (editKeyType === "claude" || editKeyType === "codex") &&
+    editKeyType === "claude" &&
     typeof discoverModels === "function" &&
     typeof applyDiscoveredModels === "function" &&
     typeof setDiscoverSelected === "function";
@@ -384,9 +384,7 @@ export function ProviderKeyModelsTab({
             setDiscoverSelected={setDiscoverSelected!}
           />
           <p className="mt-2 text-xs text-slate-500 dark:text-white/55">
-            {editKeyType === "claude"
-              ? t("providers.claude_models_discovery_hint")
-              : t("providers.codex_models_discovery_hint")}
+            {t("providers.claude_models_discovery_hint")}
           </p>
         </SectionCard>
       ) : null}
