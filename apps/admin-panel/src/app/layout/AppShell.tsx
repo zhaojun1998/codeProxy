@@ -148,9 +148,7 @@ function buildSidebarFromMenus(menus: MenuIdentity[]): {
   const groups: SidebarNavGroup[] = [];
   for (const root of byParent.get("") ?? []) {
     if (root.type === "directory") {
-      const items = (byParent.get(root.code) ?? [])
-        .filter(isSidebarLeaf)
-        .map(toSidebarItem);
+      const items = (byParent.get(root.code) ?? []).filter(isSidebarLeaf).map(toSidebarItem);
       if (items.length === 0) continue;
       groups.push({
         id: root.code,
@@ -188,9 +186,7 @@ function mergeSidebarEntries(
 
 const getPageTitleKey = (pathname: string, menus?: MenuIdentity[] | null): string => {
   if (menus?.length) {
-    const ranked = menus
-      .filter((menu) => menu.path)
-      .sort((a, b) => b.path.length - a.path.length);
+    const ranked = menus.filter((menu) => menu.path).sort((a, b) => b.path.length - a.path.length);
     const hit = ranked.find(
       (menu) => pathname === menu.path || pathname.startsWith(`${menu.path}/`),
     );
@@ -212,14 +208,14 @@ const getPageTitleKey = (pathname: string, menus?: MenuIdentity[] | null): strin
   ) {
     return "shell.nav_api_key_permissions";
   }
-  if (
-    pathname.startsWith("/system/menu-management") ||
-    pathname.startsWith("/menu-management")
-  ) {
+  if (pathname.startsWith("/system/menu-management") || pathname.startsWith("/menu-management")) {
     return "shell.nav_menu_management";
   }
   if (pathname.startsWith("/system/config") || pathname.startsWith("/config")) {
     return "shell.nav_config";
+  }
+  if (pathname.startsWith("/runtime/prompt-filter") || pathname.startsWith("/prompt-filter")) {
+    return "shell.nav_prompt_filter";
   }
   return "shell.page_home";
 };

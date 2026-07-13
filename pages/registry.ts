@@ -12,6 +12,7 @@ import { modelsRoute } from "./models/route";
 import { modelPlazaRoute } from "./model-plaza/route";
 import { channelGroupsRoute } from "./channel-groups/route";
 import { configRoute } from "./config/route";
+import { promptFilterRoute } from "./prompt-filter/route";
 import { logsRoute } from "./logs/route";
 import { systemRoute } from "./system/route";
 import { proxiesRoute } from "./proxies/route";
@@ -60,6 +61,7 @@ export const pageRoutes: PageRoute[] = [
   modelPlazaRoute,
   channelGroupsRoute,
   configRoute,
+  promptFilterRoute,
   logsRoute,
   systemRoute,
   proxiesRoute,

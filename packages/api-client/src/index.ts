@@ -60,6 +60,8 @@ export { versionApi } from "./endpoints/version";
 export { quotaApi } from "./endpoints/quota";
 export { identityFingerprintApi } from "./endpoints/identity-fingerprint";
 export type * from "./endpoints/identity-fingerprint";
+export { promptFilterApi } from "./endpoints/prompt-filter";
+export type * from "./endpoints/prompt-filter";
 export { updateApi } from "./endpoints/update";
 export type * from "./endpoints/update";
 export { imageGenerationApi } from "./endpoints/image-generation";
