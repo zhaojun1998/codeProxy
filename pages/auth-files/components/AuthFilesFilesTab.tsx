@@ -1531,22 +1531,26 @@ export function AuthFilesFilesTab({
                     provider && (state.status === "error" || state.error)
                       ? renderQuotaErrorBadge(state.error ?? t("common.error"))
                       : null;
-                  const cardErrorBadges = [
-                    restrictionBadges
-                      ? { key: "restriction", node: restrictionBadges }
-                      : null,
-                    claudeOAuthHealthBadges
-                      ? { key: "claude-oauth", node: claudeOAuthHealthBadges }
-                      : null,
-                    quotaErrorBadge
-                      ? { key: "quota-error", node: quotaErrorBadge }
-                      : null,
-                  ].filter(
-                    (
-                      item,
-                    ): item is { key: string; node: NonNullable<ReactNode> } =>
-                      Boolean(item),
-                  );
+                  const cardErrorBadges: Array<{ key: string; node: ReactNode }> =
+                    [];
+                  if (restrictionBadges) {
+                    cardErrorBadges.push({
+                      key: "restriction",
+                      node: restrictionBadges,
+                    });
+                  }
+                  if (claudeOAuthHealthBadges) {
+                    cardErrorBadges.push({
+                      key: "claude-oauth",
+                      node: claudeOAuthHealthBadges,
+                    });
+                  }
+                  if (quotaErrorBadge) {
+                    cardErrorBadges.push({
+                      key: "quota-error",
+                      node: quotaErrorBadge,
+                    });
+                  }
                   const stats = resolveAuthFileStats(file, usageIndex);
                   const usageTotalCalls = stats.success + stats.failure;
                   const authIndex = normalizeAuthIndexValue(
