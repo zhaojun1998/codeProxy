@@ -144,8 +144,9 @@ export function ProviderKeyModal({
   const isCline = editKeyType === "cline";
   const isOllamaCloud = editKeyType === "ollama-cloud";
   const isModelAccessProvider = isOpenCodeGo || isCline || isOllamaCloud;
-  const supportsLiveDiscovery =
-    editKeyType === "claude" || editKeyType === "codex";
+  // Codex must NOT use live /models discovery: ChatGPT/OpenAI catalogs are
+  // incomplete vs our static registry and previously wiped gpt-5.x routing.
+  const supportsLiveDiscovery = editKeyType === "claude";
   const modelAccessProvider: ModelAccessProvider | null = isCline
     ? "cline"
     : isOllamaCloud
@@ -217,11 +218,8 @@ export function ProviderKeyModal({
 
   const discoverModels = useCallback(async () => {
     if (!supportsLiveDiscovery) return;
-    const providerType = editKeyType === "claude" ? "claude" : "codex";
-    const endpoint = buildProviderModelsEndpoint(
-      providerType,
-      keyDraft.baseUrl,
-    );
+    // Claude only — Codex live discovery is intentionally disabled.
+    const endpoint = buildProviderModelsEndpoint("claude", keyDraft.baseUrl);
     if (!endpoint) {
       notify({ type: "info", message: t("providers.fill_base_url_first") });
       return;
@@ -236,52 +234,35 @@ export function ProviderKeyModal({
       const headers: Record<string, string> = { ...customHeaders };
       const apiKey = keyDraft.apiKey.trim();
 
-      if (providerType === "claude") {
-        // Anthropic official + most compatible gateways accept x-api-key.
-        // Also send Authorization for gateways that only accept Bearer.
-        if (apiKey) {
-          if (
-            !Object.keys(headers).some(
-              (key) => key.toLowerCase() === "x-api-key",
-            )
-          ) {
-            headers["x-api-key"] = apiKey;
-          }
-          if (
-            !Object.keys(headers).some(
-              (key) => key.toLowerCase() === "authorization",
-            )
-          ) {
-            headers.Authorization = `Bearer ${apiKey}`;
-          }
-        }
+      // Anthropic official + most compatible gateways accept x-api-key.
+      // Also send Authorization for gateways that only accept Bearer.
+      if (apiKey) {
         if (
           !Object.keys(headers).some(
-            (key) => key.toLowerCase() === "anthropic-version",
+            (key) => key.toLowerCase() === "x-api-key",
           )
         ) {
-          headers["anthropic-version"] = "2023-06-01";
+          headers["x-api-key"] = apiKey;
         }
         if (
-          !Object.keys(headers).some((key) => key.toLowerCase() === "accept")
-        ) {
-          headers.Accept = "application/json";
-        }
-      } else {
-        // Codex / OpenAI-compatible: Bearer API key.
-        if (
-          apiKey &&
           !Object.keys(headers).some(
             (key) => key.toLowerCase() === "authorization",
           )
         ) {
           headers.Authorization = `Bearer ${apiKey}`;
         }
-        if (
-          !Object.keys(headers).some((key) => key.toLowerCase() === "accept")
-        ) {
-          headers.Accept = "application/json";
-        }
+      }
+      if (
+        !Object.keys(headers).some(
+          (key) => key.toLowerCase() === "anthropic-version",
+        )
+      ) {
+        headers["anthropic-version"] = "2023-06-01";
+      }
+      if (
+        !Object.keys(headers).some((key) => key.toLowerCase() === "accept")
+      ) {
+        headers.Accept = "application/json";
       }
 
       const result = await apiCallApi.request({
@@ -308,7 +289,6 @@ export function ProviderKeyModal({
       setDiscovering(false);
     }
   }, [
-    editKeyType,
     keyDraft.apiKey,
     keyDraft.baseUrl,
     keyDraft.headersEntries,
