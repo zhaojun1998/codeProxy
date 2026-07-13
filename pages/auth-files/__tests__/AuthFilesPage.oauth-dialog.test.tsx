@@ -6,7 +6,7 @@ import { ToastProvider } from "@code-proxy/ui";
 import { ThemeProvider } from "@code-proxy/ui";
 import { AuthFilesPage } from "@pages/auth-files/AuthFilesPage";
 import type { AuthFileItem } from "@code-proxy/api-client";
-import { AUTH_FILES_UI_STATE_KEY } from "@code-proxy/domain";
+import { writeAuthFilesUiState } from "@code-proxy/domain";
 import type {
   ProxyCheckResult,
   ProxyPoolEntry,
@@ -542,10 +542,7 @@ describe("AuthFilesPage OAuth login dialog", () => {
     const secondPoll = deferred<{ status: "ok" }>();
 
     window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
-    window.localStorage.setItem(
-      AUTH_FILES_UI_STATE_KEY,
-      JSON.stringify({ tab: "files", filter: "qwen", search: "qwen", page: 1 }),
-    );
+    writeAuthFilesUiState({ tab: "files", filter: "qwen", search: "qwen", page: 1 });
     mocks.list
       .mockResolvedValueOnce({ files: [initialFile] })
       .mockResolvedValue({ files: [initialFile, xaiFile] });

@@ -170,6 +170,157 @@ describe("DataTable sorting and row reordering", () => {
   });
 });
 
+describe("DataTable column reorder handle layout", () => {
+  test("reserves symmetric gutters so the grip never covers the header label", () => {
+    render(
+      <DataTable
+        tableId="column-reorder-overlap"
+        rows={initialRows}
+        columns={plainColumns}
+        rowKey={(row) => row.id}
+        naturalFlow
+        height="h-auto"
+        minHeight="min-h-0"
+        minWidth="min-w-[320px]"
+        showAllLoadedMessage={false}
+      />,
+    );
+
+    const header = document.querySelector<HTMLElement>(
+      'th[data-vt-column-key="name"]',
+    );
+    const content = header?.querySelector<HTMLElement>(
+      "[data-vt-column-header-content]",
+    );
+    const handle = header?.querySelector<HTMLElement>(
+      "[data-vt-column-reorder-handle]",
+    );
+    expect(header).not.toBeNull();
+    expect(content).not.toBeNull();
+    expect(handle).not.toBeNull();
+    expect(content).toHaveClass("px-5");
+    expect(content).not.toHaveClass(
+      "group-hover/column:pl-5",
+      "group-focus-within/column:pl-5",
+    );
+    expect(handle).toHaveClass("absolute", "left-1");
+  });
+});
+
+describe("DataTable header text alignment", () => {
+  test("maps headerClassName text-align utilities onto the flex label row", () => {
+    const alignedColumns: DataTableColumn<TestRow>[] = [
+      {
+        key: "left",
+        label: "Left",
+        headerClassName: "text-left",
+        render: (row) => row.name,
+      },
+      {
+        key: "center",
+        label: "Center",
+        headerClassName: "text-center md:sticky",
+        render: (row) => row.name,
+      },
+      {
+        key: "right",
+        label: "Right",
+        headerClassName: "text-right",
+        render: (row) => row.name,
+      },
+    ];
+
+    render(
+      <DataTable
+        tableId="header-align-table"
+        rows={initialRows}
+        columns={alignedColumns}
+        rowKey={(row) => row.id}
+        naturalFlow
+        height="h-auto"
+        minHeight="min-h-0"
+        minWidth="min-w-[320px]"
+        showAllLoadedMessage={false}
+      />,
+    );
+
+    const labelRow = (key: string) =>
+      document
+        .querySelector<HTMLElement>(`th[data-vt-column-key="${key}"]`)
+        ?.querySelector<HTMLElement>("[data-vt-column-header-content] > span");
+
+    expect(labelRow("left")).toHaveClass("justify-start");
+    expect(labelRow("center")).toHaveClass("justify-center");
+    expect(labelRow("center")).not.toHaveClass("justify-start");
+    expect(labelRow("right")).toHaveClass("justify-end");
+  });
+});
+
+describe("DataTable empty state", () => {
+  test("renders EmptyState and collapses min-width so empty tables do not scroll sideways", () => {
+    const wideColumns: DataTableColumn<TestRow>[] = [
+      {
+        key: "id",
+        label: "ID",
+        width: "w-[320px] min-w-[320px]",
+        render: (row) => row.id,
+      },
+      {
+        key: "name",
+        label: "Name",
+        width: "w-[480px] min-w-[480px]",
+        render: (row) => row.name,
+      },
+      {
+        key: "extra",
+        label: "Extra",
+        width: "w-[640px] min-w-[640px]",
+        render: () => "extra",
+      },
+    ];
+
+    render(
+      <DataTable
+        tableId="empty-state-table"
+        rows={[]}
+        columns={wideColumns}
+        rowKey={(row) => row.id}
+        height="h-[240px]"
+        minHeight="min-h-[240px]"
+        minWidth="min-w-[1800px]"
+        emptyText="No request logs"
+        emptyDescription="Try a different filter range"
+        showAllLoadedMessage={false}
+      />,
+    );
+
+    const table = document.querySelector<HTMLTableElement>("table[data-vt-empty='true']");
+    const viewport = document.querySelector<HTMLElement>(
+      "[data-scrollbar-visibility='hover']",
+    );
+    const emptyRow = document.querySelector<HTMLTableRowElement>(
+      "tr[data-vt-empty-row]",
+    );
+
+    expect(table).not.toBeNull();
+    expect(table).toHaveClass("min-w-0");
+    expect(table).not.toHaveClass("min-w-[1800px]");
+    expect(viewport).toHaveClass("overflow-x-hidden");
+    expect(emptyRow).not.toBeNull();
+    expect(screen.getByText("No request logs")).toBeInTheDocument();
+    expect(screen.getByText("Try a different filter range")).toBeInTheDocument();
+    // Default EmptyState icon well (Inbox) when emptyIcon is omitted.
+    expect(document.querySelector("[data-empty-icon]")).not.toBeNull();
+
+    const firstHeader = document.querySelector<HTMLElement>(
+      'th[data-vt-column-key="id"]',
+    );
+    expect(firstHeader).not.toBeNull();
+    expect(firstHeader?.className).not.toMatch(/min-w-\[320px\]/);
+    expect(firstHeader).not.toHaveClass("sticky");
+  });
+});
+
 describe("DataTable scroll chrome and row dividers", () => {
   test("keeps header cells attached and forwards boundary wheel scrolling to the parent", () => {
     render(

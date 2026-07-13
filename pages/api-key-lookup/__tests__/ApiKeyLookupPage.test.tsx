@@ -525,4 +525,84 @@ describe("ApiKeyLookupPage", () => {
       pending.some((request) => request.days === 30 && request.signal?.aborted),
     ).toBe(true);
   });
+
+  test("pins results toolbar with sticky top offset and collapses header on scroll", async () => {
+    let toolbarTop = 120;
+    const originalGetBoundingClientRect =
+      Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
+      const el = this as HTMLElement;
+      if (el.dataset?.testid === "apikey-lookup-toolbar-sticky") {
+        return {
+          x: 0,
+          y: toolbarTop,
+          top: toolbarTop,
+          left: 0,
+          right: 800,
+          bottom: toolbarTop + 48,
+          width: 800,
+          height: 48,
+          toJSON: () => ({}),
+        } as DOMRect;
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+
+    window.sessionStorage.setItem(
+      "apiKeyLookup.lastApiKey.v1",
+      "sk-restored-key",
+    );
+
+    try {
+      render(
+        <ThemeProvider>
+          <ToastProvider>
+            <ApiKeyLookupPage />
+          </ToastProvider>
+        </ThemeProvider>,
+      );
+
+      const toolbar = await screen.findByTestId("apikey-lookup-toolbar-sticky");
+      expect(toolbar.className).toMatch(/(?:^|\s)sticky(?:\s|$)/);
+      expect(toolbar.className).toMatch(/(?:^|\s)top-3(?:\s|$)/);
+      // sticky 必须是自身节点，不能再包一层短 relative 切断包含块。
+      expect(toolbar.parentElement?.tagName.toLowerCase()).toBe("main");
+      expect(toolbar).toHaveAttribute("data-stuck", "false");
+      expect(toolbar.className).toMatch(/border-transparent/);
+
+      const header = screen.getByTestId("apikey-lookup-header");
+      expect(header).toHaveAttribute("data-collapsed", "false");
+
+      Object.defineProperty(window, "scrollY", {
+        configurable: true,
+        value: 80,
+      });
+      toolbarTop = 12;
+      window.dispatchEvent(new Event("scroll"));
+
+      await waitFor(() => {
+        expect(header).toHaveAttribute("data-collapsed", "true");
+        expect(toolbar).toHaveAttribute("data-stuck", "true");
+      });
+      expect(header.className).toMatch(/-translate-y-full/);
+      expect(header.className).toMatch(/opacity-0/);
+      expect(toolbar.className).toMatch(/border-slate-200/);
+      expect(toolbar.className).not.toMatch(/border-transparent/);
+
+      Object.defineProperty(window, "scrollY", {
+        configurable: true,
+        value: 0,
+      });
+      toolbarTop = 120;
+      window.dispatchEvent(new Event("scroll"));
+
+      await waitFor(() => {
+        expect(header).toHaveAttribute("data-collapsed", "false");
+        expect(toolbar).toHaveAttribute("data-stuck", "false");
+      });
+      expect(toolbar.className).toMatch(/border-transparent/);
+    } finally {
+      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
+  });
 });

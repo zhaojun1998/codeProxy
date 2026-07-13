@@ -49,6 +49,7 @@ export type OAuthDialogTab =
 export const AUTH_FILES_PAGE_SIZE = 9;
 export const MAX_AUTH_FILE_SIZE = 50 * 1024;
 
+/** Tenant-scoped auth-files UI filters (file group / status / search / page). */
 export const AUTH_FILES_UI_STATE_KEY = "authFilesPage.uiState.v3";
 /** Tenant-scoped auth-files list/quota cache (v3). Legacy v2 is read only for migration. */
 export const AUTH_FILES_DATA_CACHE_KEY = "authFilesPage.dataCache.v3";
@@ -336,25 +337,65 @@ const sanitizeAuthFileRestrictionsForCache = (
   return restrictions.length > 0 ? restrictions : undefined;
 };
 
-export const readAuthFilesUiState = (): AuthFilesUiState | null => {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(AUTH_FILES_UI_STATE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as AuthFilesUiState;
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch {
+const parseAuthFilesUiStateBucket = (value: unknown): AuthFilesUiState | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  // Reject tenant-store wrappers so only real UI-state objects are accepted.
+  if ("byTenant" in record && !("filter" in record) && !("tab" in record) && !("page" in record)) {
     return null;
   }
+  const output: AuthFilesUiState = {};
+  if (record.tab === "files" || record.tab === "excluded" || record.tab === "alias") {
+    output.tab = record.tab;
+  }
+  if (typeof record.filter === "string") output.filter = record.filter;
+  if (typeof record.tagFilter === "string") output.tagFilter = record.tagFilter;
+  if (
+    typeof record.statusFilter === "string" &&
+    AUTH_FILE_STATUS_FILTERS.includes(record.statusFilter as AuthFileStatusFilter)
+  ) {
+    output.statusFilter = record.statusFilter as AuthFileStatusFilter;
+  }
+  if (typeof record.search === "string") output.search = record.search;
+  if (typeof record.page === "number" && Number.isFinite(record.page)) {
+    output.page = Math.max(1, Math.round(record.page));
+  }
+  return output;
 };
 
-export const writeAuthFilesUiState = (state: AuthFilesUiState) => {
+/**
+ * Read auth-files UI filters for a tenant (file group, status, search, page).
+ * Prefer explicit tenantId; fall back to the active cache tenant from AuthProvider.
+ * Legacy unscoped v3 payloads migrate into the default tenant bucket on first write.
+ */
+export const readAuthFilesUiState = (
+  tenantId?: string | null,
+): AuthFilesUiState | null => {
+  if (typeof window === "undefined") return null;
+  const tenantKey = normalizeCacheTenantId(tenantId ?? getActiveCacheTenantId());
+  return readTenantBucket({
+    key: AUTH_FILES_UI_STATE_KEY,
+    tenantId: tenantKey,
+    parseBucket: parseAuthFilesUiStateBucket,
+    // v3 may still hold a single unscoped UI-state object mid-migration.
+    acceptUnscopedCurrent: true,
+  });
+};
+
+export const writeAuthFilesUiState = (
+  state: AuthFilesUiState,
+  tenantId?: string | null,
+) => {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(AUTH_FILES_UI_STATE_KEY, JSON.stringify(state));
-  } catch {
-    // ignore
-  }
+  const tenantKey = normalizeCacheTenantId(tenantId ?? getActiveCacheTenantId());
+  const bucket = parseAuthFilesUiStateBucket(state) ?? {};
+  writeTenantBucket({
+    key: AUTH_FILES_UI_STATE_KEY,
+    tenantId: tenantKey,
+    parseBucket: parseAuthFilesUiStateBucket,
+    acceptUnscopedCurrent: true,
+    bucket,
+  });
 };
 
 const sanitizeModelOwnerGroupMap = (value: unknown): AuthFilesModelOwnerGroupMap => {

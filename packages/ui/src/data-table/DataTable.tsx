@@ -17,6 +17,7 @@ import {
   Check,
   GripVertical,
 } from "lucide-react";
+import { EmptyState } from "../feedback/EmptyState";
 import { DropdownMenu } from "../primitives/DropdownMenu";
 import { TableCellOverflowTooltip } from "./TableCellOverflowTooltip";
 
@@ -314,6 +315,29 @@ function hasStickyColumnClass<T>(column: DataTableColumn<T>) {
     .some(
       (className) => className === "sticky" || className.endsWith(":sticky"),
     );
+}
+
+/**
+ * Map Tailwind text-align utilities on the header cell to flex justify on the
+ * header content row. `th` may carry `text-center` / `text-right`, but the label
+ * wrapper is `display: flex`, so text-align alone never centers/right-aligns it.
+ */
+function resolveHeaderContentJustifyClass(headerClassName?: string) {
+  let justifyClass = "";
+  for (const className of (headerClassName ?? "").split(/\s+/).filter(Boolean)) {
+    if (/(?:^|:)text-center$/.test(className)) {
+      justifyClass = "justify-center";
+      continue;
+    }
+    if (/(?:^|:)text-right$/.test(className)) {
+      justifyClass = "justify-end";
+      continue;
+    }
+    if (/(?:^|:)text-left$/.test(className)) {
+      justifyClass = "justify-start";
+    }
+  }
+  return justifyClass;
 }
 
 function resolveColumnLayoutWidth<T>(
@@ -1025,6 +1049,9 @@ export function DataTable<T>({
   minHeight = "min-h-[360px]",
   caption = "data table",
   emptyText = "",
+  emptyDescription,
+  emptyIcon,
+  emptyAction,
   showAllLoadedMessage = true,
   rowDividers = false,
   rowClassName,
@@ -3024,24 +3051,39 @@ export function DataTable<T>({
     [endIndex, rows, startIndex, virtualize],
   );
 
+  // isEmpty is defined once and reused below so empty tables skip sticky rails
+  // and horizontal scrollbar chrome that only make sense with wide data rows.
+  const isEmpty = !loading && rows.length === 0;
   const { vThumb, hThumb } = useMemo(() => {
-    return calculateScrollbarThumbs(scrollMetrics, headerHeight);
-  }, [headerHeight, scrollMetrics]);
+    const thumbs = calculateScrollbarThumbs(scrollMetrics, headerHeight);
+    // Empty tables force overflow-x hidden; suppress the horizontal thumb so
+    // sticky rail insets and bottom chrome stay zeroed.
+    return isEmpty ? { vThumb: thumbs.vThumb, hThumb: null } : thumbs;
+  }, [headerHeight, isEmpty, scrollMetrics]);
   const stickyStartRailWidth = useMemo(
-    () => resolveStickyRailWidth(orderedColumns, columnWidths, "start"),
-    [columnWidths, orderedColumns],
+    () =>
+      isEmpty
+        ? 0
+        : resolveStickyRailWidth(orderedColumns, columnWidths, "start"),
+    [columnWidths, isEmpty, orderedColumns],
   );
   const stickyEndRailWidth = useMemo(
-    () => resolveStickyRailWidth(orderedColumns, columnWidths, "end"),
-    [columnWidths, orderedColumns],
+    () =>
+      isEmpty
+        ? 0
+        : resolveStickyRailWidth(orderedColumns, columnWidths, "end"),
+    [columnWidths, isEmpty, orderedColumns],
   );
   stickyRailWidthsRef.current = {
     start: stickyStartRailWidth,
     end: stickyEndRailWidth,
   };
   const stickyColumnPlacements = useMemo(
-    () => resolveStickyColumnPlacements(orderedColumns, columnWidths),
-    [columnWidths, orderedColumns],
+    (): Record<string, StickyColumnPlacement> =>
+      isEmpty
+        ? {}
+        : resolveStickyColumnPlacements(orderedColumns, columnWidths),
+    [columnWidths, isEmpty, orderedColumns],
   );
   const stickyRailBottomInset = hThumb ? 14 : 0;
   const stickyRailTop = headerHeight;
@@ -3071,15 +3113,21 @@ export function DataTable<T>({
     scrollMetrics.clientWidth - stickyEndRailWidth,
   );
 
+  // Empty tables should not inherit the wide minWidth / fixed column widths
+  // that data rows need; otherwise the empty body scrolls horizontally for
+  // no content. Keep headers for context, but collapse to the viewport width.
+  const tableMinWidthClass = isEmpty ? "min-w-0" : minWidth;
+
   const resolveColumnStyle = useCallback(
     (
       column: DataTableColumn<T>,
       area: "header" | "cell" = "cell",
     ): DataTableColumnStyle => {
-      const width = columnWidths[column.key];
-      const placement = naturalFlow
-        ? undefined
-        : stickyColumnPlacements[column.key];
+      const width = isEmpty ? undefined : columnWidths[column.key];
+      const placement =
+        naturalFlow || isEmpty
+          ? undefined
+          : stickyColumnPlacements[column.key];
       const style: DataTableColumnStyle = {};
 
       if (width) {
@@ -3100,7 +3148,7 @@ export function DataTable<T>({
 
       return style;
     },
-    [columnWidths, naturalFlow, stickyColumnPlacements],
+    [columnWidths, isEmpty, naturalFlow, stickyColumnPlacements],
   );
 
   const resizePreviewOverlay =
@@ -3182,7 +3230,11 @@ export function DataTable<T>({
         className={
           naturalFlow
             ? "relative z-10 min-h-0 overflow-visible rounded-xl"
-            : `relative col-start-1 row-start-1 h-full min-h-0 table-scrollbar overflow-auto overscroll-x-none ${
+            : `relative col-start-1 row-start-1 h-full min-h-0 table-scrollbar overscroll-x-none ${
+                isEmpty
+                  ? "overflow-x-hidden overflow-y-auto"
+                  : "overflow-auto"
+              } ${
                 allowWheelPropagationAtBoundary
                   ? "overscroll-y-auto"
                   : "overscroll-y-none"
@@ -3207,7 +3259,8 @@ export function DataTable<T>({
           ) : null}
           <table
             ref={tableRef}
-            className={`relative w-full ${minWidth} table-fixed border-separate border-spacing-0 text-sm`}
+            className={`relative w-full ${tableMinWidthClass} table-fixed border-separate border-spacing-0 text-sm`}
+            data-vt-empty={isEmpty ? true : undefined}
           >
             <caption className="sr-only">{caption}</caption>
             <colgroup>
@@ -3244,12 +3297,14 @@ export function DataTable<T>({
                     activeResizeColumnKey === col.key;
                   const isSettledReorderColumn =
                     settledReorderColumnKey === col.key;
-                  const stickyPlacement = naturalFlow
-                    ? undefined
-                    : stickyColumnPlacements[col.key];
-                  const headerPositionClass = naturalFlow
-                    ? "relative"
-                    : "sticky top-0 z-50";
+                  const stickyPlacement =
+                    naturalFlow || isEmpty
+                      ? undefined
+                      : stickyColumnPlacements[col.key];
+                  const headerPositionClass =
+                    naturalFlow || isEmpty
+                      ? "relative"
+                      : "sticky top-0 z-50";
                   const headerChromeClass = "bg-slate-100 dark:bg-neutral-800";
                   const headerCornerClass = [
                     naturalFlow && colIndex === 0 ? "rounded-l-xl" : "",
@@ -3285,7 +3340,9 @@ export function DataTable<T>({
                         stickyPlacement?.edge === "end"
                           ? "md:right-[var(--vt-sticky-right)]"
                           : ""
-                      } ${headerChromeClass} ${headerCornerClass} ${col.width ?? ""} ${col.headerClassName ?? ""} ${
+                      } ${headerChromeClass} ${headerCornerClass} ${
+                        isEmpty ? "" : (col.width ?? "")
+                      } ${col.headerClassName ?? ""} ${
                         activeReorderColumnKey === col.key
                           ? "cursor-grabbing bg-slate-100 text-slate-700 shadow-[inset_2px_0_0_rgba(37,99,235,0.42),inset_-2px_0_0_rgba(14,165,233,0.28)] dark:bg-neutral-800 dark:text-white/80"
                           : ""
@@ -3299,7 +3356,7 @@ export function DataTable<T>({
                             activeResizeColumnKey !== null
                               ? "pointer-events-none"
                               : activeReorderColumnKey === col.key
-                                ? "pointer-events-none"
+                                ? "pointer-events-none opacity-100"
                                 : "group-hover/column:opacity-100"
                           }`}
                           onPointerDown={(event) =>
@@ -3312,9 +3369,12 @@ export function DataTable<T>({
                           </span>
                         </button>
                       ) : null}
+                      {/* Always reserve handle-width gutters when reorderable so the absolute grip never covers the label; keep L/R symmetric so centered headers do not shift on hover. */}
                       <div
                         data-vt-column-header-content
-                        className="min-w-0 max-w-full overflow-hidden"
+                        className={`min-w-0 max-w-full overflow-hidden ${
+                          canReorder ? "px-5" : ""
+                        }`}
                       >
                         {isRowReorderColumn ? (
                           <span className="flex items-center justify-center text-slate-400/70 dark:text-white/35">
@@ -3322,7 +3382,9 @@ export function DataTable<T>({
                             <span className="sr-only">{col.label}</span>
                           </span>
                         ) : (
-                          <span className="flex min-w-0 items-center gap-1.5">
+                          <span
+                            className={`flex min-w-0 items-center gap-1.5 ${resolveHeaderContentJustifyClass(col.headerClassName)}`}
+                          >
                             <span className="min-w-0 truncate">
                               {col.headerRender
                                 ? col.headerRender()
@@ -3465,13 +3527,24 @@ export function DataTable<T>({
                     </tr>
                   ))}
                 </>
-              ) : !loading && rows.length === 0 ? (
-                <tr>
+              ) : isEmpty ? (
+                <tr data-vt-empty-row className="h-full">
                   <td
                     colSpan={colCount}
-                    className="px-4 py-12 text-center text-sm text-slate-600 dark:text-white/70"
+                    className="h-full px-4 py-8 align-middle sm:px-6 sm:py-10"
                   >
-                    {emptyText}
+                    {/*
+                      Fill the remaining table viewport so EmptyState sits in the
+                      middle of the blank body, not stuck under the header.
+                    */}
+                    <div className="flex min-h-[min(18rem,calc(100dvh-28rem))] w-full items-center justify-center">
+                      <EmptyState
+                        title={emptyText || t("common.no_data")}
+                        description={emptyDescription}
+                        icon={emptyIcon}
+                        action={emptyAction}
+                      />
+                    </div>
                   </td>
                 </tr>
               ) : (
