@@ -2322,7 +2322,14 @@
   "log_content": {
     "detail_label_request": "Request",
     "detail_label_response": "Response",
-    "detail_group_fingerprint_headers": "Fingerprint / passthrough"
+    "detail_group_fingerprint_headers": "Fingerprint / passthrough",
+    "search_details": "Search details",
+    "clear_search": "Clear search",
+    "search_match_count": "{{count}} matching row(s)",
+    "search_no_matches": "No matching details",
+    "image_too_large": "Изображение слишком большое (~{{mb}} МБ), нажмите для просмотра",
+    "image_load_failed": "Не удалось загрузить изображение",
+    "locate_message": "Locate message"
   },
   "system_page": {
     "title": "Информация о системе",

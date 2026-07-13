@@ -1,7 +1,82 @@
-import type { Msg, RenderedView } from "./types";
+import type { LogImage, Msg, RenderedView } from "./types";
 import type { ParsedOutput } from "./types-internal";
 
 // Internal-only helper type exported from a colocated file to keep the main modal lighter.
+
+function approxBase64Bytes(base64: string): number {
+  return Math.floor((base64.length * 3) / 4);
+}
+
+function extractImages(content: unknown): LogImage[] {
+  if (!Array.isArray(content)) return [];
+  const images: LogImage[] = [];
+
+  for (const part of content as Record<string, unknown>[]) {
+    if (!part || typeof part !== "object") continue;
+    const type = typeof part.type === "string" ? part.type : "";
+
+    if (type === "image_url") {
+      const imageUrl = part.image_url;
+      if (typeof imageUrl === "string" && imageUrl) {
+        images.push({ src: imageUrl });
+      } else if (imageUrl && typeof imageUrl === "object") {
+        const url = (imageUrl as Record<string, unknown>).url;
+        if (typeof url === "string" && url) images.push({ src: url });
+      }
+      continue;
+    }
+
+    if (type === "input_image") {
+      const url = part.image_url;
+      if (typeof url === "string" && url) images.push({ src: url });
+      continue;
+    }
+
+    if (type === "image") {
+      const source = part.source;
+      if (source && typeof source === "object") {
+        const record = source as Record<string, unknown>;
+        if (record.type === "base64" && typeof record.data === "string" && record.data) {
+          const mediaType =
+            typeof record.media_type === "string" ? record.media_type : "image/png";
+          images.push({
+            src: `data:${mediaType};base64,${record.data}`,
+            mediaType,
+            approxBytes: approxBase64Bytes(record.data),
+          });
+        } else if (
+          record.type === "url" &&
+          typeof record.url === "string" &&
+          record.url
+        ) {
+          images.push({ src: record.url });
+        }
+      }
+      continue;
+    }
+
+    const inlineData =
+      part.inlineData && typeof part.inlineData === "object"
+        ? (part.inlineData as Record<string, unknown>)
+        : part.inline_data && typeof part.inline_data === "object"
+          ? (part.inline_data as Record<string, unknown>)
+          : null;
+    if (!inlineData || typeof inlineData.data !== "string" || !inlineData.data) continue;
+    const mediaType =
+      typeof inlineData.mimeType === "string"
+        ? inlineData.mimeType
+        : typeof inlineData.mime_type === "string"
+          ? inlineData.mime_type
+          : "image/png";
+    images.push({
+      src: `data:${mediaType};base64,${inlineData.data}`,
+      mediaType,
+      approxBytes: approxBase64Bytes(inlineData.data),
+    });
+  }
+
+  return images;
+}
 
 function extractText(content: unknown): string {
   if (typeof content === "string") return content;
@@ -24,10 +99,14 @@ function parseOpenAIMessages(data: Record<string, unknown>): Msg[] | null {
   if (!Array.isArray(msgs)) return null;
   const result = msgs
     .filter((m: Record<string, unknown>) => m.role && m.content !== undefined)
-    .map((m: Record<string, unknown>) => ({
-      role: String(m.role),
-      content: extractText(m.content),
-    }));
+    .map((m: Record<string, unknown>): Msg => {
+      const images = extractImages(m.content);
+      return {
+        role: String(m.role),
+        content: extractText(m.content),
+        ...(images.length > 0 ? { images } : {}),
+      };
+    });
   return result.length > 0 ? result : null;
 }
 
@@ -45,7 +124,10 @@ function parseCodexInput(data: Record<string, unknown>): Msg[] | null {
     if (itemType === "message" || (!itemType && item.role && item.content !== undefined)) {
       const role = String(item.role || "user");
       const text = extractText(item.content);
-      if (text) result.push({ role, content: text });
+      const images = extractImages(item.content);
+      if (text || images.length > 0) {
+        result.push({ role, content: text, ...(images.length > 0 ? { images } : {}) });
+      }
     } else if (itemType === "function_call") {
       const name = String(item.name || "");
       const args =

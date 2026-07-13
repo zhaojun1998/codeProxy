@@ -35,7 +35,9 @@ export interface LogContentModalProps {
   ) => Promise<UsageLogEgressResponse>;
 }
 
-export type Msg = { role: string; content: string };
+export type LogImage = { src: string; mediaType?: string; approxBytes?: number };
+
+export type Msg = { role: string; content: string; images?: LogImage[] };
 
 export type RenderedView =
   | { kind: "messages"; messages: Msg[] }

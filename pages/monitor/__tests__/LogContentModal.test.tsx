@@ -1,4 +1,4 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -381,6 +381,139 @@ describe("LogContentModal", () => {
     expect(document.body.querySelector("pre")!.textContent).toBe(
       '{"created":1776910933,"data":[{"b64_json":"aGVsbG8="},{"b64_json":"d29ybGQ="}]}',
     );
+  });
+
+  test("previews input images and locates their source message", async () => {
+    vi.useFakeTimers();
+    await i18n.changeLanguage("en");
+    const fetchPartFn = vi.fn(async (_id: number, part: "input" | "output") => ({
+      id: 1,
+      model: "gpt-test",
+      part,
+      content:
+        part === "input"
+          ? JSON.stringify({
+              input: [
+                {
+                  type: "message",
+                  role: "user",
+                  content: [
+                    { type: "input_text", text: "image source message" },
+                    {
+                      type: "input_image",
+                      image_url: "data:image/png;base64,aGVsbG8=",
+                    },
+                  ],
+                },
+              ],
+            })
+          : "",
+    }));
+
+    render(
+      <ThemeProvider>
+        <LogContentModal
+          open
+          logId={1}
+          initialTab="input"
+          onClose={() => {}}
+          fetchPartFn={fetchPartFn}
+        />
+      </ThemeProvider>,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(260);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+    await act(async () => {});
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    const sourceMessage = document.querySelector('[data-log-message-index="0"]');
+    expect(sourceMessage).not.toBeNull();
+    const thumbnail = within(sourceMessage as HTMLElement).getByRole("img", {
+      name: "Input",
+    });
+    expect(thumbnail).toHaveAttribute("src", "data:image/png;base64,aGVsbG8=");
+
+    await act(async () => {
+      thumbnail.click();
+    });
+    const preview = screen.getByRole("dialog", { name: "Input" });
+    expect(within(preview).getByRole("img", { name: "Input" })).toHaveAttribute(
+      "src",
+      "data:image/png;base64,aGVsbG8=",
+    );
+
+    await act(async () => {
+      within(preview).getByRole("button", { name: "Locate message" }).click();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.queryByRole("dialog", { name: "Input" })).not.toBeInTheDocument();
+    expect(sourceMessage).toHaveClass("ring-2");
+  });
+
+  test("filters and clears request detail search", async () => {
+    vi.useFakeTimers();
+    await i18n.changeLanguage("en");
+    const fetchDetailsFn = vi.fn(async () => ({
+      id: 1,
+      model: "gpt-test",
+      part: "details" as const,
+      content: JSON.stringify({
+        client: {
+          method: "POST",
+          headers: {
+            "X-Trace-Id": "trace-search-target",
+            Authorization: "Bearer hidden-row",
+          },
+        },
+      }),
+    }));
+
+    render(
+      <ThemeProvider>
+        <LogContentModal
+          open
+          logId={1}
+          onClose={() => {}}
+          fetchDetailsFn={fetchDetailsFn}
+          showRequestDetails
+          showBodyContent={false}
+        />
+      </ThemeProvider>,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(260);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    });
+
+    const search = screen.getByRole("textbox", { name: "Search details" });
+    fireEvent.change(search, { target: { value: "trace-search" } });
+    expect(screen.getByText("trace-search")).toHaveProperty("tagName", "MARK");
+    expect(document.body.textContent).toContain("trace-search-target");
+    expect(screen.queryByText("Bearer hidden-row")).not.toBeInTheDocument();
+    expect(screen.getByText("1 matching row(s)")).toBeInTheDocument();
+
+    await act(async () => {
+      screen.getByRole("button", { name: "Clear search" }).click();
+    });
+    expect(screen.getByText("Bearer hidden-row")).toBeInTheDocument();
   });
 
   test("does not mount massive raw content while rendered view parsing is deferred", async () => {

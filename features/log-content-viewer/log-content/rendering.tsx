@@ -8,6 +8,8 @@ import {
   Brain,
   ChevronDown,
   ClipboardList,
+  Image as ImageIcon,
+  ImageOff,
   MessageSquare,
   Settings,
   Upload,
@@ -16,6 +18,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import type { LogImage } from "./types";
 
 const LARGE_TEXT_CHAR_THRESHOLD = 50_000;
 const LARGE_TEXT_LINE_THRESHOLD = 400;
@@ -25,7 +28,76 @@ const VIRTUAL_MESSAGE_CONTENT_THRESHOLD = 48_000;
 const VIRTUAL_MESSAGE_ITEM_CONTENT_THRESHOLD = 18_000;
 const VIRTUAL_MESSAGE_OVERSCAN = 12;
 
-type LogMessage = { role: string; content: string };
+const INLINE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+type LogMessage = {
+  role: string;
+  content: string;
+  images?: LogImage[];
+  messageIndex?: number;
+};
+
+function MessageImages({
+  images,
+  onImageClick,
+  messageIndex,
+}: {
+  images: LogImage[];
+  onImageClick?: (images: LogImage[], index: number, messageIndex: number) => void;
+  messageIndex: number;
+}) {
+  const { t } = useTranslation();
+  const [failed, setFailed] = useState<Record<number, boolean>>({});
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      {images.map((image, index) => {
+        if (failed[index]) {
+          return (
+            <div
+              key={index}
+              className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2 text-center text-2xs text-slate-400 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-white/40"
+            >
+              <ImageOff size={16} />
+              <span>{t("log_content.image_load_failed")}</span>
+            </div>
+          );
+        }
+        if (
+          typeof image.approxBytes === "number" &&
+          image.approxBytes > INLINE_IMAGE_MAX_BYTES
+        ) {
+          return (
+            <button
+              key={index}
+              type="button"
+              onClick={() => onImageClick?.(images, index, messageIndex)}
+              className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2 text-center text-2xs text-slate-500 transition-colors hover:border-slate-400 hover:text-slate-700 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-white/55"
+            >
+              <ImageIcon size={16} />
+              <span>
+                {t("log_content.image_too_large", {
+                  mb: (image.approxBytes / (1024 * 1024)).toFixed(1),
+                })}
+              </span>
+            </button>
+          );
+        }
+        return (
+          <img
+            key={index}
+            src={image.src}
+            alt={t("log_content.input_messages")}
+            loading="lazy"
+            onClick={() => onImageClick?.(images, index, messageIndex)}
+            onError={() => setFailed((previous) => ({ ...previous, [index]: true }))}
+            className="h-24 w-24 shrink-0 cursor-zoom-in rounded-lg border border-slate-200 object-cover transition hover:brightness-95 dark:border-neutral-800"
+          />
+        );
+      })}
+    </div>
+  );
+}
 
 const LazyRichMarkdown = lazy(() =>
   import("./rendering-markdown").then((mod) => ({ default: mod.RichMarkdown })),
@@ -295,10 +367,18 @@ function MarkdownContent({ content }: { content: string }) {
 export function MessageBlock({
   role,
   content,
+  images,
+  onImageClick,
+  messageIndex,
+  highlighted = false,
   defaultExpanded = true,
 }: {
   role: string;
   content: string;
+  images?: LogImage[];
+  onImageClick?: (images: LogImage[], index: number, messageIndex: number) => void;
+  messageIndex?: number;
+  highlighted?: boolean;
   defaultExpanded?: boolean;
 }) {
   const { t } = useTranslation();
@@ -307,7 +387,8 @@ export function MessageBlock({
 
   return (
     <div
-      className={`overflow-hidden rounded-xl border ${style.border} transition-colors [contain:layout_paint]`}
+      data-log-message-index={messageIndex}
+      className={`overflow-hidden rounded-xl border ${style.border} transition-colors [contain:layout_paint] ${highlighted ? "ring-2 ring-sky-400/70 ring-offset-2 ring-offset-white dark:ring-sky-300/70 dark:ring-offset-neutral-950" : ""}`}
     >
       <button
         type="button"
@@ -323,7 +404,14 @@ export function MessageBlock({
       </button>
       {expanded && (
         <div className="border-t border-inherit px-4 py-3 text-sm text-slate-800 dark:text-slate-200">
-          <MarkdownContent content={content} />
+          {content ? <MarkdownContent content={content} /> : null}
+          {images && images.length > 0 ? (
+            <MessageImages
+              images={images}
+              onImageClick={onImageClick}
+              messageIndex={messageIndex ?? -1}
+            />
+          ) : null}
         </div>
       )}
     </div>
@@ -411,21 +499,54 @@ function shouldVirtualizeMessages(messages: LogMessage[]) {
   return false;
 }
 
-export function MessageList({ messages }: { messages: LogMessage[] }) {
+export function MessageList({
+  messages,
+  onImageClick,
+  highlightedMessageIndex,
+}: {
+  messages: LogMessage[];
+  onImageClick?: (images: LogImage[], index: number, messageIndex: number) => void;
+  highlightedMessageIndex?: number | null;
+}) {
   if (!shouldVirtualizeMessages(messages)) {
     return (
       <div className="space-y-3">
-        {messages.map((msg, idx) => (
-          <MessageBlock key={idx} role={msg.role} content={msg.content} />
-        ))}
+        {messages.map((msg, index) => {
+          const messageIndex = msg.messageIndex ?? index;
+          return (
+            <MessageBlock
+              key={messageIndex}
+              role={msg.role}
+              content={msg.content}
+              images={msg.images}
+              onImageClick={onImageClick}
+              messageIndex={messageIndex}
+              highlighted={highlightedMessageIndex === messageIndex}
+            />
+          );
+        })}
       </div>
     );
   }
 
-  return <VirtualMessageList messages={messages} />;
+  return (
+    <VirtualMessageList
+      messages={messages}
+      onImageClick={onImageClick}
+      highlightedMessageIndex={highlightedMessageIndex}
+    />
+  );
 }
 
-function VirtualMessageList({ messages }: { messages: { role: string; content: string }[] }) {
+function VirtualMessageList({
+  messages,
+  onImageClick,
+  highlightedMessageIndex,
+}: {
+  messages: LogMessage[];
+  onImageClick?: (images: LogImage[], index: number, messageIndex: number) => void;
+  highlightedMessageIndex?: number | null;
+}) {
   const parentRef = useRef<HTMLDivElement | null>(null);
   const virtualizer = useVirtualizer({
     count: messages.length,
@@ -436,6 +557,15 @@ function VirtualMessageList({ messages }: { messages: { role: string; content: s
   });
   const virtualRows = virtualizer.getVirtualItems();
 
+  useEffect(() => {
+    if (highlightedMessageIndex === null || highlightedMessageIndex === undefined) return;
+    const index = messages.findIndex(
+      (message, messageIndex) =>
+        (message.messageIndex ?? messageIndex) === highlightedMessageIndex,
+    );
+    if (index >= 0) virtualizer.scrollToIndex(index, { align: "center" });
+  }, [highlightedMessageIndex, messages, virtualizer]);
+
   return (
     <div
       ref={parentRef}
@@ -445,6 +575,7 @@ function VirtualMessageList({ messages }: { messages: { role: string; content: s
         {virtualRows.map((virtualRow) => {
           const msg = messages[virtualRow.index];
           if (!msg) return null;
+          const messageIndex = msg.messageIndex ?? virtualRow.index;
 
           return (
             <div
@@ -454,7 +585,14 @@ function VirtualMessageList({ messages }: { messages: { role: string; content: s
               className="absolute left-0 top-0 w-full pb-3"
               style={{ transform: `translateY(${virtualRow.start}px)` }}
             >
-              <MessageBlock role={msg.role} content={msg.content} />
+              <MessageBlock
+                role={msg.role}
+                content={msg.content}
+                images={msg.images}
+                onImageClick={onImageClick}
+                messageIndex={messageIndex}
+                highlighted={highlightedMessageIndex === messageIndex}
+              />
             </div>
           );
         })}

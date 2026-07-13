@@ -16,6 +16,8 @@ import {
   FileOutput,
   Info,
   Loader2,
+  Search,
+  X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { usageApi, type UsageLogEgressResponse } from "@code-proxy/api-client";
@@ -30,12 +32,14 @@ import {
   PlainPre,
 } from "../log-content/rendering";
 import { scheduleIdle, type CancelFn } from "../log-content/scheduler";
-import { Tabs, TabsList, TabsTrigger } from "@code-proxy/ui";
+import { Tabs, TabsList, TabsTrigger, TextInput } from "@code-proxy/ui";
 import { ImagePreviewOverlay } from "@code-proxy/ui";
 import type {
   AsyncParsedState,
+  LogImage,
   LogContentModalProps,
   LogContentPart,
+  Msg,
   RenderedView,
 } from "../log-content/types";
 import { useLogContentData } from "../log-content/useLogContentData";
@@ -69,6 +73,8 @@ type RequestDetailLabels = {
   response: string;
   fingerprintHeaders: string;
 };
+type IndexedMsg = Msg & { messageIndex: number };
+type PreviewLogImage = LogImage & { messageIndex: number; imageIndex: number };
 
 function parseJsonObject(raw: string): JsonObject | null {
   if (!raw) return null;
@@ -356,7 +362,85 @@ function buildResponseAttempts(
   ];
 }
 
-function RequestDetailRows({ rows }: { rows: RequestDetailRow[] }) {
+function normalizeSearchTerm(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function detailRowMatches(row: RequestDetailRow, searchTerm: string) {
+  if (!searchTerm) return true;
+  return `${row.label}\n${row.value}`.toLowerCase().includes(searchTerm);
+}
+
+function filterDetailAttempts(
+  attempts: RequestDetailAttempt[],
+  searchTerm: string,
+): RequestDetailAttempt[] {
+  if (!searchTerm) return attempts;
+  return attempts
+    .map((attempt) => ({
+      ...attempt,
+      rows: attempt.rows.filter((row) => detailRowMatches(row, searchTerm)),
+      groups: attempt.groups
+        .map((group) => ({
+          ...group,
+          rows: group.rows.filter((row) => detailRowMatches(row, searchTerm)),
+        }))
+        .filter((group) => group.rows.length > 0),
+    }))
+    .filter(
+      (attempt) =>
+        attempt.rows.length > 0 ||
+        attempt.groups.some((group) => group.rows.length > 0),
+    );
+}
+
+function countDetailMatches(attempts: RequestDetailAttempt[], searchTerm: string) {
+  if (!searchTerm) return 0;
+  return attempts.reduce(
+    (total, attempt) =>
+      total +
+      attempt.rows.filter((row) => detailRowMatches(row, searchTerm)).length +
+      attempt.groups.reduce(
+        (groupTotal, group) =>
+          groupTotal +
+          group.rows.filter((row) => detailRowMatches(row, searchTerm)).length,
+        0,
+      ),
+    0,
+  );
+}
+
+function highlightText(text: string, searchTerm: string): ReactNode {
+  if (!searchTerm) return text;
+  const parts: ReactNode[] = [];
+  const lowerText = text.toLowerCase();
+  let cursor = 0;
+  let matchIndex = lowerText.indexOf(searchTerm);
+  while (matchIndex !== -1) {
+    if (matchIndex > cursor) parts.push(text.slice(cursor, matchIndex));
+    const end = matchIndex + searchTerm.length;
+    parts.push(
+      <mark
+        key={`${matchIndex}-${end}`}
+        className="rounded bg-amber-200/80 px-0.5 text-inherit dark:bg-amber-400/30"
+      >
+        {text.slice(matchIndex, end)}
+      </mark>,
+    );
+    cursor = end;
+    matchIndex = lowerText.indexOf(searchTerm, cursor);
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return parts;
+}
+
+function RequestDetailRows({
+  rows,
+  searchTerm = "",
+}: {
+  rows: RequestDetailRow[];
+  searchTerm?: string;
+}) {
   if (rows.length === 0) return null;
   return (
     <div className="divide-y divide-slate-100 dark:divide-neutral-800/80">
@@ -366,10 +450,10 @@ function RequestDetailRows({ rows }: { rows: RequestDetailRow[] }) {
           className="grid min-w-0 gap-1.5 px-3 py-2.5 sm:grid-cols-[minmax(8rem,13rem)_minmax(0,1fr)] sm:gap-3"
         >
           <span className="min-w-0 font-mono text-xs leading-5 break-all text-slate-500 dark:text-white/40">
-            {row.label}
+            {highlightText(row.label, searchTerm)}
           </span>
           <span className="min-w-0 font-mono text-xs leading-5 break-words whitespace-pre-wrap text-slate-900 dark:text-slate-100">
-            {row.value}
+            {highlightText(row.value, searchTerm)}
           </span>
         </div>
       ))}
@@ -377,14 +461,20 @@ function RequestDetailRows({ rows }: { rows: RequestDetailRow[] }) {
   );
 }
 
-function RequestDetailGroupView({ group }: { group: RequestDetailGroup }) {
+function RequestDetailGroupView({
+  group,
+  searchTerm,
+}: {
+  group: RequestDetailGroup;
+  searchTerm?: string;
+}) {
   if (group.rows.length === 0) return null;
   return (
     <div className="border-t border-slate-100 dark:border-neutral-800/80">
       <div className="px-3 pt-3 pb-1.5 text-xs font-medium text-slate-400 dark:text-white/35">
         {group.title}
       </div>
-      <RequestDetailRows rows={group.rows} />
+      <RequestDetailRows rows={group.rows} searchTerm={searchTerm} />
     </div>
   );
 }
@@ -392,9 +482,11 @@ function RequestDetailGroupView({ group }: { group: RequestDetailGroup }) {
 function RequestDetailAttemptView({
   attempt,
   showTitle,
+  searchTerm,
 }: {
   attempt: RequestDetailAttempt;
   showTitle: boolean;
+  searchTerm?: string;
 }) {
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-neutral-800 dark:bg-neutral-950/60">
@@ -403,9 +495,13 @@ function RequestDetailAttemptView({
           {attempt.title}
         </div>
       ) : null}
-      <RequestDetailRows rows={attempt.rows} />
+      <RequestDetailRows rows={attempt.rows} searchTerm={searchTerm} />
       {attempt.groups.map((group) => (
-        <RequestDetailGroupView key={group.title} group={group} />
+        <RequestDetailGroupView
+          key={group.title}
+          group={group}
+          searchTerm={searchTerm}
+        />
       ))}
     </div>
   );
@@ -425,12 +521,14 @@ function RequestDetailSection({
   testId,
   defaultOpen = true,
   headerExtras,
+  searchTerm = "",
 }: {
   title: string;
   attempts: RequestDetailAttempt[];
   testId?: string;
   defaultOpen?: boolean;
   headerExtras?: ReactNode;
+  searchTerm?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const contentId = testId ? `${testId}-content` : undefined;
@@ -486,6 +584,7 @@ function RequestDetailSection({
                     key={`${attempt.title ?? "attempt"}-${index}`}
                     attempt={attempt}
                     showTitle={showAttemptTitle}
+                    searchTerm={searchTerm}
                   />
                 ))
               ) : (
@@ -702,6 +801,12 @@ export function LogContentModal({
   const [displayPhase, setDisplayPhase] = useState<ContentPhase>("loading");
   const [imagePreviewOpen, setImagePreviewOpen] = useState(false);
   const [outputImagePreviewIndex, setOutputImagePreviewIndex] = useState(0);
+  const [messageImagePreview, setMessageImagePreview] = useState<{
+    images: PreviewLogImage[];
+    index: number;
+  } | null>(null);
+  const [highlightedMessageIndex, setHighlightedMessageIndex] = useState<number | null>(null);
+  const [detailSearch, setDetailSearch] = useState("");
   const [egressInfo, setEgressInfo] = useState<UsageLogEgressResponse | null>(
     null,
   );
@@ -773,6 +878,7 @@ export function LogContentModal({
     if (!open) {
       setContentLoadReady(false);
       setImagePreviewOpen(false);
+      setMessageImagePreview(null);
       return;
     }
 
@@ -783,6 +889,12 @@ export function LogContentModal({
 
     return () => window.clearTimeout(timer);
   }, [open, logId]);
+
+  useEffect(() => {
+    setDetailSearch("");
+    setHighlightedMessageIndex(null);
+    setMessageImagePreview(null);
+  }, [logId]);
 
   useEffect(() => {
     egressAbortRef.current?.abort();
@@ -1016,6 +1128,60 @@ export function LogContentModal({
     imageGenerationOutput?.images[outputImagePreviewIndex]?.src ??
     imageGenerationOutput?.images[0]?.src ??
     null;
+  const inputMessages = useMemo<IndexedMsg[]>(() => {
+    if (inputParsed.view?.kind !== "messages") return [];
+    return inputParsed.view.messages.map((message, messageIndex) => ({
+      ...message,
+      messageIndex,
+    }));
+  }, [inputParsed.view]);
+  const collectPreviewImages = useCallback(
+    (messages: IndexedMsg[]): PreviewLogImage[] =>
+      messages.flatMap((message) =>
+        (message.images ?? []).map((image, imageIndex) => ({
+          ...image,
+          messageIndex: message.messageIndex,
+          imageIndex,
+        })),
+      ),
+    [],
+  );
+  const openMessageImagePreview = useCallback(
+    (messages: IndexedMsg[], messageIndex: number, imageIndex: number) => {
+      const images = collectPreviewImages(messages);
+      const index = images.findIndex(
+        (image) =>
+          image.messageIndex === messageIndex && image.imageIndex === imageIndex,
+      );
+      if (images.length > 0) {
+        setMessageImagePreview({ images, index: Math.max(index, 0) });
+      }
+    },
+    [collectPreviewImages],
+  );
+  const locateMessageImage = useCallback(
+    (previewIndex: number) => {
+      const messageIndex = messageImagePreview?.images[previewIndex]?.messageIndex;
+      if (messageIndex === undefined) return;
+      setMessageImagePreview(null);
+      setInputRevealCount(inputMessages.length);
+      setHighlightedMessageIndex(messageIndex);
+      window.setTimeout(() => {
+        const element = document.querySelector(
+          `[data-log-message-index="${messageIndex}"]`,
+        );
+        if (element && typeof element.scrollIntoView === "function") {
+          element.scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+      });
+      window.setTimeout(() => {
+        setHighlightedMessageIndex((current) =>
+          current === messageIndex ? null : current,
+        );
+      }, 2200);
+    },
+    [inputMessages.length, messageImagePreview],
+  );
   const activeDownloadName = useMemo(() => {
     const suffix =
       activeTab === "input"
@@ -1155,7 +1321,16 @@ export function LogContentModal({
         inputRevealCount > 0
           ? inputRevealCount
           : Math.min(view.messages.length, 6);
-      return <MessageList messages={view.messages.slice(0, count)} />;
+      const visibleMessages = inputMessages.slice(0, count);
+      return (
+        <MessageList
+          messages={visibleMessages}
+          onImageClick={(_, imageIndex, messageIndex) =>
+            openMessageImagePreview(visibleMessages, messageIndex, imageIndex)
+          }
+          highlightedMessageIndex={highlightedMessageIndex}
+        />
+      );
     }
     if (view.kind === "pretty_json") return <PlainPre text={view.pretty} />;
     return <PlainPre text={view.kind === "raw" ? view.raw : view.text} />;
@@ -1418,36 +1593,80 @@ export function LogContentModal({
       );
     }
 
+    const searchTerm = normalizeSearchTerm(detailSearch);
+    const sections = [
+      { key: "egress", attempts: egressRows.length > 0 ? [{ rows: egressRows, groups: [] }] : [] },
+      { key: "client", attempts: [clientAttempt] },
+      { key: "upstream", attempts: upstreamAttempts },
+      { key: "response", attempts: responseAttempts },
+      ...extraSections,
+    ];
+    const matchCount = sections.reduce(
+      (total, section) => total + countDetailMatches(section.attempts, searchTerm),
+      0,
+    );
+
     return (
       <div className="space-y-3 p-1">
+        <div className="sticky top-0 z-10 rounded-xl bg-white/90 pb-1 backdrop-blur dark:bg-neutral-950/90">
+          <TextInput
+            value={detailSearch}
+            onChange={(event) => setDetailSearch(event.target.value)}
+            placeholder={t("log_content.search_details")}
+            aria-label={t("log_content.search_details")}
+            startAdornment={<Search size={14} className="text-slate-400" />}
+            endAdornment={
+              detailSearch ? (
+                <button
+                  type="button"
+                  onClick={() => setDetailSearch("")}
+                  aria-label={t("log_content.clear_search")}
+                  className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                >
+                  <X size={14} />
+                </button>
+              ) : null
+            }
+          />
+          {searchTerm ? (
+            <p className="mt-1.5 px-1 text-xs text-slate-500 dark:text-white/45">
+              {matchCount > 0
+                ? t("log_content.search_match_count", { count: matchCount })
+                : t("log_content.search_no_matches")}
+            </p>
+          ) : null}
+        </div>
         <RequestDetailSection
           testId="request-detail-section-egress"
           title={t("log_content.details_egress")}
-          attempts={
-            egressRows.length > 0 ? [{ rows: egressRows, groups: [] }] : []
-          }
+          attempts={filterDetailAttempts(sections[0].attempts, searchTerm)}
           headerExtras={egressBadges}
+          searchTerm={searchTerm}
         />
         <RequestDetailSection
           testId="request-detail-section-client"
           title={t("log_content.details_client")}
-          attempts={[clientAttempt]}
+          attempts={filterDetailAttempts(sections[1].attempts, searchTerm)}
+          searchTerm={searchTerm}
         />
         <RequestDetailSection
           testId="request-detail-section-upstream"
           title={t("log_content.details_upstream")}
-          attempts={upstreamAttempts}
+          attempts={filterDetailAttempts(sections[2].attempts, searchTerm)}
+          searchTerm={searchTerm}
         />
         <RequestDetailSection
           testId="request-detail-section-response"
           title={t("log_content.details_response")}
-          attempts={responseAttempts}
+          attempts={filterDetailAttempts(sections[3].attempts, searchTerm)}
+          searchTerm={searchTerm}
         />
         {extraSections.map((section) => (
           <RequestDetailSection
             key={section.key}
             title={section.key}
-            attempts={section.attempts}
+            attempts={filterDetailAttempts(section.attempts, searchTerm)}
+            searchTerm={searchTerm}
           />
         ))}
       </div>
@@ -1527,6 +1746,27 @@ export function LogContentModal({
         activeIndex={outputImagePreviewIndex}
         onActiveIndexChange={setOutputImagePreviewIndex}
         onClose={() => setImagePreviewOpen(false)}
+      />
+      <ImagePreviewOverlay
+        open={Boolean(messageImagePreview)}
+        imageSrc={
+          messageImagePreview?.images[messageImagePreview.index]?.src ?? null
+        }
+        imageAlt={t("log_content.input_messages")}
+        title={t("log_content.input_messages")}
+        images={messageImagePreview?.images.map((image, index) => ({
+          src: image.src,
+          alt: t("log_content.input_messages"),
+          downloadName: `${model || "request-log"}-input-${index + 1}.png`,
+        }))}
+        activeIndex={messageImagePreview?.index ?? 0}
+        onActiveIndexChange={(index) =>
+          setMessageImagePreview((current) =>
+            current ? { ...current, index } : current,
+          )
+        }
+        onLocateActiveImage={locateMessageImage}
+        onClose={() => setMessageImagePreview(null)}
       />
     </ContentModal>
   );

@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  LocateFixed,
   RotateCcw,
   RotateCw,
   Scan,
@@ -54,6 +55,7 @@ export function ImagePreviewOverlay({
   images,
   activeIndex,
   onActiveIndexChange,
+  onLocateActiveImage,
 }: {
   open: boolean;
   imageSrc: string | null;
@@ -64,6 +66,7 @@ export function ImagePreviewOverlay({
   images?: Array<{ src: string; alt?: string; downloadName?: string }>;
   activeIndex?: number;
   onActiveIndexChange?: (index: number) => void;
+  onLocateActiveImage?: (index: number) => void;
 }) {
   const { t } = useTranslation();
   const resolvedImages = useMemo(() => {
@@ -411,6 +414,17 @@ export function ImagePreviewOverlay({
           >
             <Download size={17} />
           </a>
+          {onLocateActiveImage ? (
+            <button
+              type="button"
+              className={controlButtonClass}
+              onClick={() => onLocateActiveImage(resolvedActiveIndex)}
+              title={t("log_content.locate_message")}
+              aria-label={t("log_content.locate_message")}
+            >
+              <LocateFixed size={17} />
+            </button>
+          ) : null}
         </div>
       </div>
     </div>,
