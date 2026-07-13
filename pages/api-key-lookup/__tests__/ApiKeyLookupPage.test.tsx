@@ -92,6 +92,22 @@ describe("ApiKeyLookupPage", () => {
     window.sessionStorage.clear();
     window.history.replaceState({}, "", "/manage/apikey-lookup");
     vi.clearAllMocks();
+    // jsdom 无 IntersectionObserver；默认 stub，避免 toolbar sticky 监听挂载崩溃。
+    if (typeof window.IntersectionObserver === "undefined") {
+      window.IntersectionObserver = class MockIntersectionObserver
+        implements IntersectionObserver
+      {
+        readonly root: Element | Document | null = null;
+        readonly rootMargin = "";
+        readonly thresholds: ReadonlyArray<number> = [];
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+        takeRecords(): IntersectionObserverEntry[] {
+          return [];
+        }
+      };
+    }
   });
 
   test("opens the API key login modal when no key is stored", async () => {
@@ -527,46 +543,101 @@ describe("ApiKeyLookupPage", () => {
   });
 
   test("pins results toolbar with sticky top offset and collapses header on scroll", async () => {
+    const io = {
+      callback: null as IntersectionObserverCallback | null,
+    };
+    const OriginalIO = window.IntersectionObserver;
+    window.IntersectionObserver = class MockIntersectionObserver
+      implements IntersectionObserver
+    {
+      readonly root: Element | Document | null = null;
+      readonly rootMargin = "";
+      readonly thresholds: ReadonlyArray<number> = [];
+      constructor(callback: IntersectionObserverCallback) {
+        io.callback = callback;
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+      takeRecords(): IntersectionObserverEntry[] {
+        return [];
+      }
+    };
+
+    const emitIo = (isIntersecting: boolean) => {
+      const callback = io.callback;
+      if (!callback) {
+        throw new Error("IntersectionObserver callback was not registered");
+      }
+      callback(
+        [
+          {
+            isIntersecting,
+            intersectionRatio: isIntersecting ? 1 : 0,
+          } as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      );
+    };
+
     window.sessionStorage.setItem(
       "apiKeyLookup.lastApiKey.v1",
       "sk-restored-key",
     );
 
-    render(
-      <ThemeProvider>
-        <ToastProvider>
-          <ApiKeyLookupPage />
-        </ToastProvider>
-      </ThemeProvider>,
-    );
+    try {
+      render(
+        <ThemeProvider>
+          <ToastProvider>
+            <ApiKeyLookupPage />
+          </ToastProvider>
+        </ThemeProvider>,
+      );
 
-    const toolbar = await screen.findByTestId("apikey-lookup-toolbar-sticky");
-    expect(toolbar.className).toMatch(/(?:^|\s)sticky(?:\s|$)/);
-    expect(toolbar.className).toMatch(/(?:^|\s)top-3(?:\s|$)/);
+      const toolbar = await screen.findByTestId("apikey-lookup-toolbar-sticky");
+      expect(toolbar.className).toMatch(/(?:^|\s)sticky(?:\s|$)/);
+      expect(toolbar.className).toMatch(/(?:^|\s)top-3(?:\s|$)/);
+      expect(toolbar).toHaveAttribute("data-stuck", "false");
+      expect(toolbar.className).toMatch(/border-transparent/);
 
-    const header = screen.getByTestId("apikey-lookup-header");
-    expect(header).toHaveAttribute("data-collapsed", "false");
-
-    Object.defineProperty(window, "scrollY", {
-      configurable: true,
-      value: 80,
-    });
-    window.dispatchEvent(new Event("scroll"));
-
-    await waitFor(() => {
-      expect(header).toHaveAttribute("data-collapsed", "true");
-    });
-    expect(header.className).toMatch(/-translate-y-full/);
-    expect(header.className).toMatch(/opacity-0/);
-
-    Object.defineProperty(window, "scrollY", {
-      configurable: true,
-      value: 0,
-    });
-    window.dispatchEvent(new Event("scroll"));
-
-    await waitFor(() => {
+      const header = screen.getByTestId("apikey-lookup-header");
       expect(header).toHaveAttribute("data-collapsed", "false");
-    });
+
+      Object.defineProperty(window, "scrollY", {
+        configurable: true,
+        value: 80,
+      });
+      window.dispatchEvent(new Event("scroll"));
+
+      await waitFor(() => {
+        expect(header).toHaveAttribute("data-collapsed", "true");
+      });
+      expect(header.className).toMatch(/-translate-y-full/);
+      expect(header.className).toMatch(/opacity-0/);
+
+      // sentinel 离开视口 = 吸顶，toolbar 应出现 border 描边
+      emitIo(false);
+
+      await waitFor(() => {
+        expect(toolbar).toHaveAttribute("data-stuck", "true");
+      });
+      expect(toolbar.className).toMatch(/border-slate-200/);
+      expect(toolbar.className).not.toMatch(/border-transparent/);
+
+      Object.defineProperty(window, "scrollY", {
+        configurable: true,
+        value: 0,
+      });
+      window.dispatchEvent(new Event("scroll"));
+      emitIo(true);
+
+      await waitFor(() => {
+        expect(header).toHaveAttribute("data-collapsed", "false");
+        expect(toolbar).toHaveAttribute("data-stuck", "false");
+      });
+      expect(toolbar.className).toMatch(/border-transparent/);
+    } finally {
+      window.IntersectionObserver = OriginalIO;
+    }
   });
 });
