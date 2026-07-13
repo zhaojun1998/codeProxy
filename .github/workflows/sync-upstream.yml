@@ -1,0 +1,63 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: sync-upstream-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Merge upstream main
+        id: merge
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/kittors/codeProxy.git
+          git fetch upstream main
+          before="$(git rev-parse HEAD)"
+          git merge --no-edit FETCH_HEAD
+
+          if ! git diff --quiet "${before}" HEAD -- .github/workflows; then
+            git rm -rfq --ignore-unmatch .github/workflows
+            git checkout "${before}" -- .github/workflows
+            git commit --amend --no-edit
+          fi
+
+          after="$(git rev-parse HEAD)"
+          git push origin HEAD:main
+          if [ "${before}" != "${after}" ]; then
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Rebuild private image
+        if: steps.merge.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CLIRELAY_WORKFLOW_TOKEN }}
+          CLIRELAY_REPOSITORY: ${{ github.repository_owner }}/CliRelay
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::notice::CLIRELAY_WORKFLOW_TOKEN is not configured; skip the cross-repository image rebuild."
+            exit 0
+          fi
+          gh workflow run private-image.yml \
+            --repo "${CLIRELAY_REPOSITORY}" \
+            --ref main
