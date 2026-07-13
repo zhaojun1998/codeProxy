@@ -22,6 +22,7 @@ import { AuthFileDetailModal } from "./components/AuthFileDetailModal";
 import { AuthFilesExcludedTab } from "./components/AuthFilesExcludedTab";
 import { AuthFilesAliasTab } from "./components/AuthFilesAliasTab";
 import { AuthFilesFilesTab } from "./components/AuthFilesFilesTab";
+import { CodexResetCreditsSection } from "./components/CodexResetCreditsSection";
 import { AuthFileTagsModal } from "./components/AuthFileTagsModal";
 import { ImportModelsModal } from "./components/ImportModelsModal";
 import { GroupOverviewModal } from "./components/GroupOverviewModal";
@@ -36,6 +37,7 @@ import { useAuthFilesFilesPresentation } from "./hooks/useAuthFilesFilesPresenta
 import { useAuthFilesListState } from "./hooks/useAuthFilesListState";
 import { useAuthFilesModelOwnerGroups } from "./hooks/useAuthFilesModelOwnerGroups";
 import { useAuthFilesQuotaState } from "./hooks/useAuthFilesQuotaState";
+import { useAuthFilesWindowCost } from "./hooks/useAuthFilesWindowCost";
 import { useAuthFilesGroupOverview } from "./hooks/useAuthFilesGroupOverview";
 import { useAuthFilesOAuthConfig } from "./hooks/useAuthFilesOAuthConfig";
 import {
@@ -493,6 +495,12 @@ export function AuthFilesPage() {
     refreshUsageDataForFiles,
   });
 
+  const windowCostByFileName = useAuthFilesWindowCost({
+    tab: "files",
+    pageItems,
+    quotaByFileName,
+  });
+
   const { callsByAuthIndex, refreshCycleUsageForFiles } =
     useAuthFilesCycleUsageState();
 
@@ -832,6 +840,8 @@ export function AuthFilesPage() {
 
   return (
     <div className="space-y-3">
+      <CodexResetCreditsSection files={files} loading={loading && files.length === 0} />
+
       <AuthFilesFilesTab
         fileInputRef={fileInputRef}
         handleUpload={handleUploadAndRefreshQuota}
@@ -889,6 +899,7 @@ export function AuthFilesPage() {
         filesViewMode={filesViewMode}
         selectedFileNameSet={selectedFileNameSet}
         quotaByFileName={quotaByFileName}
+        windowCostByFileName={windowCostByFileName}
         cycleCallsByAuthIndex={callsByAuthIndex}
         resolveQuotaProvider={resolveQuotaProvider}
         resolveQuotaCardSlots={resolveQuotaCardSlots}

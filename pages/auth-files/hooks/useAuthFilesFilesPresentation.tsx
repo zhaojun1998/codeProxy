@@ -51,6 +51,9 @@ import {
   type QuotaState,
 } from "@features/quota-preview/quota-helpers";
 
+const formatCurrency = (value: number): string =>
+  `$${(Number.isFinite(value) ? value : 0).toFixed(4)}`;
+
 const KNOWN_QUOTA_TEXT_KEYS = new Set([
   "missing_auth_index",
   "no_model_quota",
@@ -601,7 +604,7 @@ export function useAuthFilesFilesPresentation({
   );
 
   const renderQuotaBar = useCallback(
-    (label: string, item: QuotaItem | null): ReactNode => {
+    (label: string, item: QuotaItem | null, windowCost?: number): ReactNode => {
       const tone = resolveQuotaVisualTone(item?.percent);
       const normalized = tone.normalized;
       const percentText =
@@ -609,6 +612,48 @@ export function useAuthFilesFilesPresentation({
         (normalized === null ? "--" : `${Math.round(normalized)}%`);
       // Keep a fixed-height meta row so bars stay evenly spaced; hide "--" when empty.
       const detailText = formatQuotaItemDetailText(item);
+      const usedPercent =
+        typeof item?.percent === "number" && Number.isFinite(item.percent)
+          ? 100 - item.percent
+          : null;
+      const cost =
+        typeof windowCost === "number" && Number.isFinite(windowCost) && windowCost > 0
+          ? windowCost
+          : null;
+      const costText =
+        cost === null
+          ? null
+          : usedPercent !== null && usedPercent >= 3
+            ? t("m_quota.used_with_estimate", {
+                used: formatCurrency(cost),
+                total: formatCurrency(cost / (usedPercent / 100)),
+              })
+            : t("m_quota.used_cost", { value: formatCurrency(cost) });
+      const prediction = (() => {
+        if (usedPercent === null || usedPercent < 3 || usedPercent >= 100) return null;
+        const resetAtMs = item?.resetAtMs;
+        const windowSeconds = item?.windowSeconds;
+        if (typeof resetAtMs !== "number" || !Number.isFinite(resetAtMs)) return null;
+        if (
+          typeof windowSeconds !== "number" ||
+          !Number.isFinite(windowSeconds) ||
+          windowSeconds <= 0
+        ) {
+          return null;
+        }
+        const windowMs = windowSeconds * 1000;
+        const periodStart = resetAtMs - windowMs;
+        const elapsed = nowMs - periodStart;
+        if (elapsed <= 0) return null;
+        const projected = usedPercent * (windowMs / elapsed);
+        const runOutAt = periodStart + elapsed * (100 / usedPercent);
+        return {
+          overuse: projected > 100,
+          percent: Math.round(projected),
+          durationText: formatQuotaResetTextCompact(runOutAt) ?? "",
+          slack: Math.max(0, Math.round(100 - projected)),
+        };
+      })();
 
       return (
         <div key={label} className="space-y-1">
@@ -635,10 +680,42 @@ export function useAuthFilesFilesPresentation({
           <div className="min-h-[14px] truncate text-2xs tabular-nums text-slate-500 dark:text-white/45">
             {detailText ?? "\u00A0"}
           </div>
+          {costText ? (
+            <div className="truncate text-2xs tabular-nums text-slate-500 dark:text-white/55">
+              {costText}
+            </div>
+          ) : null}
+          {prediction ? (
+            <div
+              className={[
+                "truncate text-2xs tabular-nums",
+                prediction.overuse
+                  ? "text-rose-600 dark:text-rose-300"
+                  : "text-emerald-600 dark:text-emerald-300",
+              ].join(" ")}
+            >
+              {t(
+                prediction.overuse
+                  ? "m_quota.run_out_overuse"
+                  : "m_quota.run_out_underuse",
+                {
+                  percent: prediction.percent,
+                  duration: prediction.durationText,
+                  slack: prediction.slack,
+                },
+              )}
+            </div>
+          ) : null}
         </div>
       );
     },
-    [formatQuotaItemDetailText, translateQuotaText],
+    [
+      formatQuotaItemDetailText,
+      formatQuotaResetTextCompact,
+      nowMs,
+      t,
+      translateQuotaText,
+    ],
   );
 
   const fileColumns = useMemo<DataTableColumn<AuthFileItem>[]>(() => {

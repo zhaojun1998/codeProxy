@@ -634,6 +634,7 @@ interface AuthFilesFilesTabProps {
   filesViewMode: FilesViewMode;
   selectedFileNameSet: Set<string>;
   quotaByFileName: Record<string, QuotaState>;
+  windowCostByFileName?: Record<string, Record<string, number>>;
   cycleCallsByAuthIndex: Record<string, number>;
   resolveQuotaProvider: (file: AuthFileItem) => QuotaProvider | null;
   resolveQuotaCardSlots: (
@@ -657,7 +658,11 @@ interface AuthFilesFilesTabProps {
   renderRestrictionBadges: (file: AuthFileItem) => ReactNode | null;
   renderClaudeOAuthHealthBadges: (file: AuthFileItem) => ReactNode | null;
   renderSubscriptionBadge: (file: AuthFileItem) => ReactNode | null;
-  renderQuotaBar: (label: string, item: QuotaItem | null) => ReactNode;
+  renderQuotaBar: (
+    label: string,
+    item: QuotaItem | null,
+    windowCost?: number,
+  ) => ReactNode;
   renderQuotaErrorBadge: (errorText: string) => ReactNode;
   openTagsEditor: (file: AuthFileItem) => void;
   openDetail: (file: AuthFileItem) => Promise<void>;
@@ -722,6 +727,7 @@ export function AuthFilesFilesTab({
   filesViewMode,
   selectedFileNameSet,
   quotaByFileName,
+  windowCostByFileName,
   cycleCallsByAuthIndex,
   resolveQuotaProvider,
   resolveQuotaCardSlots,
@@ -1770,7 +1776,13 @@ export function AuthFilesFilesTab({
                         ) : slots.length > 0 ? (
                           <div className="space-y-2.5">
                             {slots.map((slot) =>
-                              renderQuotaBar(slot.label, slot.item),
+                              renderQuotaBar(
+                                slot.label,
+                                slot.item,
+                                windowCostByFileName?.[file.name]?.[
+                                  slot.item?.key ?? slot.item?.label ?? ""
+                                ],
+                              ),
                             )}
                           </div>
                         ) : (

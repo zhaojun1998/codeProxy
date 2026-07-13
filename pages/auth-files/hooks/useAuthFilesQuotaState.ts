@@ -129,8 +129,10 @@ export function useAuthFilesQuotaState({
     () => {
       setNowMs(Date.now());
     },
-    tab === "files" && effectiveQuotaAutoRefreshMs > 0
-      ? Math.min(10_000, effectiveQuotaAutoRefreshMs)
+    tab === "files"
+      ? effectiveQuotaAutoRefreshMs > 0
+        ? Math.min(10_000, effectiveQuotaAutoRefreshMs)
+        : 10_000
       : null,
   );
 
