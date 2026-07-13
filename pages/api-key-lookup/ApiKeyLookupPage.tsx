@@ -232,6 +232,7 @@ const readLegacyLookupKeyFromUrl = (): string => {
 function toLogRow(item: PublicLogItem): RequestLogsRow {
   return {
     id: String(item.id),
+    sessionId: String(item.session_id ?? "").trim(),
     timestamp: item.timestamp,
     timestampMs: new Date(item.timestamp).getTime(),
     apiKey: item.api_key || "",
@@ -255,6 +256,8 @@ function toLogRow(item: PublicLogItem): RequestLogsRow {
     totalTokens: item.total_tokens,
     cost: item.cost ?? 0,
     hasContent: item.has_content,
+    promptFilterAction: String(item.prompt_filter_action ?? "").trim(),
+    promptFilterScore: item.prompt_filter_score ?? 0,
   };
 }
 

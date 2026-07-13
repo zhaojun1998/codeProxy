@@ -120,8 +120,7 @@ const mocks = vi.hoisted(() => ({
   getRequestLogBodyStorage: vi.fn(),
 }));
 
-const expectSignalOptions = () =>
-  expect.objectContaining({ signal: expect.any(AbortSignal) });
+const expectSignalOptions = () => expect.objectContaining({ signal: expect.any(AbortSignal) });
 
 function installLocalStorageMock() {
   const store = new Map<string, string>();
@@ -571,6 +570,53 @@ describe("RequestLogsPage", () => {
     );
   });
 
+  test("filters request logs by session, log ids, and score range", async () => {
+    await i18n.changeLanguage("en");
+    const user = userEvent.setup();
+
+    mocks.getUsageLogs.mockResolvedValue(responseWithFilterOptions);
+
+    render(
+      <ThemeProvider>
+        <ToastProvider>
+          <RequestLogsPage />
+        </ToastProvider>
+      </ThemeProvider>,
+    );
+
+    await waitFor(() => expect(mocks.getUsageLogs).toHaveBeenCalledTimes(1));
+
+    const sessionInput = screen.getByRole("textbox", { name: "Session IDs" });
+    await user.type(sessionInput, "session-a, session-b session-a{Enter}");
+
+    await waitFor(() =>
+      expect(mocks.getUsageLogs).toHaveBeenLastCalledWith(
+        expect.objectContaining({ session_ids: ["session-a", "session-b"] }),
+        expectSignalOptions(),
+      ),
+    );
+
+    const logIdInput = screen.getByRole("textbox", { name: "Log IDs" });
+    await user.type(logIdInput, "12, 34 0 nope{Enter}");
+
+    await waitFor(() =>
+      expect(mocks.getUsageLogs).toHaveBeenLastCalledWith(
+        expect.objectContaining({ log_ids: [12, 34] }),
+        expectSignalOptions(),
+      ),
+    );
+
+    await user.type(screen.getByRole("textbox", { name: "Min" }), "40");
+    await user.type(screen.getByRole("textbox", { name: "Max" }), "80{Enter}");
+
+    await waitFor(() =>
+      expect(mocks.getUsageLogs).toHaveBeenLastCalledWith(
+        expect.objectContaining({ score_min: 40, score_max: 80 }),
+        expectSignalOptions(),
+      ),
+    );
+  });
+
   test("supports deselecting all request-log filter options in one click", async () => {
     await i18n.changeLanguage("en");
     const user = userEvent.setup();
@@ -691,7 +737,7 @@ describe("RequestLogsPage", () => {
     expect(screen.getByRole("button", { name: /Select all/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Select shown/i })).not.toBeInTheDocument();
 
-    await user.type(screen.getByRole("textbox"), "gpt");
+    await user.type(screen.getByPlaceholderText("Search models…"), "gpt");
 
     expect(screen.getByRole("button", { name: /Select shown/i })).toBeInTheDocument();
   });
@@ -787,7 +833,13 @@ describe("RequestLogsPage", () => {
     expect(within(table).getByText("354ms")).toBeInTheDocument();
     expect(within(table).getByText("流式")).toBeInTheDocument();
     expect(within(table).getByText("非流式")).toBeInTheDocument();
-    expect(within(table).queryByText("--")).not.toBeInTheDocument();
+    const responseMetricCells = table.querySelectorAll(
+      'td[data-vt-column-key="latency"]',
+    );
+    expect(responseMetricCells).toHaveLength(2);
+    responseMetricCells.forEach((cell) => {
+      expect(within(cell as HTMLElement).queryByText("--")).not.toBeInTheDocument();
+    });
 
     await user.hover(within(table).getByLabelText("耗时: 354ms"));
     const tooltip = await screen.findByRole("tooltip");

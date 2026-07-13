@@ -1,6 +1,7 @@
+import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { RotateCcw } from "lucide-react";
-import { SearchableCheckboxMultiSelect } from "@code-proxy/ui";
+import { SearchableCheckboxMultiSelect, TextInput } from "@code-proxy/ui";
 import type { SearchableCheckboxMultiSelectOption } from "@code-proxy/ui";
 import { cn } from "@code-proxy/ui";
 import {
@@ -26,6 +27,13 @@ interface RequestLogsFiltersProps {
   onModelsClear: () => void;
   onChannelsClear: () => void;
   onStatusesClear: () => void;
+  sessionIds: string[];
+  logIds: number[];
+  scoreMin: number | null;
+  scoreMax: number | null;
+  onSessionIdsChange: (value: string[]) => void;
+  onLogIdsChange: (value: number[]) => void;
+  onScoreRangeChange: (min: number | null, max: number | null) => void;
   onResetFilters: () => void;
   hasActiveFilters: boolean;
 }
@@ -47,6 +55,13 @@ export function RequestLogsFilters({
   onModelsClear,
   onChannelsClear,
   onStatusesClear,
+  sessionIds,
+  logIds,
+  scoreMin,
+  scoreMax,
+  onSessionIdsChange,
+  onLogIdsChange,
+  onScoreRangeChange,
   onResetFilters,
   hasActiveFilters,
 }: RequestLogsFiltersProps) {
@@ -64,9 +79,7 @@ export function RequestLogsFilters({
             searchPlaceholder={t("request_logs.search_keys")}
             selectFilteredLabel={t("request_logs.select_filtered")}
             deselectFilteredLabel={t("request_logs.deselect_filtered")}
-            selectedCountLabel={(count: number) =>
-              t("request_logs.selected_count", { count })
-            }
+            selectedCountLabel={(count: number) => t("request_logs.selected_count", { count })}
             noResultsLabel={t("request_logs.no_filter_results")}
             aria-label={t("request_logs.filter_key")}
             clearLabel={t("request_logs.clear_key_filter")}
@@ -98,6 +111,18 @@ export function RequestLogsFilters({
           onChannelsClear={onChannelsClear}
           onStatusesClear={onStatusesClear}
         />
+        <CommittedTextFilter
+          value={sessionIds.join(", ")}
+          placeholder={t("request_logs.filter_session_ids")}
+          onCommit={(text) => onSessionIdsChange(parseStringList(text))}
+        />
+        <CommittedTextFilter
+          value={logIds.join(", ")}
+          placeholder={t("request_logs.filter_log_ids")}
+          inputMode="numeric"
+          onCommit={(text) => onLogIdsChange(parsePositiveIntegerList(text))}
+        />
+        <ScoreRangeFilter scoreMin={scoreMin} scoreMax={scoreMax} onChange={onScoreRangeChange} />
 
         {/* Reset filters button */}
         {hasActiveFilters ? (
@@ -118,4 +143,131 @@ export function RequestLogsFilters({
       </div>
     </div>
   );
+}
+
+function CommittedTextFilter({
+  value,
+  placeholder,
+  inputMode,
+  onCommit,
+}: {
+  value: string;
+  placeholder: string;
+  inputMode?: "text" | "numeric";
+  onCommit: (value: string) => void;
+}) {
+  const [text, setText] = useState(value);
+
+  useEffect(() => setText(value), [value]);
+
+  const commit = useCallback(() => onCommit(text), [onCommit, text]);
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      commit();
+    },
+    [commit],
+  );
+
+  return (
+    <div className="w-full min-[480px]:w-auto sm:w-[180px]">
+      <TextInput
+        value={text}
+        onChange={(event) => setText(event.currentTarget.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={commit}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        inputMode={inputMode}
+        size="sm"
+      />
+    </div>
+  );
+}
+
+function ScoreRangeFilter({
+  scoreMin,
+  scoreMax,
+  onChange,
+}: {
+  scoreMin: number | null;
+  scoreMax: number | null;
+  onChange: (min: number | null, max: number | null) => void;
+}) {
+  const { t } = useTranslation();
+  const [minText, setMinText] = useState(scoreMin === null ? "" : String(scoreMin));
+  const [maxText, setMaxText] = useState(scoreMax === null ? "" : String(scoreMax));
+
+  useEffect(() => setMinText(scoreMin === null ? "" : String(scoreMin)), [scoreMin]);
+  useEffect(() => setMaxText(scoreMax === null ? "" : String(scoreMax)), [scoreMax]);
+
+  const commit = useCallback(() => {
+    onChange(parseInteger(minText), parseInteger(maxText));
+  }, [maxText, minText, onChange]);
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      commit();
+    },
+    [commit],
+  );
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs font-medium text-slate-500 dark:text-white/50">
+        {t("request_logs.filter_score")}
+      </span>
+      <div className="w-[68px]">
+        <TextInput
+          value={minText}
+          onChange={(event) => setMinText(event.currentTarget.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={commit}
+          placeholder={t("request_logs.score_min")}
+          aria-label={t("request_logs.score_min")}
+          inputMode="numeric"
+          size="sm"
+        />
+      </div>
+      <span className="text-xs text-slate-400 dark:text-white/40">-</span>
+      <div className="w-[68px]">
+        <TextInput
+          value={maxText}
+          onChange={(event) => setMaxText(event.currentTarget.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={commit}
+          placeholder={t("request_logs.score_max")}
+          aria-label={t("request_logs.score_max")}
+          inputMode="numeric"
+          size="sm"
+        />
+      </div>
+    </div>
+  );
+}
+
+function parseStringList(text: string): string[] {
+  return Array.from(
+    new Set(
+      text
+        .split(/[\s,]+/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function parsePositiveIntegerList(text: string): number[] {
+  return parseStringList(text)
+    .map(Number)
+    .filter((value) => Number.isSafeInteger(value) && value > 0);
+}
+
+function parseInteger(text: string): number | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? Math.trunc(value) : null;
 }

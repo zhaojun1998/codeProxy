@@ -1,5 +1,6 @@
 export interface PublicLogItem {
   id: number;
+  session_id?: string;
   timestamp: string;
   api_key?: string;
   api_key_name?: string;
@@ -17,6 +18,8 @@ export interface PublicLogItem {
   total_tokens: number;
   cost: number;
   has_content: boolean;
+  prompt_filter_action?: string;
+  prompt_filter_score?: number;
 }
 
 export interface PublicLogsResponse {
