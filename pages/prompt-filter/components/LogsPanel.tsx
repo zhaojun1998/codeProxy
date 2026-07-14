@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Eye, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ExternalLink, Eye, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
 import {
   promptFilterApi,
   type PromptFilterLog,
@@ -10,12 +11,14 @@ import {
   Button,
   ConfirmModal,
   DataTable,
+  DataTableColumnVisibilityMenu,
   Modal,
   PaginationBar,
   Select,
   TextInput,
   useToast,
   type DataTableColumn,
+  useDataTableColumnVisibility,
 } from "@code-proxy/ui";
 import {
   ActionBadge,
@@ -33,9 +36,23 @@ interface LogFilters {
   endpoint: string;
   model: string;
   q: string;
+  scoreMin: number | null;
+  scoreMax: number | null;
+  reviewed: string;
+  intercepted: string;
 }
 
-const EMPTY_FILTERS: LogFilters = { action: "", source: "", endpoint: "", model: "", q: "" };
+const EMPTY_FILTERS: LogFilters = {
+  action: "",
+  source: "",
+  endpoint: "",
+  model: "",
+  q: "",
+  scoreMin: null,
+  scoreMax: null,
+  reviewed: "",
+  intercepted: "",
+};
 
 function formatReviewLatency(value?: number): string {
   if (!Number.isFinite(value ?? Number.NaN) || !value || value <= 0) return "-";
@@ -45,6 +62,7 @@ function formatReviewLatency(value?: number): string {
 export function LogsPanel() {
   const { t } = useTranslation();
   const { notify } = useToast();
+  const navigate = useNavigate();
 
   const [items, setItems] = useState<PromptFilterLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +75,10 @@ export function LogsPanel() {
   const [endpoint, setEndpoint] = useState("");
   const [model, setModel] = useState("");
   const [q, setQ] = useState("");
+  const [scoreMin, setScoreMin] = useState<number | null>(null);
+  const [scoreMax, setScoreMax] = useState<number | null>(null);
+  const [reviewedFilter, setReviewedFilter] = useState("");
+  const [interceptedFilter, setInterceptedFilter] = useState("");
 
   const [detailLog, setDetailLog] = useState<PromptFilterLog | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
@@ -70,6 +92,10 @@ export function LogsPanel() {
         endpoint,
         model,
         q,
+        scoreMin,
+        scoreMax,
+        reviewed: reviewedFilter,
+        intercepted: interceptedFilter,
         ...override,
       };
       const query: PromptFilterLogQuery = {
@@ -80,6 +106,10 @@ export function LogsPanel() {
         endpoint: filters.endpoint.trim() || undefined,
         model: filters.model.trim() || undefined,
         q: filters.q.trim() || undefined,
+        score_min: filters.scoreMin ?? undefined,
+        score_max: filters.scoreMax ?? undefined,
+        reviewed: filters.reviewed === "" ? undefined : filters.reviewed === "true",
+        intercepted: filters.intercepted === "" ? undefined : filters.intercepted === "true",
       };
       setLoading(true);
       try {
@@ -96,7 +126,19 @@ export function LogsPanel() {
         setLoading(false);
       }
     },
-    [actionFilter, source, endpoint, model, q, notify, t],
+    [
+      actionFilter,
+      source,
+      endpoint,
+      model,
+      q,
+      scoreMin,
+      scoreMax,
+      reviewedFilter,
+      interceptedFilter,
+      notify,
+      t,
+    ],
   );
 
   // 挂载后拉取首页；后续查询由筛选/分页操作显式触发，避免筛选输入即请求。
@@ -125,6 +167,10 @@ export function LogsPanel() {
     setEndpoint("");
     setModel("");
     setQ("");
+    setScoreMin(null);
+    setScoreMax(null);
+    setReviewedFilter("");
+    setInterceptedFilter("");
     void fetchLogs(1, pageSize, EMPTY_FILTERS);
   }, [fetchLogs, pageSize]);
 
@@ -161,6 +207,13 @@ export function LogsPanel() {
   }, [fetchLogs, notify, pageSize, t]);
 
   const openDetail = useCallback((log: PromptFilterLog) => setDetailLog(log), []);
+  const openRequestLog = useCallback(
+    (requestLogID: number) => {
+      setDetailLog(null);
+      navigate(`/runtime/request-logs?log_id=${requestLogID}`);
+    },
+    [navigate],
+  );
 
   const columns = useMemo<DataTableColumn<PromptFilterLog>[]>(
     () => [
@@ -291,6 +344,7 @@ export function LogsPanel() {
     ],
     [openDetail, t],
   );
+  const columnVisibility = useDataTableColumnVisibility("prompt-filter-logs", columns);
 
   return (
     <div className="flex flex-col rounded-2xl border border-black/[0.06] bg-white shadow-[0_1px_2px_rgb(15_23_42_/_0.035)] dark:border-white/[0.06] dark:bg-neutral-950/70 dark:shadow-[0_1px_2px_rgb(0_0_0_/_0.22)]">
@@ -299,6 +353,12 @@ export function LogsPanel() {
           {t("prompt_filter.logs_title")}
         </h2>
         <div className="flex items-center gap-2">
+          <DataTableColumnVisibilityMenu
+            columns={columns}
+            visibleKeys={columnVisibility.visibleKeys}
+            onVisibilityChange={columnVisibility.setColumnVisible}
+            onReset={columnVisibility.reset}
+          />
           <Button
             variant="secondary"
             size="sm"
@@ -335,6 +395,38 @@ export function LogsPanel() {
             size="sm"
           />
         </div>
+        <div className="w-full sm:w-[150px]">
+          <Select
+            aria-label={t("prompt_filter.filter_reviewed")}
+            value={reviewedFilter}
+            onChange={(value) => {
+              setReviewedFilter(value);
+              void fetchLogs(1, pageSize, { reviewed: value });
+            }}
+            options={[
+              { value: "", label: t("prompt_filter.filter_reviewed_all") },
+              { value: "true", label: t("prompt_filter.filter_reviewed_yes") },
+              { value: "false", label: t("prompt_filter.filter_reviewed_no") },
+            ]}
+            size="sm"
+          />
+        </div>
+        <div className="w-full sm:w-[150px]">
+          <Select
+            aria-label={t("prompt_filter.filter_intercepted")}
+            value={interceptedFilter}
+            onChange={(value) => {
+              setInterceptedFilter(value);
+              void fetchLogs(1, pageSize, { intercepted: value });
+            }}
+            options={[
+              { value: "", label: t("prompt_filter.filter_intercepted_all") },
+              { value: "true", label: t("prompt_filter.filter_intercepted_yes") },
+              { value: "false", label: t("prompt_filter.filter_intercepted_no") },
+            ]}
+            size="sm"
+          />
+        </div>
         <FilterInput
           value={source}
           onChange={setSource}
@@ -359,6 +451,15 @@ export function LogsPanel() {
           onEnter={handleSearch}
           placeholder={t("prompt_filter.filter_keyword")}
         />
+        <ScoreRangeFilter
+          scoreMin={scoreMin}
+          scoreMax={scoreMax}
+          onChange={(min, max) => {
+            setScoreMin(min);
+            setScoreMax(max);
+          }}
+          onEnter={handleSearch}
+        />
         <Button variant="secondary" size="sm" onClick={handleSearch} disabled={loading}>
           <Search size={14} />
           {t("prompt_filter.filter_search")}
@@ -373,7 +474,7 @@ export function LogsPanel() {
         <DataTable
           tableId="prompt-filter-logs"
           rows={items}
-          columns={columns}
+          columns={columnVisibility.visibleColumns}
           rowKey={(row) => String(row.id)}
           loading={loading}
           virtualize={false}
@@ -405,7 +506,11 @@ export function LogsPanel() {
         }}
       />
 
-      <LogDetailModal log={detailLog} onClose={() => setDetailLog(null)} />
+      <LogDetailModal
+        log={detailLog}
+        onClose={() => setDetailLog(null)}
+        onOpenRequestLog={openRequestLog}
+      />
 
       <ConfirmModal
         open={confirmClearOpen}
@@ -420,6 +525,61 @@ export function LogsPanel() {
       />
     </div>
   );
+}
+
+function ScoreRangeFilter({
+  scoreMin,
+  scoreMax,
+  onChange,
+  onEnter,
+}: {
+  scoreMin: number | null;
+  scoreMax: number | null;
+  onChange: (min: number | null, max: number | null) => void;
+  onEnter: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs font-medium text-slate-500 dark:text-white/50">
+        {t("prompt_filter.filter_score")}
+      </span>
+      <div className="w-[72px]">
+        <TextInput
+          value={scoreMin === null ? "" : String(scoreMin)}
+          onChange={(event) => onChange(parseInteger(event.currentTarget.value), scoreMax)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") onEnter();
+          }}
+          placeholder={t("prompt_filter.score_min")}
+          aria-label={t("prompt_filter.score_min")}
+          inputMode="numeric"
+          size="sm"
+        />
+      </div>
+      <span className="text-xs text-slate-400 dark:text-white/40">-</span>
+      <div className="w-[72px]">
+        <TextInput
+          value={scoreMax === null ? "" : String(scoreMax)}
+          onChange={(event) => onChange(scoreMin, parseInteger(event.currentTarget.value))}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") onEnter();
+          }}
+          placeholder={t("prompt_filter.score_max")}
+          aria-label={t("prompt_filter.score_max")}
+          inputMode="numeric"
+          size="sm"
+        />
+      </div>
+    </div>
+  );
+}
+
+function parseInteger(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) ? parsed : null;
 }
 
 function FilterInput({
@@ -451,7 +611,15 @@ function FilterInput({
   );
 }
 
-function LogDetailModal({ log, onClose }: { log: PromptFilterLog | null; onClose: () => void }) {
+function LogDetailModal({
+  log,
+  onClose,
+  onOpenRequestLog,
+}: {
+  log: PromptFilterLog | null;
+  onClose: () => void;
+  onOpenRequestLog: (requestLogID: number) => void;
+}) {
   const { t } = useTranslation();
   const matched = log ? parseMatchedPatterns(log.matched_patterns) : [];
 
@@ -474,6 +642,17 @@ function LogDetailModal({ log, onClose }: { log: PromptFilterLog | null; onClose
               </span>{" "}
               / {log.threshold}
             </span>
+            {log.request_log_id > 0 ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="ml-auto"
+                onClick={() => onOpenRequestLog(log.request_log_id)}
+              >
+                <ExternalLink size={14} aria-hidden="true" />
+                {t("prompt_filter.open_request_log")}
+              </Button>
+            ) : null}
           </div>
 
           <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
@@ -486,6 +665,14 @@ function LogDetailModal({ log, onClose }: { log: PromptFilterLog | null; onClose
             <DetailRow label={t("prompt_filter.col_model")} value={log.model || "-"} mono />
             <DetailRow label={t("prompt_filter.col_api_key")} value={log.api_key || "-"} mono />
             <DetailRow label={t("prompt_filter.col_client_ip")} value={log.client_ip || "-"} mono />
+            <DetailRow
+              label={t("prompt_filter.filter_reviewed")}
+              value={
+                log.reviewed
+                  ? t("prompt_filter.filter_reviewed_yes")
+                  : t("prompt_filter.filter_reviewed_no")
+              }
+            />
             {log.error_code ? (
               <DetailRow label={t("prompt_filter.col_error_code")} value={log.error_code} mono />
             ) : null}
@@ -513,6 +700,75 @@ function LogDetailModal({ log, onClose }: { log: PromptFilterLog | null; onClose
               />
             ) : null}
           </dl>
+
+          {log.review_attempts?.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-500 dark:text-white/55">
+                {t("prompt_filter.review_attempts")}
+              </p>
+              {log.review_attempts.map((attempt, index) => (
+                <div
+                  key={`${attempt.provider}-${index}`}
+                  className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-neutral-800 dark:bg-neutral-900/60"
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-semibold text-slate-800 dark:text-white/85">
+                      {index + 1}. {attempt.provider || "-"}
+                    </span>
+                    <span className="font-mono text-slate-500 dark:text-white/50">
+                      {attempt.model || "-"}
+                    </span>
+                    {attempt.status_code ? (
+                      <span className="font-mono text-slate-500 dark:text-white/50">
+                        HTTP {attempt.status_code}
+                      </span>
+                    ) : null}
+                    <span className="font-mono text-slate-500 dark:text-white/50">
+                      {formatReviewLatency(attempt.latency_ms)}
+                    </span>
+                    <span
+                      className={
+                        attempt.success
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-rose-600 dark:text-rose-400"
+                      }
+                    >
+                      {attempt.success
+                        ? t("prompt_filter.review_attempt_success")
+                        : t("prompt_filter.review_attempt_failed")}
+                    </span>
+                  </div>
+                  {attempt.error ? (
+                    <p className="break-words text-xs text-rose-700 dark:text-rose-300">
+                      {attempt.error}
+                    </p>
+                  ) : null}
+                  {attempt.output ? (
+                    <ReviewCodeBlock
+                      label={t("prompt_filter.review_model_output")}
+                      value={attempt.output}
+                    />
+                  ) : null}
+                  {attempt.raw_response ? (
+                    <ReviewCodeBlock
+                      label={t("prompt_filter.review_raw_response")}
+                      value={formatRawJSON(attempt.raw_response)}
+                    />
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : log.review_raw_response ? (
+            <ReviewCodeBlock
+              label={t("prompt_filter.review_raw_response")}
+              value={formatRawJSON(log.review_raw_response)}
+            />
+          ) : log.review_output ? (
+            <ReviewCodeBlock
+              label={t("prompt_filter.review_model_output")}
+              value={log.review_output}
+            />
+          ) : null}
 
           {matched.length > 0 ? (
             <div className="space-y-1.5">
@@ -570,6 +826,25 @@ function LogDetailModal({ log, onClose }: { log: PromptFilterLog | null; onClose
       ) : null}
     </Modal>
   );
+}
+
+function ReviewCodeBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] font-medium text-slate-500 dark:text-white/50">{label}</p>
+      <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-white p-2 text-[11px] leading-relaxed text-slate-700 dark:border-neutral-700 dark:bg-neutral-950/70 dark:text-white/75">
+        {value}
+      </pre>
+    </div>
+  );
+}
+
+function formatRawJSON(value: string): string {
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
 }
 
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {

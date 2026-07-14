@@ -100,6 +100,7 @@ export interface PromptFilterReviewTestResponse {
 
 export interface PromptFilterLog {
   id: number;
+  request_log_id: number;
   created_at: string;
   source: string;
   endpoint: string;
@@ -117,10 +118,25 @@ export interface PromptFilterLog {
   review_model: string;
   review_provider: string;
   review_latency_ms: number;
+  reviewed?: boolean;
   review_flagged: boolean;
   review_confidence: number;
   review_error: string;
+  review_output?: string;
+  review_raw_response?: string;
+  review_attempts?: PromptFilterReviewAttempt[];
   reason: string;
+}
+
+export interface PromptFilterReviewAttempt {
+  provider: string;
+  model: string;
+  status_code?: number;
+  latency_ms: number;
+  success: boolean;
+  error?: string;
+  output?: string;
+  raw_response?: string;
 }
 
 export interface PromptFilterLogsResponse {
@@ -154,6 +170,10 @@ export interface PromptFilterLogQuery {
   endpoint?: string;
   model?: string;
   q?: string;
+  score_min?: number;
+  score_max?: number;
+  reviewed?: boolean;
+  intercepted?: boolean;
 }
 
 export const promptFilterApi = {
@@ -188,6 +208,15 @@ export const promptFilterApi = {
     if (query.endpoint) params.set("endpoint", query.endpoint);
     if (query.model) params.set("model", query.model);
     if (query.q) params.set("q", query.q);
+    if (typeof query.score_min === "number" && Number.isFinite(query.score_min)) {
+      params.set("score_min", String(Math.trunc(query.score_min)));
+    }
+    if (typeof query.score_max === "number" && Number.isFinite(query.score_max)) {
+      params.set("score_max", String(Math.trunc(query.score_max)));
+    }
+    if (typeof query.reviewed === "boolean") params.set("reviewed", String(query.reviewed));
+    if (typeof query.intercepted === "boolean")
+      params.set("intercepted", String(query.intercepted));
     const qs = params.toString();
     return apiClient.get<PromptFilterLogsResponse>(`/prompt-filter/logs${qs ? `?${qs}` : ""}`);
   },
