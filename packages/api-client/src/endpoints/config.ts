@@ -42,6 +42,8 @@ export const configApi = {
     apiClient.put("/quota-exceeded/switch-preview-model", { value: enabled }),
   updateUsageStatistics: (enabled: boolean) =>
     apiClient.put("/usage-statistics-enabled", { value: enabled }),
+  updateBillNonSuccessfulRequests: (enabled: boolean) =>
+    apiClient.put("/bill-non-successful-requests", { value: enabled }),
   updateRequestLog: (enabled: boolean) => apiClient.put("/request-log", { value: enabled }),
   getRequestLogBodyStorage: async (): Promise<boolean> => {
     const data = await apiClient.get<RequestLogBodyStorageResponse>(

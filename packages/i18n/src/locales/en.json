@@ -4184,6 +4184,8 @@
     "debug_desc": "Enable verbose debug logs (recommended for temporary use).",
     "usage_statistics": "Usage Statistics",
     "usage_desc": "Track request and token usage.",
+    "bill_non_successful_requests": "Bill non-successful requests by token usage",
+    "bill_non_successful_requests_desc": "When enabled, failed or client-cancelled requests are billed only when the upstream reports positive token usage. Disabled by default.",
     "request_logs": "Request Logs",
     "request_logs_desc": "Record request logs for querying and troubleshooting.",
     "request_body_storage": "Store request and response bodies",

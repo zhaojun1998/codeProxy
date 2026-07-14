@@ -3536,6 +3536,8 @@
     "debug_desc": "启用详细调试日志（建议临时使用）。",
     "usage_statistics": "使用统计",
     "usage_desc": "追踪请求和 Token 用量。",
+    "bill_non_successful_requests": "非成功请求按 Token 用量计费",
+    "bill_non_successful_requests_desc": "开启后，失败或客户端中断的请求仅在上游返回正向 Token 用量时计费。默认关闭。",
     "request_logs": "请求日志",
     "request_logs_desc": "记录请求日志用于查询和排错。",
     "request_body_storage": "保存请求与响应正文",

@@ -106,6 +106,7 @@ export function RuntimeConfigPanel() {
 
   const [debugEnabled, setDebugEnabled] = useState(false);
   const [usageStatisticsEnabled, setUsageStatisticsEnabled] = useState(false);
+  const [billNonSuccessfulRequests, setBillNonSuccessfulRequests] = useState(false);
   const [requestLogEnabled, setRequestLogEnabled] = useState(false);
   const [requestLogBodyStorageEnabled, setRequestLogBodyStorageEnabled] = useState(false);
   const [requestLogBodyStorageSaving, setRequestLogBodyStorageSaving] = useState(false);
@@ -167,6 +168,9 @@ export function RuntimeConfigPanel() {
       setUsageStatisticsEnabled(
         readBool(record, "usage-statistics-enabled", "usageStatisticsEnabled"),
       );
+      setBillNonSuccessfulRequests(
+        readBool(record, "bill-non-successful-requests", "billNonSuccessfulRequests"),
+      );
       setRequestLogEnabled(readBool(record, "request-log", "requestLog"));
       setRequestLogBodyStorageEnabled(requestLogBodyStorage);
       setLoggingToFileEnabled(readBool(record, "logging-to-file", "loggingToFile"));
@@ -224,6 +228,7 @@ export function RuntimeConfigPanel() {
       try {
         if (key === "debug") await configApi.updateDebug(next);
         if (key === "usage") await configApi.updateUsageStatistics(next);
+        if (key === "billNonSuccessful") await configApi.updateBillNonSuccessfulRequests(next);
         if (key === "requestLog") await configApi.updateRequestLog(next);
         if (key === "loggingToFile") await configApi.updateLoggingToFile(next);
         if (key === "wsAuth") await configApi.updateWsAuth(next);
@@ -437,6 +442,17 @@ export function RuntimeConfigPanel() {
                 setUsageStatisticsEnabled(next);
                 void updateToggle("usage", next).catch(() =>
                   setUsageStatisticsEnabled((prev) => !prev),
+                );
+              }}
+            />
+            <ToggleSwitch
+              label={t("config_page.bill_non_successful_requests")}
+              description={t("config_page.bill_non_successful_requests_desc")}
+              checked={billNonSuccessfulRequests}
+              onCheckedChange={(next) => {
+                setBillNonSuccessfulRequests(next);
+                void updateToggle("billNonSuccessful", next).catch(() =>
+                  setBillNonSuccessfulRequests((prev) => !prev),
                 );
               }}
             />
