@@ -5,7 +5,9 @@ import {
   promptFilterApi,
   type PromptFilterConfig,
   type PromptFilterMode,
+  type PromptFilterReviewConfig,
   type PromptFilterReviewProviderConfig,
+  type PromptFilterReviewTestResponse,
   type PromptFilterVerdict,
 } from "@code-proxy/api-client";
 import { Button, Card, Select, TextInput, ToggleSwitch, useToast } from "@code-proxy/ui";
@@ -26,7 +28,6 @@ interface ReviewProviderForm {
   apiKey: string;
   baseUrl: string;
   model: string;
-  apiType: "chat_completions" | "moderations";
   priority: string;
   apiKeyConfigured: boolean;
   apiKeyCount: number;
@@ -58,8 +59,7 @@ const toProviderForm = (
   name: provider.name || `Provider ${index + 1}`,
   apiKey: "",
   baseUrl: provider.base_url || "https://api.openai.com",
-  model: provider.model || "omni-moderation-latest",
-  apiType: provider.api_type || "chat_completions",
+  model: provider.model || "deepseek-v4-flash",
   priority: String(provider.priority ?? index),
   apiKeyConfigured: provider.api_key_configured === true,
   apiKeyCount: provider.api_key_count ?? 0,
@@ -75,7 +75,6 @@ const buildProviderForms = (config: PromptFilterConfig): ReviewProviderForm[] =>
             name: "OpenAI",
             base_url: config.review.base_url,
             model: config.review.model,
-            api_type: config.review.api_type,
             priority: 0,
           },
         ];
@@ -127,6 +126,10 @@ export function OverviewPanel({ config, onSaved }: OverviewPanelProps) {
   const [testText, setTestText] = useState("");
   const [testing, setTesting] = useState(false);
   const [verdict, setVerdict] = useState<PromptFilterVerdict | null>(null);
+  const [reviewTestText, setReviewTestText] = useState("");
+  const [reviewTesting, setReviewTesting] = useState(false);
+  const [reviewTestResponse, setReviewTestResponse] =
+    useState<PromptFilterReviewTestResponse | null>(null);
 
   useEffect(() => {
     setForm(initial);
@@ -177,8 +180,7 @@ export function OverviewPanel({ config, onSaved }: OverviewPanelProps) {
             }),
             apiKey: "",
             baseUrl: "https://api.openai.com",
-            model: "omni-moderation-latest",
-            apiType: "chat_completions",
+            model: "deepseek-v4-flash",
             priority: String(nextPriority),
             apiKeyConfigured: false,
             apiKeyCount: 0,
@@ -198,10 +200,7 @@ export function OverviewPanel({ config, onSaved }: OverviewPanelProps) {
     });
   }, []);
 
-  const handleSave = useCallback(async () => {
-    const threshold = Number(form.threshold.trim());
-    const strictThreshold = Number(form.strictThreshold.trim());
-    const maxTextLength = Number(form.maxTextLength.trim());
+  const buildReviewConfig = useCallback((): PromptFilterReviewConfig | null => {
     const reviewTimeout = Number(form.reviewTimeout.trim());
     const reviewConfidenceThreshold = Number(form.reviewConfidenceThreshold.trim());
     const reviewProviders = form.reviewProviders.map((provider) => ({
@@ -209,9 +208,6 @@ export function OverviewPanel({ config, onSaved }: OverviewPanelProps) {
       priorityNumber: Number(provider.priority.trim()),
     }));
     if (
-      !Number.isFinite(threshold) ||
-      !Number.isFinite(strictThreshold) ||
-      !Number.isFinite(maxTextLength) ||
       !Number.isFinite(reviewTimeout) ||
       !Number.isFinite(reviewConfidenceThreshold) ||
       reviewConfidenceThreshold <= 0 ||
@@ -219,22 +215,49 @@ export function OverviewPanel({ config, onSaved }: OverviewPanelProps) {
       reviewProviders.some((provider) => !Number.isFinite(provider.priorityNumber))
     ) {
       notify({ type: "error", message: t("prompt_filter.number_invalid") });
-      return;
+      return null;
     }
-    if (form.reviewEnabled && reviewProviders.length === 0) {
+    if (reviewProviders.length === 0) {
       notify({ type: "error", message: t("prompt_filter.review_provider_required") });
-      return;
+      return null;
     }
-    const providerPayload = reviewProviders.map((provider) => ({
+    const providers = reviewProviders.map((provider) => ({
       id: provider.id,
       name: provider.name.trim(),
       api_key: provider.apiKey,
       base_url: provider.baseUrl.trim(),
       model: provider.model.trim(),
-      api_type: provider.apiType,
       priority: provider.priorityNumber,
     }));
-    const primaryProvider = providerPayload[0];
+    const primaryProvider = providers[0];
+    return {
+      ...config.review,
+      enabled: form.reviewEnabled,
+      api_key: primaryProvider?.api_key ?? "",
+      base_url: primaryProvider?.base_url ?? config.review.base_url,
+      model: primaryProvider?.model ?? config.review.model,
+      audit_prompt: form.reviewAuditPrompt,
+      confidence_threshold: reviewConfidenceThreshold,
+      providers,
+      timeout_seconds: reviewTimeout,
+      fail_closed: false,
+    };
+  }, [config.review, form, notify, t]);
+
+  const handleSave = useCallback(async () => {
+    const threshold = Number(form.threshold.trim());
+    const strictThreshold = Number(form.strictThreshold.trim());
+    const maxTextLength = Number(form.maxTextLength.trim());
+    if (
+      !Number.isFinite(threshold) ||
+      !Number.isFinite(strictThreshold) ||
+      !Number.isFinite(maxTextLength)
+    ) {
+      notify({ type: "error", message: t("prompt_filter.number_invalid") });
+      return;
+    }
+    const review = buildReviewConfig();
+    if (!review) return;
 
     setSaving(true);
     try {
@@ -247,19 +270,7 @@ export function OverviewPanel({ config, onSaved }: OverviewPanelProps) {
         log_matches: form.logMatches,
         max_text_length: maxTextLength,
         sensitive_words: form.sensitiveWords,
-        review: {
-          ...config.review,
-          enabled: form.reviewEnabled,
-          api_key: primaryProvider?.api_key ?? "",
-          base_url: primaryProvider?.base_url ?? config.review.base_url,
-          model: primaryProvider?.model ?? config.review.model,
-          api_type: primaryProvider?.api_type ?? config.review.api_type,
-          audit_prompt: form.reviewAuditPrompt,
-          confidence_threshold: reviewConfidenceThreshold,
-          providers: providerPayload,
-          timeout_seconds: reviewTimeout,
-          fail_closed: false,
-        },
+        review,
       };
       await promptFilterApi.updateConfig(next);
       notify({ type: "success", message: t("prompt_filter.save_success") });
@@ -272,7 +283,33 @@ export function OverviewPanel({ config, onSaved }: OverviewPanelProps) {
     } finally {
       setSaving(false);
     }
-  }, [config, form, notify, onSaved, t]);
+  }, [buildReviewConfig, config, form, notify, onSaved, t]);
+
+  const handleReviewTest = useCallback(async () => {
+    const text = reviewTestText.trim();
+    if (!text) {
+      notify({ type: "error", message: t("prompt_filter.test_text_required") });
+      return;
+    }
+    const review = buildReviewConfig();
+    if (!review) return;
+    setReviewTesting(true);
+    setReviewTestResponse(null);
+    try {
+      const response = await promptFilterApi.testReview(text, {
+        ...review,
+        enabled: true,
+      });
+      setReviewTestResponse(response);
+    } catch (err: unknown) {
+      notify({
+        type: "error",
+        message: err instanceof Error ? err.message : t("prompt_filter.review_test_failed"),
+      });
+    } finally {
+      setReviewTesting(false);
+    }
+  }, [buildReviewConfig, notify, reviewTestText, t]);
 
   const handleTest = useCallback(async () => {
     const text = testText.trim();
@@ -477,27 +514,9 @@ export function OverviewPanel({ config, onSaved }: OverviewPanelProps) {
                           />
                         </Field>
                         <Field label={t("prompt_filter.review_api_type")}>
-                          <Select
-                            aria-label={t("prompt_filter.review_api_type")}
-                            value={provider.apiType}
-                            onChange={(value) =>
-                              updateProvider(
-                                index,
-                                "apiType",
-                                value as ReviewProviderForm["apiType"],
-                              )
-                            }
-                            options={[
-                              {
-                                value: "chat_completions",
-                                label: t("prompt_filter.review_api_type_chat"),
-                              },
-                              {
-                                value: "moderations",
-                                label: t("prompt_filter.review_api_type_moderations"),
-                              },
-                            ]}
-                          />
+                          <div className="flex min-h-10 items-center rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white/75">
+                            {t("prompt_filter.review_api_type_chat")}
+                          </div>
                         </Field>
                       </div>
                       <Field
@@ -550,6 +569,35 @@ export function OverviewPanel({ config, onSaved }: OverviewPanelProps) {
                 aria-label={t("prompt_filter.review_audit_prompt")}
               />
             </Field>
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-neutral-800 dark:bg-neutral-900/50">
+              <div>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {t("prompt_filter.review_test_title")}
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-white/55">
+                  {t("prompt_filter.review_test_desc")}
+                </p>
+              </div>
+              <textarea
+                value={reviewTestText}
+                onChange={(event) => setReviewTestText(event.currentTarget.value)}
+                placeholder={t("prompt_filter.review_test_placeholder")}
+                aria-label={t("prompt_filter.review_test_title")}
+                className={`${PROMPT_FILTER_TEXTAREA_CLASS} min-h-[120px]`}
+              />
+              <div className="flex justify-end">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => void handleReviewTest()}
+                  disabled={reviewTesting || !reviewTestText.trim()}
+                >
+                  <FlaskConical size={14} />
+                  {t("prompt_filter.review_test_run")}
+                </Button>
+              </div>
+              {reviewTestResponse ? <ReviewTestResultView response={reviewTestResponse} /> : null}
+            </div>
           </div>
         </div>
       </Card>
@@ -577,6 +625,61 @@ export function OverviewPanel({ config, onSaved }: OverviewPanelProps) {
           {verdict ? <VerdictView verdict={verdict} /> : null}
         </div>
       </Card>
+    </div>
+  );
+}
+
+function ReviewTestResultView({ response }: { response: PromptFilterReviewTestResponse }) {
+  const { t } = useTranslation();
+  const { result, error } = response;
+
+  return (
+    <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-950/70">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-white/55">
+        <span
+          className={`rounded-full border px-2 py-0.5 font-medium ${
+            error
+              ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300"
+              : result.flagged
+                ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-300"
+                : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300"
+          }`}
+        >
+          {error
+            ? t("prompt_filter.verdict_review_skipped")
+            : result.flagged
+              ? t("prompt_filter.verdict_review_flagged")
+              : t("prompt_filter.verdict_review_passed")}
+        </span>
+        {result.provider ? <span>{result.provider}</span> : null}
+        {result.model ? <span>{result.model}</span> : null}
+        <span>
+          {t("prompt_filter.review_confidence")}: {result.confidence.toFixed(3)}
+        </span>
+        {formatReviewLatency(result.latency_ms) ? (
+          <span>
+            {t("prompt_filter.verdict_review_latency")}: {formatReviewLatency(result.latency_ms)}
+          </span>
+        ) : null}
+      </div>
+      {result.reason ? (
+        <p className="text-sm text-slate-700 dark:text-white/75">
+          {t("prompt_filter.verdict_reason")}: {result.reason}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-300">
+          {error}
+        </p>
+      ) : null}
+      <div className="space-y-1.5">
+        <p className="text-xs font-semibold text-slate-500 dark:text-white/55">
+          {t("prompt_filter.review_test_output")}
+        </p>
+        <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-800 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white/80">
+          {result.output || t("prompt_filter.review_test_no_output")}
+        </pre>
+      </div>
     </div>
   );
 }

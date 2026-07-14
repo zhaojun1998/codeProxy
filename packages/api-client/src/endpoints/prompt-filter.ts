@@ -17,7 +17,6 @@ export interface PromptFilterReviewConfig {
   api_key?: string;
   base_url: string;
   model: string;
-  api_type: "chat_completions" | "moderations";
   audit_prompt: string;
   confidence_threshold: number;
   providers?: PromptFilterReviewProviderConfig[];
@@ -31,7 +30,6 @@ export interface PromptFilterReviewProviderConfig {
   api_key?: string;
   base_url: string;
   model: string;
-  api_type: "chat_completions" | "moderations";
   priority: number;
   api_key_configured?: boolean;
   api_key_count?: number;
@@ -83,6 +81,21 @@ export interface PromptFilterVerdict {
   review_model?: string;
   review_provider?: string;
   review_latency_ms?: number;
+}
+
+export interface PromptFilterReviewTestResult {
+  flagged: boolean;
+  confidence: number;
+  reason?: string;
+  model: string;
+  provider: string;
+  latency_ms: number;
+  output?: string;
+}
+
+export interface PromptFilterReviewTestResponse {
+  result: PromptFilterReviewTestResult;
+  error?: string;
 }
 
 export interface PromptFilterLog {
@@ -153,6 +166,12 @@ export const promptFilterApi = {
 
   testText: (text: string) =>
     apiClient.post<{ verdict: PromptFilterVerdict }>("/prompt-filter/test", { text }),
+
+  testReview: (text: string, review: PromptFilterReviewConfig) =>
+    apiClient.post<PromptFilterReviewTestResponse>("/prompt-filter/review/test", {
+      text,
+      review,
+    }),
 
   testRule: (pattern: string, text: string) =>
     apiClient.post<{ matched: boolean; error?: string }>("/prompt-filter/rules/test", {
