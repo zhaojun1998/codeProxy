@@ -189,6 +189,8 @@ export function RequestLogsPage() {
   const [logIds, setLogIds] = useState<number[]>(() => requestLogIDsFromSearchParams(searchParams));
   const [scoreMin, setScoreMin] = useState<number | null>(null);
   const [scoreMax, setScoreMax] = useState<number | null>(null);
+  const [reviewedFilter, setReviewedFilter] = useState("");
+  const [interceptedFilter, setInterceptedFilter] = useState("");
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [clearingLogs, setClearingLogs] = useState(false);
   const [clearOptions, setClearOptions] = useState<ClearUsageLogsPayload>(DEFAULT_CLEAR_OPTIONS);
@@ -306,7 +308,9 @@ export function RequestLogsPage() {
     sessionIds.length > 0 ||
     logIds.length > 0 ||
     scoreMin !== null ||
-    scoreMax !== null;
+    scoreMax !== null ||
+    reviewedFilter !== "" ||
+    interceptedFilter !== "";
 
   const handleApiKeysChange = useCallback(
     (value: string[]) => {
@@ -345,6 +349,8 @@ export function RequestLogsPage() {
     setLogIds([]);
     setScoreMin(null);
     setScoreMax(null);
+    setReviewedFilter("");
+    setInterceptedFilter("");
   }, []);
 
   const handleScoreRangeChange = useCallback((min: number | null, max: number | null) => {
@@ -391,6 +397,9 @@ export function RequestLogsPage() {
             log_ids: logIds,
             score_min: scoreMin ?? undefined,
             score_max: scoreMax ?? undefined,
+            prompt_filter_reviewed: reviewedFilter === "" ? undefined : reviewedFilter === "true",
+            prompt_filter_intercepted:
+              interceptedFilter === "" ? undefined : interceptedFilter === "true",
             api_keys_empty: apiKeyFilterParam.matchesNone,
             models_empty: modelFilterParam.matchesNone,
             channels_empty: channelFilterParam.matchesNone,
@@ -433,6 +442,8 @@ export function RequestLogsPage() {
       notify,
       scoreMax,
       scoreMin,
+      reviewedFilter,
+      interceptedFilter,
       sessionIds,
       statusFilterParam,
       t,
@@ -478,6 +489,8 @@ export function RequestLogsPage() {
     logIds,
     scoreMin,
     scoreMax,
+    reviewedFilter,
+    interceptedFilter,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOpenClearDialog = useCallback(() => {
@@ -648,9 +661,13 @@ export function RequestLogsPage() {
           logIds={logIds}
           scoreMin={scoreMin}
           scoreMax={scoreMax}
+          reviewedFilter={reviewedFilter}
+          interceptedFilter={interceptedFilter}
           onSessionIdsChange={setSessionIds}
           onLogIdsChange={setLogIds}
           onScoreRangeChange={handleScoreRangeChange}
+          onReviewedFilterChange={setReviewedFilter}
+          onInterceptedFilterChange={setInterceptedFilter}
           onResetFilters={resetFilters}
           hasActiveFilters={hasActiveFilters}
         />

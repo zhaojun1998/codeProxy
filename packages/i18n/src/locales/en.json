@@ -2740,7 +2740,15 @@
     "all_prompt_filter": "All Filter Status",
     "clear_prompt_filter": "Clear prompt-filter",
     "prompt_filter_no_action": "No prompt-filter action",
-    "prompt_filter_coverage_hint": "Prompt Filter status is recorded only for covered requests that continue into request logs. Local blocked requests are shown in Prompt Filter Logs, and currently uncovered endpoints show no status here."
+    "prompt_filter_coverage_hint": "Prompt Filter status applies only to covered requests. Both locally intercepted and forwarded results are written to request logs; currently uncovered endpoints show no status here.",
+    "filter_ai_reviewed": "AI review performed",
+    "filter_ai_reviewed_all": "All review statuses",
+    "filter_ai_reviewed_yes": "AI reviewed",
+    "filter_ai_reviewed_no": "Not AI reviewed",
+    "filter_intercepted": "Interception status",
+    "filter_intercepted_all": "All interception statuses",
+    "filter_intercepted_yes": "Intercepted",
+    "filter_intercepted_no": "Not intercepted"
   },
   "ccswitch": {
     "import_to_ccswitch": "Import to CC Switch",

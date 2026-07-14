@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { RotateCcw } from "lucide-react";
-import { SearchableCheckboxMultiSelect, TextInput } from "@code-proxy/ui";
+import { SearchableCheckboxMultiSelect, Select, TextInput } from "@code-proxy/ui";
 import type { SearchableCheckboxMultiSelectOption } from "@code-proxy/ui";
 import { cn } from "@code-proxy/ui";
 import {
@@ -31,9 +31,13 @@ interface RequestLogsFiltersProps {
   logIds: number[];
   scoreMin: number | null;
   scoreMax: number | null;
+  reviewedFilter: string;
+  interceptedFilter: string;
   onSessionIdsChange: (value: string[]) => void;
   onLogIdsChange: (value: number[]) => void;
   onScoreRangeChange: (min: number | null, max: number | null) => void;
+  onReviewedFilterChange: (value: string) => void;
+  onInterceptedFilterChange: (value: string) => void;
   onResetFilters: () => void;
   hasActiveFilters: boolean;
 }
@@ -59,9 +63,13 @@ export function RequestLogsFilters({
   logIds,
   scoreMin,
   scoreMax,
+  reviewedFilter,
+  interceptedFilter,
   onSessionIdsChange,
   onLogIdsChange,
   onScoreRangeChange,
+  onReviewedFilterChange,
+  onInterceptedFilterChange,
   onResetFilters,
   hasActiveFilters,
 }: RequestLogsFiltersProps) {
@@ -123,6 +131,32 @@ export function RequestLogsFilters({
           onCommit={(text) => onLogIdsChange(parsePositiveIntegerList(text))}
         />
         <ScoreRangeFilter scoreMin={scoreMin} scoreMax={scoreMax} onChange={onScoreRangeChange} />
+        <div className="w-full min-[480px]:w-auto sm:w-[160px]">
+          <Select
+            value={reviewedFilter}
+            onChange={onReviewedFilterChange}
+            aria-label={t("request_logs.filter_ai_reviewed")}
+            options={[
+              { value: "", label: t("request_logs.filter_ai_reviewed_all") },
+              { value: "true", label: t("request_logs.filter_ai_reviewed_yes") },
+              { value: "false", label: t("request_logs.filter_ai_reviewed_no") },
+            ]}
+            size="sm"
+          />
+        </div>
+        <div className="w-full min-[480px]:w-auto sm:w-[160px]">
+          <Select
+            value={interceptedFilter}
+            onChange={onInterceptedFilterChange}
+            aria-label={t("request_logs.filter_intercepted")}
+            options={[
+              { value: "", label: t("request_logs.filter_intercepted_all") },
+              { value: "true", label: t("request_logs.filter_intercepted_yes") },
+              { value: "false", label: t("request_logs.filter_intercepted_no") },
+            ]}
+            size="sm"
+          />
+        </div>
 
         {/* Reset filters button */}
         {hasActiveFilters ? (

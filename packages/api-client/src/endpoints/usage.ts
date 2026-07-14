@@ -365,6 +365,8 @@ export const usageApi = {
       log_ids?: number[];
       score_min?: number;
       score_max?: number;
+      prompt_filter_reviewed?: boolean;
+      prompt_filter_intercepted?: boolean;
       api_keys_empty?: boolean;
       models_empty?: boolean;
       channels_empty?: boolean;
@@ -392,6 +394,10 @@ export const usageApi = {
       qs.set("score_min", String(Math.trunc(params.score_min)));
     if (typeof params.score_max === "number" && Number.isFinite(params.score_max))
       qs.set("score_max", String(Math.trunc(params.score_max)));
+    if (typeof params.prompt_filter_reviewed === "boolean")
+      qs.set("prompt_filter_reviewed", String(params.prompt_filter_reviewed));
+    if (typeof params.prompt_filter_intercepted === "boolean")
+      qs.set("prompt_filter_intercepted", String(params.prompt_filter_intercepted));
     if (params.api_keys_empty) qs.set("api_keys_empty", "1");
     if (params.models_empty) qs.set("models_empty", "1");
     if (params.channels_empty) qs.set("channels_empty", "1");
@@ -601,6 +607,7 @@ export interface UsageLogItem {
   has_content: boolean;
   prompt_filter_action?: string;
   prompt_filter_score?: number;
+  prompt_filter_reviewed?: boolean;
 }
 
 export interface UsageLogsResponse {

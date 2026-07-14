@@ -3037,7 +3037,15 @@
     "all_prompt_filter": "全部过滤状态",
     "clear_prompt_filter": "清空过滤状态筛选",
     "prompt_filter_no_action": "无提示词过滤动作",
-    "prompt_filter_coverage_hint": "提示词过滤状态只记录已接入检查并继续写入请求日志的请求；本地拦截的请求请在提示词过滤日志查看，暂未接入检查的端点在这里不会显示状态。"
+    "prompt_filter_coverage_hint": "提示词过滤状态仅对已接入检查的请求生效；本地拦截与放行结果都会写入请求日志，暂未接入检查的端点不会显示状态。",
+    "filter_ai_reviewed": "是否进行了 AI 复审",
+    "filter_ai_reviewed_all": "全部复审状态",
+    "filter_ai_reviewed_yes": "已进行 AI 复审",
+    "filter_ai_reviewed_no": "未进行 AI 复审",
+    "filter_intercepted": "拦截状态",
+    "filter_intercepted_all": "全部拦截状态",
+    "filter_intercepted_yes": "已拦截",
+    "filter_intercepted_no": "未拦截"
   },
   "ccswitch": {
     "import_to_ccswitch": "导入到 CC Switch",

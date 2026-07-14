@@ -1,16 +1,19 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 const postMock = vi.fn();
+const getMock = vi.fn();
 
 vi.mock("../../client/client", () => ({
   apiClient: {
     post: postMock,
+    get: getMock,
   },
 }));
 
 describe("prompt filter api", () => {
   beforeEach(() => {
     postMock.mockReset();
+    getMock.mockReset();
   });
 
   test("sends AI review live tests to the dedicated endpoint", async () => {
@@ -51,5 +54,14 @@ describe("prompt filter api", () => {
       text: "hello",
       review,
     });
+  });
+
+  test("includes AI review and interception filters when listing logs", async () => {
+    const { promptFilterApi } = await import("@code-proxy/api-client/endpoints/prompt-filter");
+    getMock.mockResolvedValue({ items: [], total: 0, page: 1, size: 50 });
+
+    await promptFilterApi.listLogs({ reviewed: true, intercepted: false });
+
+    expect(getMock).toHaveBeenCalledWith("/prompt-filter/logs?reviewed=true&intercepted=false");
   });
 });

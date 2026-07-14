@@ -81,6 +81,9 @@ export interface PromptFilterVerdict {
   review_model?: string;
   review_provider?: string;
   review_latency_ms?: number;
+  review_output?: string;
+  review_raw_response?: string;
+  review_attempts?: PromptFilterReviewAttempt[];
 }
 
 export interface PromptFilterReviewTestResult {

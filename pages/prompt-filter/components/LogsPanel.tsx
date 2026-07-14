@@ -752,7 +752,7 @@ function LogDetailModal({
                   {attempt.raw_response ? (
                     <ReviewCodeBlock
                       label={t("prompt_filter.review_raw_response")}
-                      value={formatRawJSON(attempt.raw_response)}
+                      value={attempt.raw_response}
                     />
                   ) : null}
                 </div>
@@ -761,7 +761,7 @@ function LogDetailModal({
           ) : log.review_raw_response ? (
             <ReviewCodeBlock
               label={t("prompt_filter.review_raw_response")}
-              value={formatRawJSON(log.review_raw_response)}
+              value={log.review_raw_response}
             />
           ) : log.review_output ? (
             <ReviewCodeBlock
@@ -837,14 +837,6 @@ function ReviewCodeBlock({ label, value }: { label: string; value: string }) {
       </pre>
     </div>
   );
-}
-
-function formatRawJSON(value: string): string {
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2);
-  } catch {
-    return value;
-  }
 }
 
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {

@@ -53,13 +53,10 @@ describe("usage logs api", () => {
   });
 
   test("normalizes channel_options and falls back to legacy channels", async () => {
-    const { usageApi, normalizeChannelOptions } = await import(
-      "@code-proxy/api-client/endpoints/usage"
-    );
+    const { usageApi, normalizeChannelOptions } =
+      await import("@code-proxy/api-client/endpoints/usage");
 
-    expect(
-      normalizeChannelOptions(undefined, ["Codex", "Relay", "codex"]),
-    ).toEqual([
+    expect(normalizeChannelOptions(undefined, ["Codex", "Relay", "codex"])).toEqual([
       { value: "Codex", label: "Codex" },
       { value: "Relay", label: "Relay" },
     ]);
@@ -127,5 +124,19 @@ describe("usage logs api", () => {
     expect(getMock).toHaveBeenCalledWith("/usage/logs?page=2", {
       signal: controller.signal,
     });
+  });
+
+  test("serializes AI review and interception filters, including false", async () => {
+    const { usageApi } = await import("@code-proxy/api-client/endpoints/usage");
+    getMock.mockResolvedValue({ items: [], filters: {}, stats: {} });
+
+    await usageApi.getUsageLogs({
+      prompt_filter_reviewed: true,
+      prompt_filter_intercepted: false,
+    });
+
+    expect(getMock).toHaveBeenCalledWith(
+      "/usage/logs?prompt_filter_reviewed=true&prompt_filter_intercepted=false",
+    );
   });
 });

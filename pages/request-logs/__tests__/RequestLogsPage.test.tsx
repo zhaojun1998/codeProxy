@@ -617,6 +617,42 @@ describe("RequestLogsPage", () => {
     );
   });
 
+  test("filters request logs by AI review and interception state", async () => {
+    await i18n.changeLanguage("en");
+    const user = userEvent.setup();
+    mocks.getUsageLogs.mockResolvedValue(responseWithFilterOptions);
+
+    render(
+      <ThemeProvider>
+        <ToastProvider>
+          <RequestLogsPage />
+        </ToastProvider>
+      </ThemeProvider>,
+    );
+
+    await waitFor(() => expect(mocks.getUsageLogs).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole("combobox", { name: "AI review performed" }));
+    await user.click(await screen.findByRole("option", { name: "AI reviewed" }));
+    await waitFor(() =>
+      expect(mocks.getUsageLogs).toHaveBeenLastCalledWith(
+        expect.objectContaining({ prompt_filter_reviewed: true }),
+        expectSignalOptions(),
+      ),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Interception status" }));
+    await user.click(await screen.findByRole("option", { name: "Not intercepted" }));
+    await waitFor(() =>
+      expect(mocks.getUsageLogs).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          prompt_filter_reviewed: true,
+          prompt_filter_intercepted: false,
+        }),
+        expectSignalOptions(),
+      ),
+    );
+  });
+
   test("supports deselecting all request-log filter options in one click", async () => {
     await i18n.changeLanguage("en");
     const user = userEvent.setup();
@@ -833,9 +869,7 @@ describe("RequestLogsPage", () => {
     expect(within(table).getByText("354ms")).toBeInTheDocument();
     expect(within(table).getByText("流式")).toBeInTheDocument();
     expect(within(table).getByText("非流式")).toBeInTheDocument();
-    const responseMetricCells = table.querySelectorAll(
-      'td[data-vt-column-key="latency"]',
-    );
+    const responseMetricCells = table.querySelectorAll('td[data-vt-column-key="latency"]');
     expect(responseMetricCells).toHaveLength(2);
     responseMetricCells.forEach((cell) => {
       expect(within(cell as HTMLElement).queryByText("--")).not.toBeInTheDocument();
