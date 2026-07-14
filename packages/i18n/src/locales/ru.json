@@ -2333,7 +2333,9 @@
     "search_no_matches": "No matching details",
     "image_too_large": "Изображение слишком большое (~{{mb}} МБ), нажмите для просмотра",
     "image_load_failed": "Не удалось загрузить изображение",
-    "locate_message": "Locate message"
+    "locate_message": "Locate message",
+    "user_messages_only": "Только сообщения пользователя",
+    "no_user_messages": "Сообщений пользователя нет"
   },
   "system_page": {
     "title": "Информация о системе",

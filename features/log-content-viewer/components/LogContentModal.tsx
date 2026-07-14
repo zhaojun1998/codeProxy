@@ -17,6 +17,7 @@ import {
   Info,
   Loader2,
   Search,
+  UserRound,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -769,6 +770,7 @@ export function LogContentModal({
   onClose,
   showRequestDetails = false,
   showBodyContent = true,
+  enableUserMessageFilter = false,
   fetchFn,
   fetchPartFn,
   fetchDetailsFn,
@@ -787,6 +789,7 @@ export function LogContentModal({
   const resolvedInitialTab: LogContentPart = detailsOnly ? "details" : initialTab;
   const [activeTab, setActiveTab] = useState<LogContentPart>(resolvedInitialTab);
   const [viewMode, setViewMode] = useState<"rendered" | "raw">("rendered");
+  const [userMessagesOnly, setUserMessagesOnly] = useState(false);
   const [inputParsed, setInputParsed] = useState<AsyncParsedState>({
     status: "idle",
     view: null,
@@ -894,6 +897,7 @@ export function LogContentModal({
     setDetailSearch("");
     setHighlightedMessageIndex(null);
     setMessageImagePreview(null);
+    setUserMessagesOnly(false);
   }, [logId]);
 
   useEffect(() => {
@@ -1276,6 +1280,22 @@ export function LogContentModal({
             </TabsList>
           </Tabs>
         )}
+        {enableUserMessageFilter && activeTab === "input" && viewMode === "rendered" ? (
+          <button
+            type="button"
+            onClick={() => setUserMessagesOnly((current) => !current)}
+            aria-pressed={userMessagesOnly}
+            title={t("log_content.user_messages_only")}
+            className={`flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors ${
+              userMessagesOnly
+                ? "bg-slate-900 text-white dark:bg-white dark:text-neutral-950"
+                : "text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-white/45 dark:hover:bg-neutral-900 dark:hover:text-white/70"
+            }`}
+          >
+            <UserRound size={14} />
+            {t("log_content.user_messages_only")}
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={handleDownload}
@@ -1317,11 +1337,22 @@ export function LogContentModal({
 
     const view = inputParsed.view;
     if (view.kind === "messages") {
+      const filteredMessages = userMessagesOnly
+        ? inputMessages.filter((message) => message.role.trim().toLowerCase() === "user")
+        : inputMessages;
+      if (userMessagesOnly && filteredMessages.length === 0) {
+        return (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-400 dark:text-white/25">
+            <UserRound size={40} className="mb-3 opacity-40" />
+            <p className="text-sm">{t("log_content.no_user_messages")}</p>
+          </div>
+        );
+      }
       const count =
         inputRevealCount > 0
           ? inputRevealCount
-          : Math.min(view.messages.length, 6);
-      const visibleMessages = inputMessages.slice(0, count);
+          : Math.min(filteredMessages.length, 6);
+      const visibleMessages = filteredMessages.slice(0, count);
       return (
         <MessageList
           messages={visibleMessages}

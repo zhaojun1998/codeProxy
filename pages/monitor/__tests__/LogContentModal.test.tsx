@@ -160,6 +160,63 @@ describe("LogContentModal", () => {
     expect(screen.getByText("hello-29")).toBeInTheDocument();
   });
 
+  test("can show only user messages in request log input details", async () => {
+    vi.useFakeTimers();
+    await i18n.changeLanguage("zh-CN");
+    const fetchPartFn = vi.fn(async (_id: number, part: "input" | "output") => ({
+      id: 1,
+      model: "gpt-test",
+      part,
+      content:
+        part === "input"
+          ? JSON.stringify({
+              messages: [
+                { role: "system", content: "system-only" },
+                { role: "user", content: "user-only" },
+                { role: "assistant", content: "assistant-only" },
+              ],
+            })
+          : "",
+    }));
+
+    render(
+      <ThemeProvider>
+        <LogContentModal
+          open
+          logId={1}
+          initialTab="input"
+          onClose={() => {}}
+          fetchPartFn={fetchPartFn}
+          enableUserMessageFilter
+        />
+      </ThemeProvider>,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(260);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+    await act(async () => {});
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(screen.getByText("system-only")).toBeInTheDocument();
+    expect(screen.getByText("assistant-only")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "仅用户消息" }));
+
+    expect(screen.getByText("user-only")).toBeInTheDocument();
+    expect(screen.queryByText("system-only")).not.toBeInTheDocument();
+    expect(screen.queryByText("assistant-only")).not.toBeInTheDocument();
+  });
+
   test("keeps the original payload in Raw view instead of pretty-printing it", async () => {
     vi.useFakeTimers();
 

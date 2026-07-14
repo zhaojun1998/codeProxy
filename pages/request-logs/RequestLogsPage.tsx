@@ -684,6 +684,7 @@ export function RequestLogsPage() {
         onClose={() => setContentModalOpen(false)}
         showRequestDetails
         showBodyContent={requestBodyStorageEnabled}
+        enableUserMessageFilter
       />
       <ErrorDetailModal
         open={errorModalOpen}

@@ -10,6 +10,7 @@ export interface LogContentModalProps {
   onClose: () => void;
   showRequestDetails?: boolean;
   showBodyContent?: boolean;
+  enableUserMessageFilter?: boolean;
   fetchFn?: (
     id: number,
   ) => Promise<{
