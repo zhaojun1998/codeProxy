@@ -2145,9 +2145,14 @@ export function DataTable<T>({
                     naturalFlow || isEmpty ? undefined : stickyColumnPlacements[col.key];
                   const headerPositionClass =
                     naturalFlow || isEmpty ? "relative" : "sticky top-0 z-50";
-                  // Viewport header-chrome owns the rounded plate. Sticky cells
-                  // stay opaque so locked columns cover scrolling middle labels;
-                  // free-scroll headers stay transparent over the chrome plate.
+                  // Viewport header-chrome owns the top plate. Opaque sticky
+                  // headers cover scrolling middle labels; outer sticky cells
+                  // still need side radius so bottom corners aren't squared off.
+                  // Free-scroll headers stay transparent over the chrome plate.
+                  const isOuterStickyStart =
+                    stickyPlacement?.edge === "start" && stickyPlacement.offset === 0;
+                  const isOuterStickyEnd =
+                    stickyPlacement?.edge === "end" && stickyPlacement.offset === 0;
                   const headerChromeClass =
                     naturalFlow || isEmpty || stickyPlacement
                       ? "bg-slate-100 dark:bg-neutral-800"
@@ -2155,6 +2160,12 @@ export function DataTable<T>({
                   const headerCornerClass = [
                     naturalFlow && colIndex === 0 ? "rounded-l-xl" : "",
                     naturalFlow && colIndex === orderedColumns.length - 1 ? "rounded-r-xl" : "",
+                    !naturalFlow && (colIndex === 0 || isOuterStickyStart) ? "rounded-l-xl" : "",
+                    // Gutter only paints the scrollbar strip; actions column owns right radius.
+                    !naturalFlow &&
+                    (isOuterStickyEnd || colIndex === orderedColumns.length - 1)
+                      ? "rounded-r-xl"
+                      : "",
                   ]
                     .filter(Boolean)
                     .join(" ");

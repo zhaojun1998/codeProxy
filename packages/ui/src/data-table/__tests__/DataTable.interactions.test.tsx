@@ -426,12 +426,11 @@ describe("DataTable scroll chrome and row dividers", () => {
     const actionsHeader = document.querySelector('th[data-vt-column-key="actions"]');
     const headerGutter = document.querySelector("[data-vt-header-gutter]");
     // Sticky cells stay opaque; free middle headers stay transparent over chrome.
-    // Corner radius lives on the viewport chrome (and gutter), not per th.
-    expect(selectHeader).toHaveClass("bg-slate-100");
-    expect(selectHeader).not.toHaveClass("rounded-l-xl");
+    // Outer sticky headers own side radius (top+bottom) so fixed columns don't square corners.
+    expect(selectHeader).toHaveClass("bg-slate-100", "rounded-l-xl");
     expect(nameHeader).toHaveClass("bg-transparent");
-    expect(actionsHeader).toHaveClass("bg-slate-100");
-    expect(actionsHeader).not.toHaveClass("rounded-r-xl");
+    expect(nameHeader).not.toHaveClass("rounded-l-xl", "rounded-r-xl");
+    expect(actionsHeader).toHaveClass("bg-slate-100", "rounded-r-xl");
     expect(headerChrome).toHaveClass("absolute", "left-0", "top-0");
     // With a vertical gutter, chrome is left-only; otherwise full rounded-xl.
     if (headerGutter) {
