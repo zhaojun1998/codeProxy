@@ -1,8 +1,12 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ToastProvider, ThemeProvider } from "@code-proxy/ui";
-import type { AuthFileItem, IdentityFingerprintAccountDetail } from "@code-proxy/api-client";
+import type {
+  AuthFileItem,
+  IdentityFingerprintAccountDetail,
+  IdentityFingerprintResponse,
+} from "@code-proxy/api-client";
 import { AuthFilesPage } from "@pages/auth-files/AuthFilesPage";
 import i18n from "@code-proxy/i18n";
 
@@ -10,9 +14,17 @@ const mocks = vi.hoisted(() => ({
   can: vi.fn((permission: string) => permission === "auth_files.read"),
   list: vi.fn(async (): Promise<{ files: AuthFileItem[] }> => ({ files: [] })),
   downloadText: vi.fn(async () => "{}"),
+  getOauthModelAlias: vi.fn(async () => ({})),
   getAccountDetail: vi.fn(async (): Promise<IdentityFingerprintAccountDetail> => {
     throw new Error("not mocked");
   }),
+  getIdentityFingerprint: vi.fn(
+    async (): Promise<IdentityFingerprintResponse> => ({
+      "identity-fingerprint": {},
+      defaults: {},
+    }),
+  ),
+  updateIdentityFingerprint: vi.fn(async () => ({ status: "ok" })),
   getEntityStats: vi.fn(async () => ({ source: [], auth_index: [] })),
   getAuthFileTrend: vi.fn(async (authIndex: string) => ({
     auth_index: authIndex,
@@ -62,10 +74,13 @@ vi.mock("@code-proxy/api-client", async (importOriginal) => {
       ...mod.authFilesApi,
       list: mocks.list,
       downloadText: mocks.downloadText,
+      getOauthModelAlias: mocks.getOauthModelAlias,
     },
     identityFingerprintApi: {
       ...mod.identityFingerprintApi,
       getAccountDetail: mocks.getAccountDetail,
+      get: mocks.getIdentityFingerprint,
+      update: mocks.updateIdentityFingerprint,
     },
     usageApi: {
       ...mod.usageApi,
@@ -153,8 +168,36 @@ describe("AuthFilesPage identity tab RBAC", () => {
     }));
     mocks.downloadText.mockReset();
     mocks.downloadText.mockResolvedValue("{}");
+    mocks.getOauthModelAlias.mockReset();
+    mocks.getOauthModelAlias.mockResolvedValue({});
     mocks.getAccountDetail.mockReset();
     mocks.getAccountDetail.mockResolvedValue(codexIdentityDetail);
+    mocks.getIdentityFingerprint.mockReset();
+    mocks.getIdentityFingerprint.mockResolvedValue({
+      "identity-fingerprint": {
+        codex: {
+          enabled: true,
+          "user-agent": "codex_cli_rs/0.125.0",
+          version: "0.125.0",
+          originator: "codex_cli_rs",
+        },
+        claude: {
+          enabled: true,
+          "cli-version": "2.1.170",
+        },
+        gemini: {
+          enabled: true,
+          "x-goog-api-client": "gl-node/24.0.0",
+        },
+        xai: {
+          enabled: true,
+          "x-grok-client-identifier": "grok-shell",
+        },
+      },
+      defaults: {},
+    });
+    mocks.updateIdentityFingerprint.mockReset();
+    mocks.updateIdentityFingerprint.mockResolvedValue({ status: "ok" });
     mocks.getEntityStats.mockReset();
     mocks.getEntityStats.mockResolvedValue({ source: [], auth_index: [] });
     mocks.getAuthFileTrend.mockReset();
@@ -241,5 +284,82 @@ describe("AuthFilesPage identity tab RBAC", () => {
     await screen.findByRole("tab", { name: /Fields|字段/i });
     expect(screen.queryByRole("tab", { name: /Identity|身份/i })).not.toBeInTheDocument();
     expect(mocks.getAccountDetail).not.toHaveBeenCalled();
+  });
+
+  test("lets system config admins disable a provider without dropping its other settings", async () => {
+    mocks.can.mockImplementation(
+      (permission: string) =>
+        permission === "auth_files.read" || permission === "system.config.write",
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Codex OAuth")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Auth config" }));
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Identity Fingerprints" }));
+
+    await waitFor(() => {
+      expect(mocks.getIdentityFingerprint).toHaveBeenCalledTimes(1);
+    });
+    const codexSwitch = await within(dialog).findByRole("switch", {
+      name: "Enable Codex identity fingerprint",
+    });
+    expect(codexSwitch).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(codexSwitch);
+    expect(codexSwitch).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mocks.updateIdentityFingerprint).toHaveBeenCalledWith(
+        expect.objectContaining({
+          codex: expect.objectContaining({
+            enabled: false,
+            "user-agent": "codex_cli_rs/0.125.0",
+            version: "0.125.0",
+            originator: "codex_cli_rs",
+          }),
+          claude: expect.objectContaining({
+            enabled: true,
+            "cli-version": "2.1.170",
+          }),
+        }),
+      );
+    });
+  });
+
+  test("does not expose the provider switches without system.config.write", async () => {
+    render(
+      <MemoryRouter initialEntries={["/auth-files"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <Routes>
+              <Route path="/auth-files" element={<AuthFilesPage />} />
+            </Routes>
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Codex OAuth")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Auth config" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).queryByRole("tab", { name: "Identity Fingerprints" }),
+    ).not.toBeInTheDocument();
+    expect(mocks.getIdentityFingerprint).not.toHaveBeenCalled();
   });
 });

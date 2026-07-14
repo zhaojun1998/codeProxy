@@ -12,7 +12,13 @@ import {
   TabsTrigger,
   useToast,
 } from "@code-proxy/ui";
-import { quotaApi, type AuthFileItem } from "@code-proxy/api-client";
+import {
+  identityFingerprintApi,
+  quotaApi,
+  type AuthFileItem,
+  type IdentityFingerprintConfig,
+  type IdentityFingerprintProvider,
+} from "@code-proxy/api-client";
 import {
   proxiesApi,
   type ProxyPoolEntry,
@@ -22,6 +28,7 @@ import { AuthFileDetailModal } from "./components/AuthFileDetailModal";
 import { AuthFilesExcludedTab } from "./components/AuthFilesExcludedTab";
 import { AuthFilesAliasTab } from "./components/AuthFilesAliasTab";
 import { AuthFilesFilesTab } from "./components/AuthFilesFilesTab";
+import { AuthFilesIdentityFingerprintTab } from "./components/AuthFilesIdentityFingerprintTab";
 import { CodexResetCreditsSection } from "./components/CodexResetCreditsSection";
 import { AuthFileTagsModal } from "./components/AuthFileTagsModal";
 import { ImportModelsModal } from "./components/ImportModelsModal";
@@ -62,7 +69,7 @@ import {
 
 const OAUTH_AUTH_FILES_REFRESH_TIMEOUT_MS = 12_000;
 const OAUTH_AUTH_FILES_REFRESH_INTERVAL_MS = 600;
-type AuthFilesConfigModalTab = "excluded" | "alias";
+type AuthFilesConfigModalTab = "excluded" | "alias" | "identity";
 type AuthFilesConfirmAction =
   | { type: "deleteSelection"; names: string[] }
   | { type: "resetCredit"; file: AuthFileItem };
@@ -118,6 +125,7 @@ export function AuthFilesPage() {
   // RBAC: auth_files.read/write). Must not use platform system.config.read, or ordinary
   // tenants never see the Identity tab even though the API allows them.
   const identityFingerprintEnabled = auth?.can("auth_files.read") ?? true;
+  const canManageIdentityFingerprint = auth?.can("system.config.write") ?? true;
   const canReadProxies = auth?.can("proxies.read") ?? true;
   const oauthExcludedEnabled = auth?.state.principal
     ? auth.state.principal.effective_tenant.type === "system"
@@ -127,6 +135,12 @@ export function AuthFilesPage() {
   const [configModalTab, setConfigModalTab] =
     useState<AuthFilesConfigModalTab | null>(null);
   const [configSaving, setConfigSaving] = useState(false);
+  const [identityFingerprintConfig, setIdentityFingerprintConfig] =
+    useState<IdentityFingerprintConfig | null>(null);
+  const [identityFingerprintConfigLoading, setIdentityFingerprintConfigLoading] =
+    useState(false);
+  const [identityFingerprintConfigError, setIdentityFingerprintConfigError] =
+    useState("");
   const {
     isPending,
     excludedLoading,
@@ -163,9 +177,11 @@ export function AuthFilesPage() {
     openImport,
     applyImport,
   } = useAuthFilesOAuthConfig(
-    !oauthExcludedEnabled && configModalTab === "excluded"
-      ? "alias"
-      : (configModalTab ?? "files"),
+    configModalTab === "excluded" && oauthExcludedEnabled
+      ? "excluded"
+      : configModalTab === "alias"
+        ? "alias"
+        : "files",
   );
 
   const {
@@ -715,21 +731,90 @@ export function AuthFilesPage() {
     setConfigModalTab(null);
   }, []);
 
+  const loadIdentityFingerprintConfig = useCallback(async () => {
+    setIdentityFingerprintConfigLoading(true);
+    setIdentityFingerprintConfigError("");
+    try {
+      const response = await identityFingerprintApi.get();
+      setIdentityFingerprintConfig(response["identity-fingerprint"] ?? {});
+    } catch (error: unknown) {
+      setIdentityFingerprintConfig(null);
+      setIdentityFingerprintConfigError(
+        error instanceof Error
+          ? error.message
+          : t("auth_files_page.identity_load_failed"),
+      );
+    } finally {
+      setIdentityFingerprintConfigLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (configModalTab !== "identity" || !canManageIdentityFingerprint) return;
+    void loadIdentityFingerprintConfig();
+  }, [canManageIdentityFingerprint, configModalTab, loadIdentityFingerprintConfig]);
+
+  const setIdentityFingerprintProviderEnabled = useCallback(
+    (provider: IdentityFingerprintProvider, enabled: boolean) => {
+      setIdentityFingerprintConfig((current) =>
+        current
+          ? {
+              ...current,
+              [provider]: {
+                ...current[provider],
+                enabled,
+              },
+            }
+          : current,
+      );
+    },
+    [],
+  );
+
   const saveConfigModal = useCallback(async () => {
     if (!configModalTab || configSaving) return;
     setConfigSaving(true);
     try {
-      const saved =
-        configModalTab === "alias"
-          ? await saveAliasAll()
-          : await saveExcludedAll();
+      let saved = false;
+      if (configModalTab === "identity") {
+        if (!identityFingerprintConfig) return;
+        try {
+          await identityFingerprintApi.update(identityFingerprintConfig);
+          notify({
+            type: "success",
+            message: t("auth_files_page.identity_saved"),
+          });
+          saved = true;
+        } catch (error: unknown) {
+          notify({
+            type: "error",
+            message:
+              error instanceof Error
+                ? error.message
+                : t("auth_files_page.identity_save_failed"),
+          });
+        }
+      } else {
+        saved =
+          configModalTab === "alias"
+            ? await saveAliasAll()
+            : await saveExcludedAll();
+      }
       if (saved) {
         setConfigModalTab(null);
       }
     } finally {
       setConfigSaving(false);
     }
-  }, [configModalTab, configSaving, saveAliasAll, saveExcludedAll]);
+  }, [
+    configModalTab,
+    configSaving,
+    identityFingerprintConfig,
+    notify,
+    saveAliasAll,
+    saveExcludedAll,
+    t,
+  ]);
 
   useEffect(() => {
     const previousTab = previousConfigModalTabRef.current;
@@ -932,14 +1017,18 @@ export function AuthFilesPage() {
       <Modal
         open={configModalTab !== null}
         title={
-          configModalTab === "alias"
-            ? t("auth_files_page.alias_title")
-            : t("auth_files_page.excluded_title")
+          configModalTab === "identity"
+            ? t("auth_files_page.identity_title")
+            : configModalTab === "alias"
+              ? t("auth_files_page.alias_title")
+              : t("auth_files_page.excluded_title")
         }
         description={
-          configModalTab === "alias"
-            ? t("auth_files.model_alias_desc")
-            : t("auth_files_page.excluded_desc")
+          configModalTab === "identity"
+            ? t("auth_files_page.identity_desc")
+            : configModalTab === "alias"
+              ? t("auth_files.model_alias_desc")
+              : t("auth_files_page.excluded_desc")
         }
         maxWidth="max-w-5xl"
         bodyHeightClassName="h-[76vh] max-h-[76vh]"
@@ -960,7 +1049,14 @@ export function AuthFilesPage() {
               size="sm"
               onClick={() => void saveConfigModal()}
               disabled={
-                configSaving || excludedLoading || aliasLoading || isPending
+                configSaving ||
+                excludedLoading ||
+                aliasLoading ||
+                isPending ||
+                (configModalTab === "identity" &&
+                  (identityFingerprintConfigLoading ||
+                    !identityFingerprintConfig ||
+                    Boolean(identityFingerprintConfigError)))
               }
             >
               {configSaving ? t("common.saving") : t("auth_files.save")}
@@ -987,6 +1083,11 @@ export function AuthFilesPage() {
                 <TabsTrigger value="alias">
                   {t("auth_files_page.alias_tab")}
                 </TabsTrigger>
+                {canManageIdentityFingerprint ? (
+                  <TabsTrigger value="identity">
+                    {t("auth_files_page.identity_tab")}
+                  </TabsTrigger>
+                ) : null}
               </TabsList>
             </div>
 
@@ -1026,6 +1127,18 @@ export function AuthFilesPage() {
                   showHeading={false}
                 />
               </TabsContent>
+
+              {canManageIdentityFingerprint ? (
+                <TabsContent value="identity">
+                  <AuthFilesIdentityFingerprintTab
+                    config={identityFingerprintConfig}
+                    loading={identityFingerprintConfigLoading}
+                    error={identityFingerprintConfigError}
+                    disabled={configSaving}
+                    onProviderEnabledChange={setIdentityFingerprintProviderEnabled}
+                  />
+                </TabsContent>
+              ) : null}
             </div>
           </Tabs>
         ) : null}
