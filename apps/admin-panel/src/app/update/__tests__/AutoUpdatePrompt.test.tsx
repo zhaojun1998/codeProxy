@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import i18n from "@code-proxy/i18n";
 import { AutoUpdatePrompt } from "@app/update/AutoUpdatePrompt";
@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   check: vi.fn(),
   current: vi.fn(),
   apply: vi.fn(),
+  events: vi.fn(),
+  getAutoUpdateEnabled: vi.fn(),
   get: vi.fn(),
 }));
 
@@ -17,6 +19,13 @@ vi.mock("@code-proxy/api-client/endpoints/update", () => ({
     check: mocks.check,
     current: mocks.current,
     apply: mocks.apply,
+    events: mocks.events,
+  },
+}));
+
+vi.mock("@code-proxy/api-client/endpoints/config", () => ({
+  configApi: {
+    getAutoUpdateEnabled: mocks.getAutoUpdateEnabled,
   },
 }));
 
@@ -50,6 +59,13 @@ describe("AutoUpdatePrompt", () => {
     vi.useRealTimers();
     await i18n.changeLanguage("en");
     localStorage.clear();
+    mocks.getAutoUpdateEnabled.mockResolvedValue(true);
+    mocks.events.mockImplementation(
+      (_onProgress: unknown, options?: { signal?: AbortSignal }) =>
+        new Promise<void>((resolve) => {
+          options?.signal?.addEventListener("abort", () => resolve(), { once: true });
+        }),
+    );
     mocks.check.mockResolvedValue({
       enabled: true,
       update_available: true,
@@ -77,9 +93,20 @@ describe("AutoUpdatePrompt", () => {
     mocks.get.mockResolvedValue({ uptime: 10 });
   });
 
+  test("does not check or subscribe to update events when auto update is disabled", async () => {
+    mocks.getAutoUpdateEnabled.mockResolvedValue(false);
+
+    renderPrompt();
+
+    await waitFor(() => expect(mocks.getAutoUpdateEnabled).toHaveBeenCalledTimes(1));
+    expect(mocks.check).not.toHaveBeenCalled();
+    expect(mocks.events).not.toHaveBeenCalled();
+  });
+
   test("asks whether to update before showing the scroll-contained update dialog", async () => {
     renderPrompt();
 
+    await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(1));
     expect(
       await screen.findByText(/A new version is available: v1\.2\.3.*update now\?/i),
     ).toBeInTheDocument();

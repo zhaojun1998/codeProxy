@@ -5,6 +5,7 @@ import {
   type UpdateCheckResponse,
   type UpdateProgressResponse,
 } from "@code-proxy/api-client/endpoints/update";
+import { configApi } from "@code-proxy/api-client/endpoints/config";
 import { useAuth } from "@app/providers/AuthProvider";
 import { buttonClassName } from "@code-proxy/ui";
 import { useToast } from "@code-proxy/ui";
@@ -43,6 +44,7 @@ export function AutoUpdatePrompt({
   const notifiedRef = useRef(new Set<string>());
   const observedRunRef = useRef<number | null>(null);
   const modalOwnerRef = useRef(Symbol("auto-update-prompt"));
+  const [autoUpdateEnabled, setAutoUpdateEnabled] = useState<boolean | null>(null);
   const [candidate, setCandidate] = useState<UpdateCheckResponse | null>(null);
   const [updateTarget, setUpdateTarget] = useState<UpdateCheckResponse | null>(null);
   const [progress, setProgress] = useState<UpdateProgressResponse | null>(null);
@@ -51,7 +53,28 @@ export function AutoUpdatePrompt({
 
   useEffect(() => {
     let cancelled = false;
-    if (auth.state.isRestoring || !auth.state.isAuthenticated) {
+    if (auth.state.isRestoring || !auth.state.isAuthenticated) return undefined;
+
+    void configApi
+      .getAutoUpdateEnabled()
+      .then((enabled) => {
+        if (!cancelled) setAutoUpdateEnabled(enabled);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          console.warn("读取自动更新配置失败，已跳过自动更新检查和进度监听。", error);
+          setAutoUpdateEnabled(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.state.isAuthenticated, auth.state.isRestoring]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (auth.state.isRestoring || !auth.state.isAuthenticated || autoUpdateEnabled !== true) {
       return () => {
         cancelled = true;
       };
@@ -107,10 +130,19 @@ export function AutoUpdatePrompt({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [auth.state.isAuthenticated, auth.state.isRestoring, initialDelayMs, notify, t]);
+  }, [
+    auth.state.isAuthenticated,
+    auth.state.isRestoring,
+    autoUpdateEnabled,
+    initialDelayMs,
+    notify,
+    t,
+  ]);
 
   useEffect(() => {
-    if (auth.state.isRestoring || !auth.state.isAuthenticated) return undefined;
+    if (auth.state.isRestoring || !auth.state.isAuthenticated || autoUpdateEnabled !== true) {
+      return undefined;
+    }
     const unsubscribe = subscribeUpdateProgress((nextProgress) => {
       const status = nextProgress.status.trim().toLowerCase();
       const runID = nextProgress.run_id ?? null;
@@ -140,7 +172,7 @@ export function AutoUpdatePrompt({
       unsubscribe();
       releaseUpdateProgressModal(modalOwnerRef.current);
     };
-  }, [auth.state.isAuthenticated, auth.state.isRestoring]);
+  }, [auth.state.isAuthenticated, auth.state.isRestoring, autoUpdateEnabled]);
 
   const applyUpdate = useCallback(async () => {
     setUpdateTarget(candidate);
