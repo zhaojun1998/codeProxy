@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { LoaderCircle, RefreshCw, ScrollText, Trash2 } from "lucide-react";
 import { configApi, usageApi } from "@code-proxy/api-client";
 import type {
@@ -20,6 +21,7 @@ import { HoverTooltip } from "@code-proxy/ui";
 import { Modal } from "@code-proxy/ui";
 import { useToast } from "@code-proxy/ui";
 import { DataTable } from "@code-proxy/ui";
+import { DataTableColumnVisibilityMenu, useDataTableColumnVisibility } from "@code-proxy/ui";
 import { ErrorDetailModal, LogContentModal } from "@features/log-content-viewer";
 import { ModelTag } from "@features/model-tags";
 import { RequestLogsFilters } from "./RequestLogsFilters";
@@ -59,6 +61,18 @@ const DEFAULT_CLEAR_OPTIONS: ClearUsageLogsPayload = {
 const isRequestCancelled = (err: unknown, signal?: AbortSignal) =>
   signal?.aborted || (err instanceof Error && err.message === "Request was cancelled");
 
+function requestLogIDsFromSearchParams(searchParams: URLSearchParams): number[] {
+  const values = [...searchParams.getAll("log_id"), ...searchParams.getAll("log_ids")];
+  const result = new Set<number>();
+  values
+    .flatMap((value) => value.split(","))
+    .forEach((value) => {
+      const parsed = Number(value.trim());
+      if (Number.isSafeInteger(parsed) && parsed > 0) result.add(parsed);
+    });
+  return Array.from(result);
+}
+
 function RequestLogsRecordsCount({ count }: { count: number }) {
   const { t } = useTranslation();
   const compact = isUsageMetricCompact(count);
@@ -86,6 +100,7 @@ function RequestLogsRecordsCount({ count }: { count: number }) {
 export function RequestLogsPage() {
   const { t } = useTranslation();
   const { notify } = useToast();
+  const [searchParams] = useSearchParams();
 
   // Content modal state
   const [contentModalOpen, setContentModalOpen] = useState(false);
@@ -128,6 +143,7 @@ export function RequestLogsPage() {
     () => buildRequestLogsColumns(t, handleContentClick, handleErrorClick),
     [t, handleContentClick, handleErrorClick],
   );
+  const columnVisibility = useDataTableColumnVisibility("request-logs", logColumns);
 
   // Data state (page-based, no accumulation)
   const [rawItems, setRawItems] = useState<UsageLogItem[]>([]);
@@ -170,7 +186,7 @@ export function RequestLogsPage() {
   const [selectedStatuses, setSelectedStatuses] =
     useState<MultiSelectFilterState<StatusFilterValue>>(null);
   const [sessionIds, setSessionIds] = useState<string[]>([]);
-  const [logIds, setLogIds] = useState<number[]>([]);
+  const [logIds, setLogIds] = useState<number[]>(() => requestLogIDsFromSearchParams(searchParams));
   const [scoreMin, setScoreMin] = useState<number | null>(null);
   const [scoreMax, setScoreMax] = useState<number | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
@@ -575,6 +591,12 @@ export function RequestLogsPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <DataTableColumnVisibilityMenu
+              columns={logColumns}
+              visibleKeys={columnVisibility.visibleKeys}
+              onVisibilityChange={columnVisibility.setColumnVisible}
+              onReset={columnVisibility.reset}
+            />
             <RequestLogsTimeRangeSelector value={timeRange} onChange={setTimeRange} />
             <button
               type="button"
@@ -638,7 +660,7 @@ export function RequestLogsPage() {
           <DataTable
             tableId="request-logs"
             rows={rows}
-            columns={logColumns}
+            columns={columnVisibility.visibleColumns}
             rowKey={(row) => row.id}
             loading={loading}
             virtualize={false}
