@@ -1,4 +1,8 @@
 export { DataTable } from "./DataTable";
+export {
+  DataTableColumnVisibilityMenu,
+  useDataTableColumnVisibility,
+} from "./DataTableColumnVisibility";
 export type {
   DataTableColumn,
   DataTableColumnSort,

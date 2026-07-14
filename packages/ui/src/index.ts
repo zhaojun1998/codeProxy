@@ -6,6 +6,10 @@ export { Reveal } from "./feedback/Reveal";
 export { ToastProvider, useToast } from "./feedback/ToastProvider";
 
 export { DataTable } from "./data-table/DataTable";
+export {
+  DataTableColumnVisibilityMenu,
+  useDataTableColumnVisibility,
+} from "./data-table/DataTableColumnVisibility";
 export type {
   DataTableColumn,
   DataTableColumnSort,
