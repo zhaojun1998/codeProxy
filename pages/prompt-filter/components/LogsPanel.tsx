@@ -622,6 +622,7 @@ function LogDetailModal({
 }) {
   const { t } = useTranslation();
   const matched = log ? parseMatchedPatterns(log.matched_patterns) : [];
+  const reviewAttempts = log?.review_attempts ?? [];
 
   return (
     <Modal
@@ -701,12 +702,12 @@ function LogDetailModal({
             ) : null}
           </dl>
 
-          {log.review_attempts?.length > 0 ? (
+          {reviewAttempts.length > 0 ? (
             <div className="space-y-2">
               <p className="text-xs font-semibold text-slate-500 dark:text-white/55">
                 {t("prompt_filter.review_attempts")}
               </p>
-              {log.review_attempts.map((attempt, index) => (
+              {reviewAttempts.map((attempt, index) => (
                 <div
                   key={`${attempt.provider}-${index}`}
                   className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-neutral-800 dark:bg-neutral-900/60"
