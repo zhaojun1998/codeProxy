@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ExternalLink, Eye, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
 import {
   promptFilterApi,
@@ -63,6 +63,8 @@ export function LogsPanel() {
   const { t } = useTranslation();
   const { notify } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestLogID = Number(searchParams.get("request_log_id"));
 
   const [items, setItems] = useState<PromptFilterLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,6 +103,8 @@ export function LogsPanel() {
       const query: PromptFilterLogQuery = {
         page,
         size,
+        request_log_id:
+          Number.isSafeInteger(requestLogID) && requestLogID > 0 ? requestLogID : undefined,
         action: filters.action || undefined,
         source: filters.source.trim() || undefined,
         endpoint: filters.endpoint.trim() || undefined,
@@ -115,6 +119,7 @@ export function LogsPanel() {
       try {
         const res = await promptFilterApi.listLogs(query);
         setItems(res.items ?? []);
+        if (query.request_log_id && res.items?.[0]) setDetailLog(res.items[0]);
         setTotalCount(res.total ?? 0);
         setCurrentPage(res.page ?? page);
       } catch (err: unknown) {
@@ -136,6 +141,7 @@ export function LogsPanel() {
       scoreMax,
       reviewedFilter,
       interceptedFilter,
+      requestLogID,
       notify,
       t,
     ],

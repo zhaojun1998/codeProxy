@@ -168,6 +168,7 @@ export interface PromptFilterRulesResponse {
 export interface PromptFilterLogQuery {
   page?: number;
   size?: number;
+  request_log_id?: number;
   source?: string;
   action?: string;
   endpoint?: string;
@@ -206,6 +207,7 @@ export const promptFilterApi = {
     const params = new URLSearchParams();
     if (query.page) params.set("page", String(query.page));
     if (query.size) params.set("size", String(query.size));
+    if (query.request_log_id) params.set("request_log_id", String(query.request_log_id));
     if (query.source) params.set("source", query.source);
     if (query.action) params.set("action", query.action);
     if (query.endpoint) params.set("endpoint", query.endpoint);

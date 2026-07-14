@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import { ListChecks, ScrollText, SlidersHorizontal } from "lucide-react";
 import {
   promptFilterApi,
@@ -16,7 +17,10 @@ type PromptFilterTab = "overview" | "logs" | "rules";
 export function PromptFilterPage() {
   const { t } = useTranslation();
   const { notify } = useToast();
-  const [tab, setTab] = useState<PromptFilterTab>("overview");
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<PromptFilterTab>(() =>
+    searchParams.get("tab") === "logs" || searchParams.has("request_log_id") ? "logs" : "overview",
+  );
 
   const [config, setConfig] = useState<PromptFilterConfig | null>(null);
   const [rules, setRules] = useState<PromptFilterRulesResponse | null>(null);

@@ -587,6 +587,7 @@ export function buildRequestLogsColumns(
   t: (key: string) => string,
   onContentClick?: (logId: number, tab: "input" | "output") => void,
   onErrorClick?: (logId: number, model: string) => void,
+  onPromptFilterClick?: (logId: number) => void,
 ): RequestLogsTableColumn<RequestLogsRow>[] {
   const apiLabel = t("request_logs.auth_type_api");
   const oauthLabel = t("request_logs.auth_type_oauth");
@@ -753,7 +754,16 @@ export function buildRequestLogsColumns(
       headerClassName: CENTERED_REQUEST_LOG_HEADER_CLASS,
       cellClassName: "text-center font-mono text-xs tabular-nums text-slate-700 dark:text-white/70",
       render: (row) =>
-        row.promptFilterAction ? (
+        row.promptFilterAction && onPromptFilterClick ? (
+          <button
+            type="button"
+            onClick={() => onPromptFilterClick(Number(row.id))}
+            className="cursor-pointer rounded px-1.5 py-0.5 text-sky-600 underline decoration-sky-300/50 underline-offset-2 transition hover:bg-sky-50 dark:text-sky-400 dark:decoration-sky-500/40 dark:hover:bg-sky-950/30"
+            title={t("request_logs.col_filter_score")}
+          >
+            {row.promptFilterScore}
+          </button>
+        ) : row.promptFilterAction ? (
           <span>{row.promptFilterScore}</span>
         ) : (
           <span className="text-slate-400 dark:text-white/30">--</span>

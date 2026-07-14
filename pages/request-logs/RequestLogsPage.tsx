@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { LoaderCircle, RefreshCw, ScrollText, Trash2 } from "lucide-react";
 import { configApi, usageApi } from "@code-proxy/api-client";
 import type {
@@ -100,6 +100,7 @@ function RequestLogsRecordsCount({ count }: { count: number }) {
 export function RequestLogsPage() {
   const { t } = useTranslation();
   const { notify } = useToast();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
   // Content modal state
@@ -138,10 +139,15 @@ export function RequestLogsPage() {
     setErrorModalOpen(true);
   }, []);
 
+  const handlePromptFilterClick = useCallback(
+    (logId: number) => navigate(`/runtime/prompt-filter?tab=logs&request_log_id=${logId}`),
+    [navigate],
+  );
+
   // Build columns with content click handler
   const logColumns = useMemo(
-    () => buildRequestLogsColumns(t, handleContentClick, handleErrorClick),
-    [t, handleContentClick, handleErrorClick],
+    () => buildRequestLogsColumns(t, handleContentClick, handleErrorClick, handlePromptFilterClick),
+    [t, handleContentClick, handleErrorClick, handlePromptFilterClick],
   );
   const columnVisibility = useDataTableColumnVisibility("request-logs", logColumns);
 
