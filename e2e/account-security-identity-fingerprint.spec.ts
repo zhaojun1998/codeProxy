@@ -855,7 +855,7 @@ test("AI Accounts keeps card mode usable and redirects old identity route", asyn
     .toBeGreaterThan(shellScrollStart + 20);
 });
 
-test("AI Accounts keeps wide desktop cards stretched in a three-column grid", async ({
+test("AI Accounts cards auto-fill with max width on wide desktop", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
@@ -889,13 +889,15 @@ test("AI Accounts keeps wide desktop cards stretched in a three-column grid", as
     };
   });
 
-  expect(
-    desktopCardLayout.gridTemplateColumns.split(" ").filter(Boolean),
-  ).toHaveLength(3);
+  const columnCount = desktopCardLayout.gridTemplateColumns
+    .split(" ")
+    .filter(Boolean).length;
+  expect(columnCount).toBeGreaterThanOrEqual(3);
   expect(desktopCardLayout.justifyItems).toBe("stretch");
   expect(desktopCardLayout.cards).toHaveLength(3);
+  // 34rem @ 16px root = 544px; track max and card max-width both cap growth
   expect(
-    desktopCardLayout.cards.every((card) => card.maxWidth === "none"),
+    desktopCardLayout.cards.every((card) => card.maxWidth === "544px"),
   ).toBe(true);
   expect(desktopCardLayout.cards[1].x).toBeGreaterThan(
     desktopCardLayout.cards[0].x,
@@ -906,6 +908,18 @@ test("AI Accounts keeps wide desktop cards stretched in a three-column grid", as
   expect(
     Math.min(...desktopCardLayout.cards.map((card) => card.width)),
   ).toBeGreaterThan(320);
+  expect(
+    Math.max(...desktopCardLayout.cards.map((card) => card.width)),
+  ).toBeLessThanOrEqual(544);
+  // auto-fill may place 4+ tracks on 1920; cards themselves stay capped
+  expect(
+    desktopCardLayout.gridTemplateColumns
+      .split(" ")
+      .every((track) => {
+        const px = Number.parseFloat(track);
+        return Number.isFinite(px) && px <= 544 + 1;
+      }),
+  ).toBe(true);
 });
 
 test("AI Accounts mobile table scroll chains from the middle of the page", async ({
