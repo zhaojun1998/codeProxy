@@ -33,6 +33,7 @@ export function toStatusFilterValues(values: string[]): StatusFilterValue[] {
 export type RequestLogsRow = {
   id: string;
   sessionId: string;
+  endpoint: string;
   timestamp: string;
   timestampMs: number;
   apiKey: string;
@@ -488,6 +489,7 @@ export const toRequestLogsRow = (item: UsageLogItem): RequestLogsRow => {
   return {
     id: String(item.id),
     sessionId: String(item.session_id ?? "").trim(),
+    endpoint: String(item.endpoint ?? "").trim(),
     timestamp: item.timestamp,
     timestampMs: parseUsageTimestampMs(item.timestamp),
     apiKey: item.api_key,
@@ -634,6 +636,21 @@ export function buildRequestLogsColumns(
           <span className="block min-w-0 truncate">{formatRequestLogTimestamp(row.timestamp)}</span>
         </OverflowTooltip>
       ),
+    },
+    {
+      key: "endpoint",
+      label: t("request_logs.col_endpoint"),
+      width: "w-48",
+      headerClassName: "text-left",
+      cellClassName: "text-left font-mono text-xs text-slate-600 dark:text-white/60",
+      render: (row) =>
+        row.endpoint ? (
+          <OverflowTooltip content={row.endpoint} className="block min-w-0">
+            <span className="block min-w-0 truncate">{row.endpoint}</span>
+          </OverflowTooltip>
+        ) : (
+          <span className="text-slate-400 dark:text-white/30">--</span>
+        ),
     },
     {
       key: "channelName",

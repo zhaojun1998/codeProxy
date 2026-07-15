@@ -47,6 +47,8 @@ describe("usage logs api", () => {
         total_tokens: 0,
         total_cost: 0,
         cache_rate: 0,
+        avg_ttfb_ms: 0,
+        tokens_per_second: 0,
       },
     });
     expect(getMock).toHaveBeenCalledWith("/usage/logs?page=1&size=50");
@@ -138,5 +140,33 @@ describe("usage logs api", () => {
     expect(getMock).toHaveBeenCalledWith(
       "/usage/logs?prompt_filter_reviewed=true&prompt_filter_intercepted=false",
     );
+  });
+
+  test("serializes endpoint search", async () => {
+    const { usageApi } = await import("@code-proxy/api-client/endpoints/usage");
+    getMock.mockResolvedValue({ items: [], filters: {}, stats: {} });
+    await usageApi.getUsageLogs({ endpoint: " /v1/responses " });
+    expect(getMock).toHaveBeenCalledWith("/usage/logs?endpoint=%2Fv1%2Fresponses");
+  });
+
+  test("keeps chart latency and throughput metrics", async () => {
+    const { usageApi } = await import("@code-proxy/api-client/endpoints/usage");
+    getMock.mockResolvedValue({
+      daily_series: [],
+      latency_throughput: {
+        avg_ttfb_ms: 250,
+        min_ttfb_ms: 100,
+        max_ttfb_ms: 400,
+        tokens_per_second: 42,
+        min_tokens_per_second: 20,
+        max_tokens_per_second: 60,
+        sample_count: 2,
+      },
+    });
+    const result = await usageApi.getChartData(7);
+    expect(result.latency_throughput).toMatchObject({
+      avg_ttfb_ms: 250,
+      tokens_per_second: 42,
+    });
   });
 });

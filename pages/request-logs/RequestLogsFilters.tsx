@@ -28,12 +28,14 @@ interface RequestLogsFiltersProps {
   onChannelsClear: () => void;
   onStatusesClear: () => void;
   sessionIds: string[];
+  endpoint: string;
   logIds: number[];
   scoreMin: number | null;
   scoreMax: number | null;
   reviewedFilter: string;
   interceptedFilter: string;
   onSessionIdsChange: (value: string[]) => void;
+  onEndpointChange: (value: string) => void;
   onLogIdsChange: (value: number[]) => void;
   onScoreRangeChange: (min: number | null, max: number | null) => void;
   onReviewedFilterChange: (value: string) => void;
@@ -60,12 +62,14 @@ export function RequestLogsFilters({
   onChannelsClear,
   onStatusesClear,
   sessionIds,
+  endpoint,
   logIds,
   scoreMin,
   scoreMax,
   reviewedFilter,
   interceptedFilter,
   onSessionIdsChange,
+  onEndpointChange,
   onLogIdsChange,
   onScoreRangeChange,
   onReviewedFilterChange,
@@ -118,6 +122,11 @@ export function RequestLogsFilters({
           onModelsClear={onModelsClear}
           onChannelsClear={onChannelsClear}
           onStatusesClear={onStatusesClear}
+        />
+        <CommittedTextFilter
+          value={endpoint}
+          placeholder={t("request_logs.filter_endpoint")}
+          onCommit={(text) => onEndpointChange(text.trim())}
         />
         <CommittedTextFilter
           value={sessionIds.join(", ")}

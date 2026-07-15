@@ -1,4 +1,6 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import i18n from "@code-proxy/i18n";
@@ -6,6 +8,8 @@ import { RequestLogsPage } from "@pages/request-logs/RequestLogsPage";
 import { ThemeProvider } from "@code-proxy/ui";
 import { ToastProvider } from "@code-proxy/ui";
 import type { UsageLogItem } from "@code-proxy/api-client/endpoints/usage";
+
+const render = (ui: ReactNode) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
 
 function deferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -240,7 +244,9 @@ describe("RequestLogsPage", () => {
       </ThemeProvider>,
     );
 
-    const table = await screen.findByRole("table", { name: "Request Logs Table" });
+    const table = await screen.findByRole("table", {
+      name: "Request Logs Table",
+    });
     expect(
       within(table).getByRole("columnheader", { name: "Response Metrics" }),
     ).toBeInTheDocument();
@@ -280,7 +286,9 @@ describe("RequestLogsPage", () => {
       </ThemeProvider>,
     );
 
-    const table = await screen.findByRole("table", { name: "Request Logs Table" });
+    const table = await screen.findByRole("table", {
+      name: "Request Logs Table",
+    });
     expect(within(table).getByText("asherandersenloqv@outlook.com")).toBeInTheDocument();
     expect(within(table).getByText("Relay")).toBeInTheDocument();
     expect(within(table).getAllByText("OAuth").length).toBeGreaterThanOrEqual(1);
@@ -340,7 +348,9 @@ describe("RequestLogsPage", () => {
       </ThemeProvider>,
     );
 
-    const table = await screen.findByRole("table", { name: "Request Logs Table" });
+    const table = await screen.findByRole("table", {
+      name: "Request Logs Table",
+    });
     expect(within(table).getByText("cline-pass/deepseek-v4-pro")).toBeInTheDocument();
     expect(within(table).getByText("alias-model")).toBeInTheDocument();
 
@@ -585,6 +595,17 @@ describe("RequestLogsPage", () => {
     );
 
     await waitFor(() => expect(mocks.getUsageLogs).toHaveBeenCalledTimes(1));
+
+    const endpointInput = screen.getByRole("textbox", {
+      name: "Search endpoint",
+    });
+    await user.type(endpointInput, "/v1/responses{Enter}");
+    await waitFor(() =>
+      expect(mocks.getUsageLogs).toHaveBeenLastCalledWith(
+        expect.objectContaining({ endpoint: "/v1/responses" }),
+        expectSignalOptions(),
+      ),
+    );
 
     const sessionInput = screen.getByRole("textbox", { name: "Session IDs" });
     await user.type(sessionInput, "session-a, session-b session-a{Enter}");
@@ -1070,7 +1091,10 @@ describe("RequestLogsPage", () => {
   test("keeps the clear dialog open until cleanup and refresh both finish", async () => {
     await i18n.changeLanguage("en");
     const user = userEvent.setup();
-    const cleanup = deferred<{ deleted_logs: number; deleted_contents: number }>();
+    const cleanup = deferred<{
+      deleted_logs: number;
+      deleted_contents: number;
+    }>();
     const refresh = deferred<typeof emptyLogsResponse>();
 
     mocks.getUsageLogs

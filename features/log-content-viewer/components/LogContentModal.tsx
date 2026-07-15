@@ -15,6 +15,7 @@ import {
   FileInput,
   FileOutput,
   Info,
+  Images,
   Loader2,
   Search,
   UserRound,
@@ -395,7 +396,10 @@ function filterDetailAttempts(
     );
 }
 
-function countDetailMatches(attempts: RequestDetailAttempt[], searchTerm: string) {
+function countDetailMatches(
+  attempts: RequestDetailAttempt[],
+  searchTerm: string,
+) {
   if (!searchTerm) return 0;
   return attempts.reduce(
     (total, attempt) =>
@@ -786,8 +790,11 @@ export function LogContentModal({
     [t],
   );
   const detailsOnly = showRequestDetails && !showBodyContent;
-  const resolvedInitialTab: LogContentPart = detailsOnly ? "details" : initialTab;
-  const [activeTab, setActiveTab] = useState<LogContentPart>(resolvedInitialTab);
+  const resolvedInitialTab: LogContentPart = detailsOnly
+    ? "details"
+    : initialTab;
+  const [activeTab, setActiveTab] =
+    useState<LogContentPart>(resolvedInitialTab);
   const [viewMode, setViewMode] = useState<"rendered" | "raw">("rendered");
   const [userMessagesOnly, setUserMessagesOnly] = useState(false);
   const [inputParsed, setInputParsed] = useState<AsyncParsedState>({
@@ -808,7 +815,9 @@ export function LogContentModal({
     images: PreviewLogImage[];
     index: number;
   } | null>(null);
-  const [highlightedMessageIndex, setHighlightedMessageIndex] = useState<number | null>(null);
+  const [highlightedMessageIndex, setHighlightedMessageIndex] = useState<
+    number | null
+  >(null);
   const [detailSearch, setDetailSearch] = useState("");
   const [egressInfo, setEgressInfo] = useState<UsageLogEgressResponse | null>(
     null,
@@ -1155,7 +1164,8 @@ export function LogContentModal({
       const images = collectPreviewImages(messages);
       const index = images.findIndex(
         (image) =>
-          image.messageIndex === messageIndex && image.imageIndex === imageIndex,
+          image.messageIndex === messageIndex &&
+          image.imageIndex === imageIndex,
       );
       if (images.length > 0) {
         setMessageImagePreview({ images, index: Math.max(index, 0) });
@@ -1163,9 +1173,14 @@ export function LogContentModal({
     },
     [collectPreviewImages],
   );
+  const sessionImages = useMemo(
+    () => collectPreviewImages(inputMessages),
+    [collectPreviewImages, inputMessages],
+  );
   const locateMessageImage = useCallback(
     (previewIndex: number) => {
-      const messageIndex = messageImagePreview?.images[previewIndex]?.messageIndex;
+      const messageIndex =
+        messageImagePreview?.images[previewIndex]?.messageIndex;
       if (messageIndex === undefined) return;
       setMessageImagePreview(null);
       setInputRevealCount(inputMessages.length);
@@ -1280,7 +1295,9 @@ export function LogContentModal({
             </TabsList>
           </Tabs>
         )}
-        {enableUserMessageFilter && activeTab === "input" && viewMode === "rendered" ? (
+        {enableUserMessageFilter &&
+        activeTab === "input" &&
+        viewMode === "rendered" ? (
           <button
             type="button"
             onClick={() => setUserMessagesOnly((current) => !current)}
@@ -1294,6 +1311,26 @@ export function LogContentModal({
           >
             <UserRound size={14} />
             {t("log_content.user_messages_only")}
+          </button>
+        ) : null}
+        {enableUserMessageFilter &&
+        activeTab === "input" &&
+        viewMode === "rendered" &&
+        sessionImages.length > 0 ? (
+          <button
+            type="button"
+            onClick={() =>
+              setMessageImagePreview({ images: sessionImages, index: 0 })
+            }
+            title={t("log_content.view_session_images", {
+              count: sessionImages.length,
+            })}
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-sky-600 transition-colors hover:bg-sky-50 hover:text-sky-700 dark:text-sky-300 dark:hover:bg-sky-500/10"
+          >
+            <Images size={14} />
+            {t("log_content.view_session_images", {
+              count: sessionImages.length,
+            })}
           </button>
         ) : null}
         <button
@@ -1338,7 +1375,9 @@ export function LogContentModal({
     const view = inputParsed.view;
     if (view.kind === "messages") {
       const filteredMessages = userMessagesOnly
-        ? inputMessages.filter((message) => message.role.trim().toLowerCase() === "user")
+        ? inputMessages.filter(
+            (message) => message.role.trim().toLowerCase() === "user",
+          )
         : inputMessages;
       if (userMessagesOnly && filteredMessages.length === 0) {
         return (
@@ -1492,9 +1531,18 @@ export function LogContentModal({
 
     const details = parseRequestDetails(detailsContent);
     if (!details) return renderRaw(detailsContent);
-    const clientAttempt = buildClientAttempt(details.client, requestDetailLabels);
-    const upstreamAttempts = buildUpstreamAttempts(details.upstream, requestDetailLabels);
-    const responseAttempts = buildResponseAttempts(details.response, requestDetailLabels);
+    const clientAttempt = buildClientAttempt(
+      details.client,
+      requestDetailLabels,
+    );
+    const upstreamAttempts = buildUpstreamAttempts(
+      details.upstream,
+      requestDetailLabels,
+    );
+    const responseAttempts = buildResponseAttempts(
+      details.response,
+      requestDetailLabels,
+    );
     const extraSections = buildExtraDetailSections(details);
     const egressRows: RequestDetailRow[] = [];
     const egressBadges: ReactNode[] = [];
@@ -1626,14 +1674,19 @@ export function LogContentModal({
 
     const searchTerm = normalizeSearchTerm(detailSearch);
     const sections = [
-      { key: "egress", attempts: egressRows.length > 0 ? [{ rows: egressRows, groups: [] }] : [] },
+      {
+        key: "egress",
+        attempts:
+          egressRows.length > 0 ? [{ rows: egressRows, groups: [] }] : [],
+      },
       { key: "client", attempts: [clientAttempt] },
       { key: "upstream", attempts: upstreamAttempts },
       { key: "response", attempts: responseAttempts },
       ...extraSections,
     ];
     const matchCount = sections.reduce(
-      (total, section) => total + countDetailMatches(section.attempts, searchTerm),
+      (total, section) =>
+        total + countDetailMatches(section.attempts, searchTerm),
       0,
     );
 

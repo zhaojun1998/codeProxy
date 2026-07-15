@@ -261,6 +261,7 @@ export const usageApi = {
       hourly_tokens: Array.isArray(resp?.hourly_tokens) ? resp.hourly_tokens : [],
       hourly_models: Array.isArray(resp?.hourly_models) ? resp.hourly_models : [],
       apikey_distribution: Array.isArray(resp?.apikey_distribution) ? resp.apikey_distribution : [],
+      latency_throughput: resp?.latency_throughput,
     };
   },
 
@@ -367,6 +368,7 @@ export const usageApi = {
       score_max?: number;
       prompt_filter_reviewed?: boolean;
       prompt_filter_intercepted?: boolean;
+      endpoint?: string;
       api_keys_empty?: boolean;
       models_empty?: boolean;
       channels_empty?: boolean;
@@ -398,6 +400,7 @@ export const usageApi = {
       qs.set("prompt_filter_reviewed", String(params.prompt_filter_reviewed));
     if (typeof params.prompt_filter_intercepted === "boolean")
       qs.set("prompt_filter_intercepted", String(params.prompt_filter_intercepted));
+    if (params.endpoint?.trim()) qs.set("endpoint", params.endpoint.trim());
     if (params.api_keys_empty) qs.set("api_keys_empty", "1");
     if (params.models_empty) qs.set("models_empty", "1");
     if (params.channels_empty) qs.set("channels_empty", "1");
@@ -432,6 +435,8 @@ export const usageApi = {
         total_tokens: resp?.stats?.total_tokens ?? 0,
         total_cost: resp?.stats?.total_cost ?? 0,
         cache_rate: resp?.stats?.cache_rate ?? 0,
+        avg_ttfb_ms: resp?.stats?.avg_ttfb_ms ?? 0,
+        tokens_per_second: resp?.stats?.tokens_per_second ?? 0,
       },
     };
   },
@@ -583,6 +588,7 @@ export interface UsageChannelFilterOption {
 export interface UsageLogItem {
   id: number;
   session_id?: string;
+  endpoint?: string;
   timestamp: string;
   api_key: string;
   api_key_name: string;
@@ -629,6 +635,8 @@ export interface UsageLogsResponse {
     total_tokens: number;
     total_cost: number;
     cache_rate: number;
+    avg_ttfb_ms: number;
+    tokens_per_second: number;
   };
 }
 

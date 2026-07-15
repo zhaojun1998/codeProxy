@@ -1,6 +1,7 @@
 export interface PublicLogItem {
   id: number;
   session_id?: string;
+  endpoint?: string;
   timestamp: string;
   api_key?: string;
   api_key_name?: string;

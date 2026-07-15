@@ -233,6 +233,7 @@ function toLogRow(item: PublicLogItem): RequestLogsRow {
   return {
     id: String(item.id),
     sessionId: String(item.session_id ?? "").trim(),
+    endpoint: String(item.endpoint ?? "").trim(),
     timestamp: item.timestamp,
     timestampMs: new Date(item.timestamp).getTime(),
     apiKey: item.api_key || "",

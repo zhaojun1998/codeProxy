@@ -51,6 +51,8 @@ const DEFAULT_LOG_STATS = {
   total_tokens: 0,
   total_cost: 0,
   cache_rate: 0,
+  avg_ttfb_ms: 0,
+  tokens_per_second: 0,
 };
 const DEFAULT_CLEAR_OPTIONS: ClearUsageLogsPayload = {
   clear_body_content: true,
@@ -182,6 +184,8 @@ export function RequestLogsPage() {
     total_tokens: number;
     total_cost: number;
     cache_rate: number;
+    avg_ttfb_ms: number;
+    tokens_per_second: number;
   }>(DEFAULT_LOG_STATS);
 
   // Multi-value filters
@@ -192,6 +196,7 @@ export function RequestLogsPage() {
   const [selectedStatuses, setSelectedStatuses] =
     useState<MultiSelectFilterState<StatusFilterValue>>(null);
   const [sessionIds, setSessionIds] = useState<string[]>([]);
+  const [endpoint, setEndpoint] = useState("");
   const [logIds, setLogIds] = useState<number[]>(() => requestLogIDsFromSearchParams(searchParams));
   const [scoreMin, setScoreMin] = useState<number | null>(null);
   const [scoreMax, setScoreMax] = useState<number | null>(null);
@@ -312,6 +317,7 @@ export function RequestLogsPage() {
     hasActiveFilterSelection(selectedChannels, channelFilterValues) ||
     hasActiveFilterSelection(selectedStatuses, statusFilterValues) ||
     sessionIds.length > 0 ||
+    endpoint !== "" ||
     logIds.length > 0 ||
     scoreMin !== null ||
     scoreMax !== null ||
@@ -352,6 +358,7 @@ export function RequestLogsPage() {
     setSelectedChannels(null);
     setSelectedStatuses(null);
     setSessionIds([]);
+    setEndpoint("");
     setLogIds([]);
     setScoreMin(null);
     setScoreMax(null);
@@ -400,6 +407,7 @@ export function RequestLogsPage() {
             channels: channelFilterParam.values,
             statuses: statusFilterParam.values,
             session_ids: sessionIds,
+            endpoint,
             log_ids: logIds,
             score_min: scoreMin ?? undefined,
             score_max: scoreMax ?? undefined,
@@ -451,6 +459,7 @@ export function RequestLogsPage() {
       reviewedFilter,
       interceptedFilter,
       sessionIds,
+      endpoint,
       statusFilterParam,
       t,
       timeRange,
@@ -492,6 +501,7 @@ export function RequestLogsPage() {
     selectedChannels,
     selectedStatuses,
     sessionIds,
+    endpoint,
     logIds,
     scoreMin,
     scoreMax,
@@ -581,6 +591,24 @@ export function RequestLogsPage() {
               <RequestLogsRecordsCount count={stats.total} />
               <span className="text-slate-300 dark:text-white/15">|</span>
               <span>
+                {t("request_logs.avg_ttfb")}{" "}
+                <span className="font-mono tabular-nums text-sky-700 dark:text-sky-300">
+                  {stats.avg_ttfb_ms > 0
+                    ? `${formatUsageMetricNumber(stats.avg_ttfb_ms)} ms`
+                    : "--"}
+                </span>
+              </span>
+              <span className="text-slate-300 dark:text-white/15">|</span>
+              <span>
+                {t("request_logs.avg_tokens_per_second")}{" "}
+                <span className="font-mono tabular-nums text-violet-700 dark:text-violet-300">
+                  {stats.tokens_per_second > 0
+                    ? `${formatUsageMetricNumber(stats.tokens_per_second)} t/s`
+                    : "--"}
+                </span>
+              </span>
+              <span className="text-slate-300 dark:text-white/15">|</span>
+              <span>
                 {t("common.success_rate")}{" "}
                 <span className="font-mono tabular-nums text-slate-900 dark:text-white">
                   {stats.success_rate.toFixed(1)}%
@@ -664,12 +692,14 @@ export function RequestLogsPage() {
           onChannelsClear={clearChannelFilter}
           onStatusesClear={clearStatusFilter}
           sessionIds={sessionIds}
+          endpoint={endpoint}
           logIds={logIds}
           scoreMin={scoreMin}
           scoreMax={scoreMax}
           reviewedFilter={reviewedFilter}
           interceptedFilter={interceptedFilter}
           onSessionIdsChange={setSessionIds}
+          onEndpointChange={setEndpoint}
           onLogIdsChange={setLogIds}
           onScoreRangeChange={handleScoreRangeChange}
           onReviewedFilterChange={setReviewedFilter}

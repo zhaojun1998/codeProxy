@@ -2948,6 +2948,7 @@
     "filter_channel": "按渠道过滤",
     "filter_status": "按状态过滤",
     "filter_session_ids": "会话 ID（可批量）",
+    "filter_endpoint": "搜索请求端点",
     "filter_log_ids": "日志 ID（可批量）",
     "filter_score": "过滤得分",
     "score_min": "最低",
@@ -2965,6 +2966,7 @@
     "system_call": "系统调用",
     "col_id": "ID",
     "col_session_id": "会话 ID",
+    "col_endpoint": "请求端点",
     "col_time": "时间",
     "col_key_name": "密钥名称",
     "col_model": "模型",
@@ -2980,6 +2982,8 @@
     "mode_non_streaming": "非流式",
     "first_token_not_applicable": "非流式不适用",
     "tokens_per_second": "每秒 Token",
+    "avg_ttfb": "平均首 Token",
+    "avg_tokens_per_second": "平均每秒 Token",
     "col_filter_score": "过滤得分",
     "col_input": "输入",
     "col_cache_read": "缓存命中",
@@ -4163,6 +4167,7 @@
     "role_tool_use": "工具调用",
     "role_message": "消息",
     "user_messages_only": "仅用户消息",
+    "view_session_images": "查看图片（共 {{count}} 张）",
     "no_user_messages": "没有用户消息"
   },
   "error_detail": {

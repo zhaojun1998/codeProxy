@@ -16,12 +16,8 @@ describe("LogContentModal", () => {
   });
 
   test("uses fixed viewport-safe dimensions while preserving enter and exit animation", () => {
-    const renderingSource = readModule(
-      "features/log-content-viewer/log-content/rendering.tsx",
-    );
-    const modalSource = readModule(
-      "features/log-content-viewer/components/LogContentModal.tsx",
-    );
+    const renderingSource = readModule("features/log-content-viewer/log-content/rendering.tsx");
+    const modalSource = readModule("features/log-content-viewer/components/LogContentModal.tsx");
 
     expect(renderingSource).toContain("AnimatePresence");
     expect(renderingSource).toContain('exit="hidden"');
@@ -33,9 +29,7 @@ describe("LogContentModal", () => {
     expect(modalSource).toContain('filter: "blur(3px)"');
     expect(modalSource).not.toContain("y: 10");
     expect(modalSource).toContain("relative min-h-0 flex-1");
-    expect(modalSource).toContain(
-      "absolute inset-0 overflow-y-auto overscroll-contain",
-    );
+    expect(modalSource).toContain("absolute inset-0 overflow-y-auto overscroll-contain");
     expect(modalSource).toContain("min-h-0 flex-1 items-center justify-center");
     expect(modalSource).toContain("exit={{ opacity: 0");
   });
@@ -79,9 +73,7 @@ describe("LogContentModal", () => {
   });
 
   test("protects large request detail content from fast-scroll blanking", () => {
-    const renderingSource = readModule(
-      "features/log-content-viewer/log-content/rendering.tsx",
-    );
+    const renderingSource = readModule("features/log-content-viewer/log-content/rendering.tsx");
 
     expect(renderingSource).toContain("VIRTUAL_MESSAGE_CONTENT_THRESHOLD");
     expect(renderingSource).toContain("shouldVirtualizeMessages");
@@ -280,8 +272,7 @@ describe("LogContentModal", () => {
           id: 1,
           model: "gpt-image-2",
           part,
-          content:
-            '{"model":"gpt-image-2","prompt":"画一只狐狸","size":"1024x1536"}',
+          content: '{"model":"gpt-image-2","prompt":"画一只狐狸","size":"1024x1536"}',
         };
       }
       return {
@@ -333,12 +324,8 @@ describe("LogContentModal", () => {
       screen.getByTitle("原始数据").click();
     });
     expect(
-      Array.from(document.body.querySelectorAll("pre")).map(
-        (pre) => pre.textContent,
-      ),
-    ).toContain(
-      '{"model":"gpt-image-2","prompt":"画一只狐狸","size":"1024x1536"}',
-    );
+      Array.from(document.body.querySelectorAll("pre")).map((pre) => pre.textContent),
+    ).toContain('{"model":"gpt-image-2","prompt":"画一只狐狸","size":"1024x1536"}');
   });
 
   test("renders gpt-image-2 output as an image-only rendered view with reusable preview controls", async () => {
@@ -358,8 +345,7 @@ describe("LogContentModal", () => {
         id: 1,
         model: "gpt-image-2",
         part,
-        content:
-          '{"created":1776910933,"data":[{"b64_json":"aGVsbG8="},{"b64_json":"d29ybGQ="}]}',
+        content: '{"created":1776910933,"data":[{"b64_json":"aGVsbG8="},{"b64_json":"d29ybGQ="}]}',
       };
     });
 
@@ -405,19 +391,14 @@ describe("LogContentModal", () => {
     const preview = screen.getByRole("dialog", { name: /输出 · gpt-image-2/ });
     expect(preview).toHaveAttribute("data-variant", "image-only");
     expect(screen.getByRole("button", { name: "放大" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "向左旋转" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "向左旋转" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "下载" })).toHaveAttribute(
       "download",
       "gpt-image-2-output-2.png",
     );
 
     const previewImage = within(preview).getByRole("img", { name: "输出" });
-    expect(previewImage).toHaveAttribute(
-      "src",
-      "data:image/png;base64,d29ybGQ=",
-    );
+    expect(previewImage).toHaveAttribute("src", "data:image/png;base64,d29ybGQ=");
     const rotateRight = screen.getByRole("button", { name: "向右旋转" });
     await act(async () => {
       rotateRight.click();
@@ -475,6 +456,7 @@ describe("LogContentModal", () => {
           initialTab="input"
           onClose={() => {}}
           fetchPartFn={fetchPartFn}
+          enableUserMessageFilter
         />
       </ThemeProvider>,
     );
@@ -501,8 +483,12 @@ describe("LogContentModal", () => {
     });
     expect(thumbnail).toHaveAttribute("src", "data:image/png;base64,aGVsbG8=");
 
+    const viewImagesButton = screen.getByRole("button", {
+      name: "View images (1)",
+    });
+    expect(viewImagesButton).toBeInTheDocument();
     await act(async () => {
-      thumbnail.click();
+      viewImagesButton.click();
     });
     const preview = screen.getByRole("dialog", { name: "Input" });
     expect(within(preview).getByRole("img", { name: "Input" })).toHaveAttribute(
@@ -792,9 +778,7 @@ describe("LogContentModal", () => {
     expect(screen.getByText("上游响应")).toBeInTheDocument();
     expect(screen.getByText("203.0.113.8")).toBeInTheDocument();
     expect(screen.getByText("Bearer sk-client-plaintext")).toBeInTheDocument();
-    expect(
-      screen.getByText("Bearer sk-upstream-plaintext"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Bearer sk-upstream-plaintext")).toBeInTheDocument();
     expect(screen.getByText("session-plaintext")).toBeInTheDocument();
     expect(screen.getByText("req-plaintext")).toBeInTheDocument();
   });
@@ -803,14 +787,12 @@ describe("LogContentModal", () => {
     vi.useFakeTimers();
     await i18n.changeLanguage("zh-CN");
 
-    const fetchPartFn = vi.fn(
-      async (_id: number, part: "input" | "output") => ({
-        id: 1,
-        model: "gpt-test",
-        part,
-        content: "{}",
-      }),
-    );
+    const fetchPartFn = vi.fn(async (_id: number, part: "input" | "output") => ({
+      id: 1,
+      model: "gpt-test",
+      part,
+      content: "{}",
+    }));
     const fetchDetailsFn = vi.fn(async (_id: number) => ({
       id: 1,
       model: "gpt-test",
@@ -866,12 +848,8 @@ describe("LogContentModal", () => {
     });
 
     const clientSection = screen.getByTestId("request-detail-section-client");
-    const upstreamSection = screen.getByTestId(
-      "request-detail-section-upstream",
-    );
-    const responseSection = screen.getByTestId(
-      "request-detail-section-response",
-    );
+    const upstreamSection = screen.getByTestId("request-detail-section-upstream");
+    const responseSection = screen.getByTestId("request-detail-section-response");
     const upstreamToggle = within(upstreamSection).getByRole("button", {
       name: /传给上游/,
     });
@@ -883,15 +861,9 @@ describe("LogContentModal", () => {
     expect(responseSection).toHaveClass("overflow-hidden");
     expect(upstreamToggle).toHaveAttribute("aria-expanded", "true");
     expect(upstreamSection.innerHTML).toContain("height");
-    expect(
-      within(clientSection).getByText("Authorization"),
-    ).toBeInTheDocument();
-    expect(
-      within(upstreamSection).getByText("fingerprint"),
-    ).toBeInTheDocument();
-    expect(
-      within(responseSection).getByText("X-Request-Id"),
-    ).toBeInTheDocument();
+    expect(within(clientSection).getByText("Authorization")).toBeInTheDocument();
+    expect(within(upstreamSection).getByText("fingerprint")).toBeInTheDocument();
+    expect(within(responseSection).getByText("X-Request-Id")).toBeInTheDocument();
 
     await act(async () => {
       upstreamToggle.click();
@@ -903,14 +875,12 @@ describe("LogContentModal", () => {
     vi.useFakeTimers();
     await i18n.changeLanguage("zh-CN");
 
-    const fetchPartFn = vi.fn(
-      async (_id: number, part: "input" | "output") => ({
-        id: 1,
-        model: "gpt-test",
-        part,
-        content: "{}",
-      }),
-    );
+    const fetchPartFn = vi.fn(async (_id: number, part: "input" | "output") => ({
+      id: 1,
+      model: "gpt-test",
+      part,
+      content: "{}",
+    }));
     const fetchDetailsFn = vi.fn(async (_id: number) => ({
       id: 1,
       model: "gpt-test",
@@ -991,13 +961,9 @@ describe("LogContentModal", () => {
       await vi.runOnlyPendingTimersAsync();
     });
 
+    expect(screen.getByText("https://chatgpt.com/backend-api/codex/responses")).toBeInTheDocument();
     expect(
-      screen.getByText("https://chatgpt.com/backend-api/codex/responses"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "provider=codex, auth_id=codex-plus.json, label=GptPlus7, type=oauth",
-      ),
+      screen.getByText("provider=codex, auth_id=codex-plus.json, label=GptPlus7, type=oauth"),
     ).toBeInTheDocument();
     expect(screen.getByText("Accept")).toBeInTheDocument();
     expect(screen.getAllByText("text/event-stream").length).toBeGreaterThan(0);

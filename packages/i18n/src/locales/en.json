@@ -2651,6 +2651,7 @@
     "filter_channel": "Filter by channel",
     "filter_status": "Filter by status",
     "filter_session_ids": "Session IDs",
+    "filter_endpoint": "Search endpoint",
     "filter_log_ids": "Log IDs",
     "filter_score": "Filter score",
     "score_min": "Min",
@@ -2668,6 +2669,7 @@
     "system_call": "System Call",
     "col_id": "ID",
     "col_session_id": "Session ID",
+    "col_endpoint": "Endpoint",
     "col_time": "Time",
     "col_key_name": "Key Name",
     "col_model": "Model",
@@ -2683,6 +2685,8 @@
     "mode_non_streaming": "Non-streaming",
     "first_token_not_applicable": "Not applicable for non-streaming",
     "tokens_per_second": "Tokens/s",
+    "avg_ttfb": "Avg First Token",
+    "avg_tokens_per_second": "Avg Tokens/s",
     "col_filter_score": "Filter Score",
     "col_input": "Input",
     "col_cache_read": "Cache Read",
@@ -3979,6 +3983,7 @@
     "role_tool_use": "Tool use",
     "role_message": "Message",
     "user_messages_only": "User messages only",
+    "view_session_images": "View images ({{count}})",
     "no_user_messages": "No user messages"
   },
   "error_detail": {
