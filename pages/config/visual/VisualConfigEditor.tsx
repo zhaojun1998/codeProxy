@@ -449,6 +449,256 @@ export function VisualConfigEditor({
         </Card>
       </div>
 
+      <Card
+        title={t("visual_config.request_log_archive")}
+        description={t("visual_config.request_log_archive_desc")}
+      >
+        <div className="space-y-5">
+          <div className="grid gap-4 lg:grid-cols-3">
+            <ToggleSwitch
+              label={t("visual_config.request_body_storage")}
+              description="request-log-storage.store-content"
+              checked={values.requestLogStorage.storeContent}
+              onCheckedChange={(next) =>
+                update({
+                  requestLogStorage: { ...values.requestLogStorage, storeContent: next },
+                })
+              }
+              disabled={disabled}
+            />
+            <ToggleSwitch
+              label={t("visual_config.archive_enabled")}
+              description="request-log-storage.archive.enabled"
+              checked={values.requestLogStorage.archive.enabled}
+              onCheckedChange={(next) =>
+                update({
+                  requestLogStorage: {
+                    ...values.requestLogStorage,
+                    archive: { ...values.requestLogStorage.archive, enabled: next },
+                  },
+                })
+              }
+              disabled={disabled}
+            />
+            <ToggleSwitch
+              label={t("visual_config.vacuum_on_cleanup")}
+              description="request-log-storage.vacuum-on-cleanup"
+              checked={values.requestLogStorage.vacuumOnCleanup}
+              onCheckedChange={(next) =>
+                update({
+                  requestLogStorage: { ...values.requestLogStorage, vacuumOnCleanup: next },
+                })
+              }
+              disabled={disabled}
+            />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Field label="content-retention-days" hint={t("visual_config.hot_retention_days_hint")}>
+              <TextInput
+                value={values.requestLogStorage.contentRetentionDays}
+                onChange={(e) =>
+                  update({
+                    requestLogStorage: {
+                      ...values.requestLogStorage,
+                      contentRetentionDays: e.currentTarget.value,
+                    },
+                  })
+                }
+                inputMode="numeric"
+                disabled={disabled}
+              />
+            </Field>
+            <Field label="cleanup-interval-minutes" hint={t("visual_config.archive_interval_hint")}>
+              <TextInput
+                value={values.requestLogStorage.cleanupIntervalMinutes}
+                onChange={(e) =>
+                  update({
+                    requestLogStorage: {
+                      ...values.requestLogStorage,
+                      cleanupIntervalMinutes: e.currentTarget.value,
+                    },
+                  })
+                }
+                inputMode="numeric"
+                disabled={disabled}
+              />
+            </Field>
+            <Field label="max-total-size-mb" hint={t("visual_config.hot_size_hint")}>
+              <TextInput
+                value={values.requestLogStorage.maxTotalSizeMb}
+                onChange={(e) =>
+                  update({
+                    requestLogStorage: {
+                      ...values.requestLogStorage,
+                      maxTotalSizeMb: e.currentTarget.value,
+                    },
+                  })
+                }
+                inputMode="numeric"
+                disabled={disabled}
+              />
+            </Field>
+            <Field label="max-total-rows" hint={t("visual_config.hot_rows_hint")}>
+              <TextInput
+                value={values.requestLogStorage.archive.maxTotalRows}
+                onChange={(e) =>
+                  update({
+                    requestLogStorage: {
+                      ...values.requestLogStorage,
+                      archive: {
+                        ...values.requestLogStorage.archive,
+                        maxTotalRows: e.currentTarget.value,
+                      },
+                    },
+                  })
+                }
+                inputMode="numeric"
+                disabled={disabled || !values.requestLogStorage.archive.enabled}
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Field label="archive.directory" hint={t("visual_config.archive_directory_hint")}>
+              <TextInput
+                value={values.requestLogStorage.archive.directory}
+                onChange={(e) =>
+                  update({
+                    requestLogStorage: {
+                      ...values.requestLogStorage,
+                      archive: {
+                        ...values.requestLogStorage.archive,
+                        directory: e.currentTarget.value,
+                      },
+                    },
+                  })
+                }
+                disabled={disabled || !values.requestLogStorage.archive.enabled}
+              />
+            </Field>
+            <Field
+              label="session-active-window-minutes"
+              hint={t("visual_config.active_session_window_hint")}
+            >
+              <TextInput
+                value={values.requestLogStorage.archive.sessionActiveWindowMinutes}
+                onChange={(e) =>
+                  update({
+                    requestLogStorage: {
+                      ...values.requestLogStorage,
+                      archive: {
+                        ...values.requestLogStorage.archive,
+                        sessionActiveWindowMinutes: e.currentTarget.value,
+                      },
+                    },
+                  })
+                }
+                inputMode="numeric"
+                disabled={disabled || !values.requestLogStorage.archive.enabled}
+              />
+            </Field>
+            <Field label="low-watermark-ratio" hint={t("visual_config.low_watermark_hint")}>
+              <TextInput
+                value={values.requestLogStorage.archive.lowWatermarkRatio}
+                onChange={(e) =>
+                  update({
+                    requestLogStorage: {
+                      ...values.requestLogStorage,
+                      archive: {
+                        ...values.requestLogStorage.archive,
+                        lowWatermarkRatio: e.currentTarget.value,
+                      },
+                    },
+                  })
+                }
+                inputMode="decimal"
+                disabled={disabled || !values.requestLogStorage.archive.enabled}
+              />
+            </Field>
+            <Field label="retry-interval-minutes" hint={t("visual_config.archive_retry_hint")}>
+              <TextInput
+                value={values.requestLogStorage.archive.retryIntervalMinutes}
+                onChange={(e) =>
+                  update({
+                    requestLogStorage: {
+                      ...values.requestLogStorage,
+                      archive: {
+                        ...values.requestLogStorage.archive,
+                        retryIntervalMinutes: e.currentTarget.value,
+                      },
+                    },
+                  })
+                }
+                inputMode="numeric"
+                disabled={disabled || !values.requestLogStorage.archive.enabled}
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <Field label="pack-max-size-mb" hint={t("visual_config.pack_size_hint")}>
+              <TextInput
+                value={values.requestLogStorage.archive.packMaxSizeMb}
+                onChange={(e) =>
+                  update({
+                    requestLogStorage: {
+                      ...values.requestLogStorage,
+                      archive: {
+                        ...values.requestLogStorage.archive,
+                        packMaxSizeMb: e.currentTarget.value,
+                      },
+                    },
+                  })
+                }
+                inputMode="numeric"
+                disabled={disabled || !values.requestLogStorage.archive.enabled}
+              />
+            </Field>
+            <Field label="pack-max-rows" hint={t("visual_config.pack_rows_hint")}>
+              <TextInput
+                value={values.requestLogStorage.archive.packMaxRows}
+                onChange={(e) =>
+                  update({
+                    requestLogStorage: {
+                      ...values.requestLogStorage,
+                      archive: {
+                        ...values.requestLogStorage.archive,
+                        packMaxRows: e.currentTarget.value,
+                      },
+                    },
+                  })
+                }
+                inputMode="numeric"
+                disabled={disabled || !values.requestLogStorage.archive.enabled}
+              />
+            </Field>
+            <Field
+              label="excluded-api-key-ids"
+              hint={t("visual_config.archive_excluded_keys_hint")}
+            >
+              <MultilineField
+                value={values.requestLogStorage.archive.excludedApiKeyIdsText}
+                onChange={(next) =>
+                  update({
+                    requestLogStorage: {
+                      ...values.requestLogStorage,
+                      archive: {
+                        ...values.requestLogStorage.archive,
+                        excludedApiKeyIdsText: next,
+                      },
+                    },
+                  })
+                }
+                ariaLabel={t("visual_config.archive_excluded_keys")}
+                placeholder="api-key-id-admin"
+                disabled={disabled || !values.requestLogStorage.archive.enabled}
+              />
+            </Field>
+          </div>
+        </div>
+      </Card>
+
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title={t("visual_config.streaming")} description={t("visual_config.streaming_desc")}>
           <div className="space-y-4">

@@ -144,6 +144,21 @@ function setIntFromString(obj: Record<string, unknown>, key: string, value: unkn
   if (hasOwn(obj, key)) delete obj[key];
 }
 
+function setFloatFromString(obj: Record<string, unknown>, key: string, value: unknown): void {
+  const safe = typeof value === "string" ? value : "";
+  const trimmed = safe.trim();
+  if (trimmed === "") {
+    if (hasOwn(obj, key)) delete obj[key];
+    return;
+  }
+  const parsed = Number.parseFloat(trimmed);
+  if (Number.isFinite(parsed)) {
+    obj[key] = parsed;
+    return;
+  }
+  if (hasOwn(obj, key)) delete obj[key];
+}
+
 function normalizeAutoUpdateChannel(value: unknown): "main" | "dev" {
   return typeof value === "string" && value.trim().toLowerCase() === "dev" ? "dev" : "main";
 }
@@ -516,6 +531,8 @@ export function useVisualConfig() {
         const payload = hasPayloadRuleSections(runtimePayload) ? runtimePayload : yamlPayload;
         const streaming = asRecord(parsed.streaming);
         const autoUpdate = asRecord(parsed["auto-update"]);
+        const requestLogStorage = asRecord(parsed["request-log-storage"]);
+        const requestLogArchive = asRecord(requestLogStorage?.archive);
 
         const newValues: VisualConfigValues = {
           host: typeof parsed.host === "string" ? parsed.host : "",
@@ -547,6 +564,33 @@ export function useVisualConfig() {
           loggingToFile: Boolean(parsed["logging-to-file"]),
           logsMaxTotalSizeMb: String(parsed["logs-max-total-size-mb"] ?? ""),
           usageStatisticsEnabled: Boolean(parsed["usage-statistics-enabled"]),
+          requestLogStorage: {
+            storeContent: Boolean(requestLogStorage?.["store-content"]),
+            contentRetentionDays: String(requestLogStorage?.["content-retention-days"] ?? "30"),
+            cleanupIntervalMinutes: String(
+              requestLogStorage?.["cleanup-interval-minutes"] ?? "1440",
+            ),
+            maxTotalSizeMb: String(requestLogStorage?.["max-total-size-mb"] ?? "1024"),
+            vacuumOnCleanup: Boolean(requestLogStorage?.["vacuum-on-cleanup"] ?? true),
+            archive: {
+              enabled: Boolean(requestLogArchive?.enabled),
+              directory:
+                typeof requestLogArchive?.directory === "string"
+                  ? requestLogArchive.directory
+                  : "data/request-archives",
+              sessionActiveWindowMinutes: String(
+                requestLogArchive?.["session-active-window-minutes"] ?? "60",
+              ),
+              lowWatermarkRatio: String(requestLogArchive?.["low-watermark-ratio"] ?? "0.8"),
+              maxTotalRows: String(requestLogArchive?.["max-total-rows"] ?? "0"),
+              packMaxSizeMb: String(requestLogArchive?.["pack-max-size-mb"] ?? "2048"),
+              packMaxRows: String(requestLogArchive?.["pack-max-rows"] ?? "100000"),
+              excludedApiKeyIdsText: parseStringListText(
+                requestLogArchive?.["excluded-api-key-ids"],
+              ),
+              retryIntervalMinutes: String(requestLogArchive?.["retry-interval-minutes"] ?? "10"),
+            },
+          },
           autoUpdateEnabled: Boolean(autoUpdate?.enabled ?? true),
           autoUpdateChannel: normalizeAutoUpdateChannel(autoUpdate?.channel),
           autoUpdateDockerImage:
@@ -662,6 +706,47 @@ export function useVisualConfig() {
         setBoolean(parsed, "logging-to-file", values.loggingToFile);
         setIntFromString(parsed, "logs-max-total-size-mb", values.logsMaxTotalSizeMb);
         setBoolean(parsed, "usage-statistics-enabled", values.usageStatisticsEnabled);
+
+        {
+          const storage = ensureRecord(parsed, "request-log-storage");
+          storage["store-content"] = values.requestLogStorage.storeContent;
+          setIntFromString(
+            storage,
+            "content-retention-days",
+            values.requestLogStorage.contentRetentionDays,
+          );
+          setIntFromString(
+            storage,
+            "cleanup-interval-minutes",
+            values.requestLogStorage.cleanupIntervalMinutes,
+          );
+          setIntFromString(storage, "max-total-size-mb", values.requestLogStorage.maxTotalSizeMb);
+          storage["vacuum-on-cleanup"] = values.requestLogStorage.vacuumOnCleanup;
+
+          const archiveValues = values.requestLogStorage.archive;
+          if (hasOwn(storage, "archive") || archiveValues.enabled) {
+            const archive = ensureRecord(storage, "archive");
+            archive.enabled = archiveValues.enabled;
+            setString(archive, "directory", archiveValues.directory);
+            setIntFromString(
+              archive,
+              "session-active-window-minutes",
+              archiveValues.sessionActiveWindowMinutes,
+            );
+            setFloatFromString(archive, "low-watermark-ratio", archiveValues.lowWatermarkRatio);
+            setIntFromString(archive, "max-total-rows", archiveValues.maxTotalRows);
+            setIntFromString(archive, "pack-max-size-mb", archiveValues.packMaxSizeMb);
+            setIntFromString(archive, "pack-max-rows", archiveValues.packMaxRows);
+            const excluded = parseMultilineList(archiveValues.excludedApiKeyIdsText);
+            if (excluded.length > 0) {
+              archive["excluded-api-key-ids"] = excluded;
+            } else {
+              delete archive["excluded-api-key-ids"];
+            }
+            archive["failure-policy"] = "preserve-hot";
+            setIntFromString(archive, "retry-interval-minutes", archiveValues.retryIntervalMinutes);
+          }
+        }
 
         if (
           hasOwn(parsed, "auto-update") ||

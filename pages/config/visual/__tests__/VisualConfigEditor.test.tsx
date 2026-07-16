@@ -92,6 +92,82 @@ describe("VisualConfigEditor auto update config", () => {
     });
   });
 
+  test("edits request archive settings with form controls", async () => {
+    const onChange = renderEditor();
+
+    await userEvent.click(screen.getByRole("switch", { name: /enable cold archive/i }));
+    expect(onChange).toHaveBeenCalledWith({
+      requestLogStorage: {
+        ...DEFAULT_VISUAL_VALUES.requestLogStorage,
+        archive: { ...DEFAULT_VISUAL_VALUES.requestLogStorage.archive, enabled: true },
+      },
+    });
+    expect(screen.getByRole("textbox", { name: /excluded api key ids/i })).toBeInTheDocument();
+  });
+
+  test("loads and writes request archive settings in config yaml", async () => {
+    const { result } = renderHook(() => useVisualConfig());
+
+    act(() => {
+      result.current.loadVisualValuesFromYaml(
+        [
+          "request-log-storage:",
+          "  store-content: true",
+          "  content-retention-days: 14",
+          "  cleanup-interval-minutes: 30",
+          "  max-total-size-mb: 4096",
+          "  archive:",
+          "    enabled: true",
+          "    directory: /archives/requests",
+          "    session-active-window-minutes: 90",
+          "    low-watermark-ratio: 0.75",
+          "    max-total-rows: 200000",
+          "    pack-max-size-mb: 1024",
+          "    pack-max-rows: 50000",
+          "    excluded-api-key-ids:",
+          "      - admin-key-id",
+        ].join("\n"),
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.visualValues.requestLogStorage).toMatchObject({
+        storeContent: true,
+        contentRetentionDays: "14",
+        maxTotalSizeMb: "4096",
+        archive: {
+          enabled: true,
+          directory: "/archives/requests",
+          sessionActiveWindowMinutes: "90",
+          excludedApiKeyIdsText: "admin-key-id",
+        },
+      });
+    });
+
+    act(() => {
+      result.current.setVisualValues({
+        requestLogStorage: {
+          ...result.current.visualValues.requestLogStorage,
+          archive: {
+            ...result.current.visualValues.requestLogStorage.archive,
+            excludedApiKeyIdsText: "admin-key-id\nops-key-id",
+          },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      const nextYaml = result.current.applyVisualChangesToYaml("");
+      expect(nextYaml).toContain("request-log-storage:");
+      expect(nextYaml).toContain("store-content: true");
+      expect(nextYaml).toContain("session-active-window-minutes: 90");
+      expect(nextYaml).toContain("low-watermark-ratio: 0.75");
+      expect(nextYaml).toContain("- admin-key-id");
+      expect(nextYaml).toContain("- ops-key-id");
+      expect(nextYaml).toContain("failure-policy: preserve-hot");
+    });
+  });
+
   test("exposes browser CORS origins as one origin per line", async () => {
     const onChange = renderEditor();
 
@@ -162,9 +238,7 @@ describe("VisualConfigEditor auto update config", () => {
 
     await waitFor(() => {
       expect(result.current.visualValues.routingStrategy).toBe("session-sticky");
-      expect(result.current.visualValues.routingChannelGroups[0]?.strategy).toBe(
-        "session-sticky",
-      );
+      expect(result.current.visualValues.routingChannelGroups[0]?.strategy).toBe("session-sticky");
     });
 
     await waitFor(() => {

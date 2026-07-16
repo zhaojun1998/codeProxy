@@ -39,6 +39,27 @@ export interface StreamingConfig {
   nonstreamKeepaliveInterval: string;
 }
 
+export interface RequestLogArchiveVisualConfig {
+  enabled: boolean;
+  directory: string;
+  sessionActiveWindowMinutes: string;
+  lowWatermarkRatio: string;
+  maxTotalRows: string;
+  packMaxSizeMb: string;
+  packMaxRows: string;
+  excludedApiKeyIdsText: string;
+  retryIntervalMinutes: string;
+}
+
+export interface RequestLogStorageVisualConfig {
+  storeContent: boolean;
+  contentRetentionDays: string;
+  cleanupIntervalMinutes: string;
+  maxTotalSizeMb: string;
+  vacuumOnCleanup: boolean;
+  archive: RequestLogArchiveVisualConfig;
+}
+
 export type RoutingStrategy = "round-robin" | "fill-first" | "session-sticky";
 
 export type RoutingFallback = "none" | "default";
@@ -94,6 +115,7 @@ export type VisualConfigValues = {
   loggingToFile: boolean;
   logsMaxTotalSizeMb: string;
   usageStatisticsEnabled: boolean;
+  requestLogStorage: RequestLogStorageVisualConfig;
   autoUpdateEnabled: boolean;
   autoUpdateChannel: "main" | "dev";
   autoUpdateDockerImage: string;
@@ -149,6 +171,24 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   loggingToFile: false,
   logsMaxTotalSizeMb: "",
   usageStatisticsEnabled: false,
+  requestLogStorage: {
+    storeContent: false,
+    contentRetentionDays: "30",
+    cleanupIntervalMinutes: "1440",
+    maxTotalSizeMb: "1024",
+    vacuumOnCleanup: true,
+    archive: {
+      enabled: false,
+      directory: "data/request-archives",
+      sessionActiveWindowMinutes: "60",
+      lowWatermarkRatio: "0.8",
+      maxTotalRows: "0",
+      packMaxSizeMb: "2048",
+      packMaxRows: "100000",
+      excludedApiKeyIdsText: "",
+      retryIntervalMinutes: "10",
+    },
+  },
   autoUpdateEnabled: true,
   autoUpdateChannel: "main",
   autoUpdateDockerImage: "ghcr.io/kittors/clirelay",
