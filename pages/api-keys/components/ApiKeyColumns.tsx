@@ -38,6 +38,7 @@ type CreateApiKeyColumnsOptions = {
   onEdit: (index: number) => void;
   onDelete: (index: number) => void;
   onResetDailySpending: (index: number) => void;
+  onViewResetHistory: (entry: ApiKeyEntry) => void;
   resettingDailySpendingKey?: string | null;
 };
 
@@ -57,8 +58,10 @@ const permissionCountToneClasses: Record<PermissionSummaryTone, string> = {
   violet: "bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200",
 };
 
-const stickySelectHeaderClass = "md:sticky md:z-40 md:bg-slate-100 md:dark:bg-neutral-800";
-const stickySelectCellClass = "md:sticky md:z-30 md:bg-white md:dark:bg-neutral-950";
+const stickySelectHeaderClass =
+  "text-center md:sticky md:z-40 md:bg-slate-100 md:dark:bg-neutral-800";
+const stickySelectCellClass =
+  "text-center md:sticky md:z-30 md:bg-white md:dark:bg-neutral-950";
 const stickyNameHeaderClass =
   "md:sticky md:z-40 md:bg-slate-100 md:dark:bg-neutral-800";
 const stickyNameCellClass =
@@ -66,7 +69,10 @@ const stickyNameCellClass =
 const stickyActionsHeaderClass =
   "text-center md:sticky md:z-40 md:bg-slate-100 md:dark:bg-neutral-800";
 const stickyActionsCellClass =
-  "md:sticky md:z-30 md:bg-white md:dark:bg-neutral-950";
+  "text-center md:sticky md:z-30 md:bg-white md:dark:bg-neutral-950";
+const centeredMetricHeaderClass = "text-center";
+const centeredMetricCellClass =
+  "whitespace-nowrap text-center text-slate-700 dark:text-white/70";
 
 function ApiKeyBadge({ value }: { value: string }) {
   return (
@@ -121,6 +127,7 @@ export const createApiKeyColumns = ({
   onEdit,
   onDelete,
   onResetDailySpending,
+  onViewResetHistory,
   resettingDailySpendingKey = null,
 }: CreateApiKeyColumnsOptions): DataTableColumn<ApiKeyEntry>[] => [
   {
@@ -166,53 +173,73 @@ export const createApiKeyColumns = ({
     ),
   },
   {
-    key: "dailySpendingUsed",
-    label: t("api_keys_page.col_daily_spending_used"),
-    width: "w-[140px] min-w-[140px]",
-    cellClassName: "whitespace-nowrap text-slate-700 dark:text-white/70",
+    key: "dailySpending",
+    label: t("api_keys_page.col_daily_spending"),
+    width: "w-[196px] min-w-[196px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
     headerRender: () => (
       <HoverTooltip
-        content={t("api_keys_page.daily_spending_used_help")}
+        content={t("api_keys_page.daily_spending_help")}
         className="inline-flex items-center gap-1"
       >
-        <span>{t("api_keys_page.col_daily_spending_used")}</span>
-        <Info size={12} className="text-slate-400 dark:text-white/40" />
-      </HoverTooltip>
-    ),
-    render: (row) => (
-      <span className="tabular-nums">
-        {formatApiKeySpendingAmount(row["daily-spending-used"] ?? 0)}
-      </span>
-    ),
-  },
-  {
-    key: "dailySpendingRemaining",
-    label: t("api_keys_page.col_daily_spending_remaining"),
-    width: "w-[140px] min-w-[140px]",
-    cellClassName: "whitespace-nowrap text-slate-700 dark:text-white/70",
-    headerRender: () => (
-      <HoverTooltip
-        content={t("api_keys_page.daily_spending_remaining_help")}
-        className="inline-flex items-center gap-1"
-      >
-        <span>{t("api_keys_page.col_daily_spending_remaining")}</span>
+        <span>{t("api_keys_page.col_daily_spending")}</span>
         <Info size={12} className="text-slate-400 dark:text-white/40" />
       </HoverTooltip>
     ),
     render: (row) => {
+      const used = formatApiKeySpendingAmount(row["daily-spending-used"] ?? 0);
       const limit = row["daily-spending-limit"] ?? 0;
       if (!(limit > 0)) {
         return (
-          <span className="inline-flex items-center gap-1">
-            <InfinityIcon size={14} className="text-green-500" /> {t("api_keys_page.unlimited")}
+          <span className="inline-flex items-center justify-center gap-1 tabular-nums">
+            {used}
+            <span className="text-slate-400 dark:text-white/40">/</span>
+            <span className="inline-flex items-center gap-1">
+              <InfinityIcon size={14} className="text-green-500" /> {t("api_keys_page.unlimited")}
+            </span>
           </span>
         );
       }
-      const remaining =
-        row["daily-spending-remaining"] == null
-          ? Math.max(limit - (row["daily-spending-used"] ?? 0), 0)
-          : Math.max(row["daily-spending-remaining"], 0);
-      return <span className="tabular-nums">{formatApiKeySpendingAmount(remaining)}</span>;
+      return (
+        <span className="tabular-nums">
+          {used}
+          <span className="text-slate-400 dark:text-white/40"> / </span>
+          {formatApiKeySpendingAmount(limit)}
+        </span>
+      );
+    },
+  },
+  {
+    key: "dailySpendingResetCount",
+    label: t("api_keys_page.col_reset_count"),
+    width: "w-[120px] min-w-[120px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
+    headerRender: () => (
+      <HoverTooltip
+        content={t("api_keys_page.reset_count_help")}
+        className="inline-flex items-center gap-1"
+      >
+        <span>{t("api_keys_page.col_reset_count")}</span>
+        <Info size={12} className="text-slate-400 dark:text-white/40" />
+      </HoverTooltip>
+    ),
+    render: (row) => {
+      const count = row["daily-spending-reset-count"] ?? 0;
+      if (count <= 0) {
+        return <span className="tabular-nums text-slate-400 dark:text-white/40">0</span>;
+      }
+      return (
+        <button
+          type="button"
+          onClick={() => onViewResetHistory(row)}
+          className="tabular-nums font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
+          aria-label={t("api_keys_page.view_reset_history")}
+        >
+          {count}
+        </button>
+      );
     },
   },
   {
@@ -225,10 +252,11 @@ export const createApiKeyColumns = ({
   {
     key: "dailyLimit",
     label: t("api_keys_page.col_daily_limit"),
-    width: "w-[132px] min-w-[132px]",
-    cellClassName: "whitespace-nowrap text-slate-700 dark:text-white/70",
+    width: "w-[140px] min-w-[140px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
     render: (row) => (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center justify-center gap-1">
         {!row["daily-limit"] ? (
           <>
             <InfinityIcon size={14} className="text-green-500" /> {t("api_keys_page.unlimited")}
@@ -242,10 +270,11 @@ export const createApiKeyColumns = ({
   {
     key: "totalQuota",
     label: t("api_keys_page.col_total_quota"),
-    width: "w-[132px] min-w-[132px]",
-    cellClassName: "whitespace-nowrap text-slate-700 dark:text-white/70",
+    width: "w-[140px] min-w-[140px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
     render: (row) => (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center justify-center gap-1">
         {!row["total-quota"] ? (
           <>
             <InfinityIcon size={14} className="text-green-500" /> {t("api_keys_page.unlimited")}
@@ -259,8 +288,9 @@ export const createApiKeyColumns = ({
   {
     key: "spendingLimit",
     label: t("api_keys_page.col_spending_limit"),
-    width: "w-[148px] min-w-[148px]",
-    cellClassName: "whitespace-nowrap text-slate-700 dark:text-white/70",
+    width: "w-[156px] min-w-[156px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
     headerRender: () => (
       <HoverTooltip
         content={t("api_keys_page.spending_limit_help")}
@@ -271,7 +301,7 @@ export const createApiKeyColumns = ({
       </HoverTooltip>
     ),
     render: (row) => (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center justify-center gap-1">
         {!row["spending-limit"] ? (
           <>
             <InfinityIcon size={14} className="text-green-500" /> {t("api_keys_page.unlimited")}
@@ -285,8 +315,9 @@ export const createApiKeyColumns = ({
   {
     key: "rpmLimit",
     label: "RPM",
-    width: "w-[108px] min-w-[108px]",
-    cellClassName: "whitespace-nowrap text-slate-700 dark:text-white/70",
+    width: "w-[124px] min-w-[124px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
     headerRender: () => (
       <HoverTooltip content={t("api_keys.rpm_full")} className="inline-flex items-center gap-1">
         <span>{t("api_keys_page.rpm")}</span>
@@ -294,7 +325,7 @@ export const createApiKeyColumns = ({
       </HoverTooltip>
     ),
     render: (row) => (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center justify-center gap-1">
         {!row["rpm-limit"] ? (
           <>
             <InfinityIcon size={14} className="text-green-500" /> {t("api_keys_page.unlimited")}
@@ -308,8 +339,9 @@ export const createApiKeyColumns = ({
   {
     key: "tpmLimit",
     label: "TPM",
-    width: "w-[108px] min-w-[108px]",
-    cellClassName: "whitespace-nowrap text-slate-700 dark:text-white/70",
+    width: "w-[124px] min-w-[124px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
     headerRender: () => (
       <HoverTooltip content={t("api_keys.tpm_full")} className="inline-flex items-center gap-1">
         <span>{t("api_keys_page.tpm")}</span>
@@ -317,7 +349,7 @@ export const createApiKeyColumns = ({
       </HoverTooltip>
     ),
     render: (row) => (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center justify-center gap-1">
         {!row["tpm-limit"] ? (
           <>
             <InfinityIcon size={14} className="text-green-500" /> {t("api_keys_page.unlimited")}
@@ -423,7 +455,8 @@ export const createApiKeyColumns = ({
     key: "createdAt",
     label: t("api_keys_page.col_created"),
     width: "w-[168px] min-w-[168px]",
-    cellClassName: "whitespace-nowrap text-slate-500 dark:text-white/50",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: "whitespace-nowrap text-center text-slate-500 dark:text-white/50",
     render: (row) => <>{formatApiKeyDate(row["created-at"])}</>,
   },
   {

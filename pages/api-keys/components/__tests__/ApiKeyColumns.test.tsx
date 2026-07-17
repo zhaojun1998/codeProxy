@@ -12,10 +12,11 @@ const t = ((key: string, options?: Record<string, string>) => {
     "api_keys_page.col_spending_limit": "Spending limit",
     "api_keys_page.spending_limit_help":
       "Maximum cumulative API key cost in USD. Empty means unlimited.",
-    "api_keys_page.col_daily_spending_used": "Today spent",
-    "api_keys_page.col_daily_spending_remaining": "Remaining today",
-    "api_keys_page.daily_spending_used_help": "Effective USD cost today",
-    "api_keys_page.daily_spending_remaining_help": "Remaining daily budget",
+    "api_keys_page.col_daily_spending": "Daily spending",
+    "api_keys_page.daily_spending_help": "Used / limit",
+    "api_keys_page.col_reset_count": "Reset count",
+    "api_keys_page.reset_count_help": "Click to open history",
+    "api_keys_page.view_reset_history": "View reset history",
     "api_keys_page.reset_today_spending": "Reset today spending",
     "api_keys_page.reset_today_spending_disabled": "Set a daily spending limit before resetting",
     "api_keys_page.unlimited": "Unlimited",
@@ -60,6 +61,7 @@ const createColumns = (overrides: Partial<Parameters<typeof createApiKeyColumns>
     onToggleDisable: vi.fn(),
     onViewUsage: vi.fn(),
     onResetDailySpending: vi.fn(),
+    onViewResetHistory: vi.fn(),
     ...overrides,
   });
 
@@ -111,6 +113,47 @@ describe("ApiKeyColumns", () => {
     const keyColumn = columns.find((column) => column.key === "key");
 
     expect(keyColumn?.width).toBe("w-[320px] min-w-[320px]");
+  });
+
+  test("centers metric columns and keeps wider min widths for Chinese headers", () => {
+    const columns = createColumns();
+    const centeredKeys = [
+      "select",
+      "dailySpending",
+      "dailySpendingResetCount",
+      "dailyLimit",
+      "totalQuota",
+      "spendingLimit",
+      "rpmLimit",
+      "tpmLimit",
+      "createdAt",
+      "actions",
+    ];
+
+    for (const key of centeredKeys) {
+      const column = columns.find((item) => item.key === key);
+      expect(column?.headerClassName).toContain("text-center");
+      expect(column?.cellClassName).toContain("text-center");
+    }
+
+    expect(columns.find((column) => column.key === "dailySpending")?.width).toBe(
+      "w-[196px] min-w-[196px]",
+    );
+    expect(columns.find((column) => column.key === "dailySpendingResetCount")?.width).toBe(
+      "w-[120px] min-w-[120px]",
+    );
+    expect(columns.find((column) => column.key === "dailyLimit")?.width).toBe(
+      "w-[140px] min-w-[140px]",
+    );
+    expect(columns.find((column) => column.key === "rpmLimit")?.width).toBe(
+      "w-[124px] min-w-[124px]",
+    );
+    expect(columns.find((column) => column.key === "name")?.headerClassName).not.toContain(
+      "text-center",
+    );
+    expect(columns.find((column) => column.key === "key")?.cellClassName).not.toContain(
+      "text-center",
+    );
   });
 
   test("truncates API key text inside an intact rounded badge", () => {
@@ -255,16 +298,16 @@ describe("ApiKeyColumns", () => {
     expect(screen.getByRole("button", { name: "Click to enable" })).toBeInTheDocument();
   });
 
-  test("places daily spending columns immediately after name", () => {
+  test("places daily spending column immediately after name", () => {
     const columns = createColumns();
     const keys = columns.map((column) => column.key);
     const nameIndex = keys.indexOf("name");
-    expect(keys[nameIndex + 1]).toBe("dailySpendingUsed");
-    expect(keys[nameIndex + 2]).toBe("dailySpendingRemaining");
+    expect(keys[nameIndex + 1]).toBe("dailySpending");
+    expect(keys[nameIndex + 2]).toBe("dailySpendingResetCount");
     expect(keys[nameIndex + 3]).toBe("key");
   });
 
-  test("renders daily spending used and remaining amounts", () => {
+  test("renders daily spending used and limit amounts", () => {
     const limited: ApiKeyEntry = {
       key: "sk-limited",
       name: "Limited",
@@ -280,20 +323,17 @@ describe("ApiKeyColumns", () => {
       "daily-spending-remaining": null,
     };
     const columns = createColumns();
-    const usedColumn = columns.find((column) => column.key === "dailySpendingUsed");
-    const remainingColumn = columns.find((column) => column.key === "dailySpendingRemaining");
-
-    render(
-      <>
-        <div>{usedColumn?.render(limited, 0)}</div>
-        <div>{remainingColumn?.render(limited, 0)}</div>
-        <div>{remainingColumn?.render(unlimited, 1)}</div>
-      </>,
+    const spendingColumn = columns.find((column) => column.key === "dailySpending");
+    const { container: limitedContainer } = render(
+      <div>{spendingColumn?.render(limited, 0)}</div>,
     );
-
-    expect(screen.getByText("$20.00")).toBeInTheDocument();
-    expect(screen.getByText("$80.00")).toBeInTheDocument();
-    expect(screen.getByText("Unlimited")).toBeInTheDocument();
+    const { container: unlimitedContainer } = render(
+      <div>{spendingColumn?.render(unlimited, 1)}</div>,
+    );
+    expect(limitedContainer.textContent).toContain("$20.00");
+    expect(limitedContainer.textContent).toContain("$100.00");
+    expect(unlimitedContainer.textContent).toContain("$5.00");
+    expect(unlimitedContainer.textContent).toContain("Unlimited");
   });
 
   test("disables reset today spending without a daily limit and calls handler when enabled", async () => {
@@ -319,5 +359,21 @@ describe("ApiKeyColumns", () => {
     expect(enabled).not.toBeDisabled();
     await userEvent.click(enabled);
     expect(onResetDailySpending).toHaveBeenCalledWith(1);
+  });
+
+  test("shows clickable reset count and opens history", async () => {
+    const onViewResetHistory = vi.fn();
+    const row: ApiKeyEntry = {
+      key: "sk-hist",
+      name: "Hist",
+      "daily-spending-reset-count": 3,
+    };
+    const columns = createColumns({ onViewResetHistory });
+    const countColumn = columns.find((column) => column.key === "dailySpendingResetCount");
+    render(<div>{countColumn?.render(row, 0)}</div>);
+    const button = screen.getByRole("button", { name: "View reset history" });
+    expect(button).toHaveTextContent("3");
+    await userEvent.click(button);
+    expect(onViewResetHistory).toHaveBeenCalledWith(row);
   });
 });

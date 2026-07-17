@@ -42,6 +42,12 @@ const mocks = vi.hoisted(() => ({
     }),
   ),
   fetchAvailableModels: vi.fn(async (): Promise<string[]> => []),
+  fetchPublicUsageSummary: vi.fn(async () => ({
+    found: true,
+    range: "today",
+    stats: { total_calls: 0, quota_cost: 0 },
+    limits: null,
+  })),
 }));
 
 type ChartResponse = Awaited<ReturnType<typeof mocks.fetchPublicChartData>>;
@@ -67,6 +73,7 @@ vi.mock("../api", () => ({
   fetchPublicLogs: mocks.fetchPublicLogs,
   fetchPublicChartData: mocks.fetchPublicChartData,
   fetchAvailableModels: mocks.fetchAvailableModels,
+  fetchPublicUsageSummary: mocks.fetchPublicUsageSummary,
 }));
 
 vi.mock("../components/UsageTabSection", () => ({
