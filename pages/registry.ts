@@ -7,6 +7,7 @@ import { providersRoute } from "./providers/route";
 import { accountSecurityRoute } from "./account-security/route";
 import { authFilesRoute } from "./auth-files/route";
 import { apiKeysRoute } from "./api-keys/route";
+import { endUsersRoute } from "./end-users/route";
 import { apiKeyPermissionsRoute } from "./api-key-permissions/route";
 import { modelsRoute } from "./models/route";
 import { modelPlazaRoute } from "./model-plaza/route";
@@ -55,6 +56,7 @@ export const pageRoutes: PageRoute[] = [
   accountSecurityRoute,
   authFilesRoute,
   apiKeysRoute,
+  endUsersRoute,
   apiKeyPermissionsRoute,
   modelsRoute,
   modelPlazaRoute,

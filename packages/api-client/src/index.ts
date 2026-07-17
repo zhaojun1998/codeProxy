@@ -30,7 +30,18 @@ export {
   updatePersistedEffectiveTenantId,
   writePersistedAuthSnapshot,
 } from "./client/auth-storage";
+export {
+  portalClient,
+  PortalApiClient,
+  PORTAL_AUTH_STORAGE_KEY,
+  clearPortalAuth,
+  readPortalAuth,
+  writePortalAuth,
+} from "./client/portal-client";
+export type { PortalAuthSnapshot } from "./client/portal-client";
 export type * from "./dto/types";
+export { endUsersApi, portalApi } from "./endpoints/end-users";
+export type * from "./endpoints/end-users";
 
 export { configApi } from "./endpoints/config";
 export type * from "./endpoints/config";

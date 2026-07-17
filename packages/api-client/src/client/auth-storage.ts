@@ -61,6 +61,9 @@ export const readPersistedAuthSnapshot = (): AuthSnapshot | null => {
       return {
         apiBase: normalizeApiBase(parsed.apiBase),
         managementKey: parsed.managementKey,
+        ...(typeof parsed.refreshToken === "string" && parsed.refreshToken
+          ? { refreshToken: parsed.refreshToken }
+          : {}),
         rememberPassword: Boolean(parsed.rememberPassword),
         ...(effectiveTenantId ? { effectiveTenantId } : {}),
       };
@@ -80,6 +83,7 @@ export const writePersistedAuthSnapshot = (snapshot: AuthSnapshot): void => {
   const payload: PersistedAuthSnapshot = {
     apiBase: snapshot.apiBase,
     managementKey: snapshot.managementKey,
+    ...(snapshot.refreshToken ? { refreshToken: snapshot.refreshToken } : {}),
     rememberPassword: snapshot.rememberPassword,
     expiresAt: Date.now() + AUTH_PERSIST_TTL_MS,
     ...(effectiveTenantId ? { effectiveTenantId } : {}),
