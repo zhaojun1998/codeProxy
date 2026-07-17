@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => ({
     if (entry) {
       entry["daily-spending-used"] = 0;
       entry["daily-spending-remaining"] = entry["daily-spending-limit"] ?? 0;
+      entry["daily-spending-reset-count"] = (entry["daily-spending-reset-count"] ?? 0) + 1;
     }
     return {
       status: "ok",
@@ -47,8 +48,13 @@ const mocks = vi.hoisted(() => ({
       key: entry?.key,
       "daily-spending-used": 0,
       "daily-spending-remaining": entry?.["daily-spending-limit"] ?? 0,
+      "daily-spending-reset-count": entry?.["daily-spending-reset-count"] ?? 0,
     };
   }),
+  apiKeyEntriesListDailySpendingResetHistory: vi.fn(async () => ({
+    items: [],
+    total: 0,
+  })),
   apiKeysList: vi.fn(async (): Promise<string[]> => []),
   fetchConfigYaml: vi.fn(async () => state.configYaml),
   saveConfigYaml: vi.fn(async (content: string) => {
@@ -103,6 +109,7 @@ vi.mock("@code-proxy/api-client/endpoints/api-keys", () => ({
     update: mocks.apiKeyEntriesUpdate,
     delete: mocks.apiKeyEntriesDelete,
     resetDailySpending: mocks.apiKeyEntriesResetDailySpending,
+    listDailySpendingResetHistory: mocks.apiKeyEntriesListDailySpendingResetHistory,
   },
 }));
 

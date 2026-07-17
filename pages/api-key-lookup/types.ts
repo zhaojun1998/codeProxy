@@ -68,6 +68,28 @@ export interface ChartDataResponse {
   };
 }
 
+/** Only present fields mean that limit is configured on the key. */
+export interface PublicUsageLimits {
+  "daily-limit"?: number;
+  "daily-used"?: number;
+  "total-quota"?: number;
+  "total-used"?: number;
+  "spending-limit"?: number;
+  "spending-used"?: number;
+  "daily-spending-limit"?: number;
+  "daily-spending-used"?: number;
+}
+
+export interface PublicUsageSummaryResponse {
+  found: boolean;
+  range: string;
+  stats: {
+    total_calls: number;
+    quota_cost: number;
+  };
+  limits?: PublicUsageLimits | null;
+}
+
 export interface TableColumn<T> {
   key: string;
   label: string;

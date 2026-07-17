@@ -14,6 +14,9 @@ const t = ((key: string, options?: Record<string, string>) => {
       "Maximum cumulative API key cost in USD. Empty means unlimited.",
     "api_keys_page.col_daily_spending": "Daily spending",
     "api_keys_page.daily_spending_help": "Used / limit",
+    "api_keys_page.col_reset_count": "Reset count",
+    "api_keys_page.reset_count_help": "Click to open history",
+    "api_keys_page.view_reset_history": "View reset history",
     "api_keys_page.reset_today_spending": "Reset today spending",
     "api_keys_page.reset_today_spending_disabled": "Set a daily spending limit before resetting",
     "api_keys_page.unlimited": "Unlimited",
@@ -58,6 +61,7 @@ const createColumns = (overrides: Partial<Parameters<typeof createApiKeyColumns>
     onToggleDisable: vi.fn(),
     onViewUsage: vi.fn(),
     onResetDailySpending: vi.fn(),
+    onViewResetHistory: vi.fn(),
     ...overrides,
   });
 
@@ -258,7 +262,8 @@ describe("ApiKeyColumns", () => {
     const keys = columns.map((column) => column.key);
     const nameIndex = keys.indexOf("name");
     expect(keys[nameIndex + 1]).toBe("dailySpending");
-    expect(keys[nameIndex + 2]).toBe("key");
+    expect(keys[nameIndex + 2]).toBe("dailySpendingResetCount");
+    expect(keys[nameIndex + 3]).toBe("key");
   });
 
   test("renders daily spending used and limit amounts", () => {
@@ -313,5 +318,21 @@ describe("ApiKeyColumns", () => {
     expect(enabled).not.toBeDisabled();
     await userEvent.click(enabled);
     expect(onResetDailySpending).toHaveBeenCalledWith(1);
+  });
+
+  test("shows clickable reset count and opens history", async () => {
+    const onViewResetHistory = vi.fn();
+    const row: ApiKeyEntry = {
+      key: "sk-hist",
+      name: "Hist",
+      "daily-spending-reset-count": 3,
+    };
+    const columns = createColumns({ onViewResetHistory });
+    const countColumn = columns.find((column) => column.key === "dailySpendingResetCount");
+    render(<div>{countColumn?.render(row, 0)}</div>);
+    const button = screen.getByRole("button", { name: "View reset history" });
+    expect(button).toHaveTextContent("3");
+    await userEvent.click(button);
+    expect(onViewResetHistory).toHaveBeenCalledWith(row);
   });
 });
