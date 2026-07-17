@@ -7,6 +7,7 @@ import {
   Info,
   Pencil,
   Power,
+  RotateCcw,
   ShieldCheck,
   Trash2,
   Upload,
@@ -15,6 +16,7 @@ import type { ApiKeyEntry } from "@code-proxy/api-client/endpoints/api-keys";
 import {
   formatApiKeyDate,
   formatApiKeyLimit,
+  formatApiKeySpendingAmount,
   formatApiKeySpendingLimit,
   maskApiKey,
   VendorIcon,
@@ -35,6 +37,9 @@ type CreateApiKeyColumnsOptions = {
   onImportToCcSwitch: (entry: ApiKeyEntry) => void;
   onEdit: (index: number) => void;
   onDelete: (index: number) => void;
+  onResetDailySpending: (index: number) => void;
+  onViewResetHistory: (entry: ApiKeyEntry) => void;
+  resettingDailySpendingKey?: string | null;
 };
 
 type PermissionSummaryTone = "cyan" | "indigo" | "violet";
@@ -53,8 +58,10 @@ const permissionCountToneClasses: Record<PermissionSummaryTone, string> = {
   violet: "bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200",
 };
 
-const stickySelectHeaderClass = "md:sticky md:z-40 md:bg-slate-100 md:dark:bg-neutral-800";
-const stickySelectCellClass = "md:sticky md:z-30 md:bg-white md:dark:bg-neutral-950";
+const stickySelectHeaderClass =
+  "text-center md:sticky md:z-40 md:bg-slate-100 md:dark:bg-neutral-800";
+const stickySelectCellClass =
+  "text-center md:sticky md:z-30 md:bg-white md:dark:bg-neutral-950";
 const stickyNameHeaderClass =
   "md:sticky md:z-40 md:bg-slate-100 md:dark:bg-neutral-800";
 const stickyNameCellClass =
@@ -62,7 +69,10 @@ const stickyNameCellClass =
 const stickyActionsHeaderClass =
   "text-center md:sticky md:z-40 md:bg-slate-100 md:dark:bg-neutral-800";
 const stickyActionsCellClass =
-  "md:sticky md:z-30 md:bg-white md:dark:bg-neutral-950";
+  "text-center md:sticky md:z-30 md:bg-white md:dark:bg-neutral-950";
+const centeredMetricHeaderClass = "text-center";
+const centeredMetricCellClass =
+  "whitespace-nowrap text-center text-slate-700 dark:text-white/70";
 
 function ApiKeyBadge({ value }: { value: string }) {
   return (
@@ -116,6 +126,9 @@ export const createApiKeyColumns = ({
   onImportToCcSwitch,
   onEdit,
   onDelete,
+  onResetDailySpending,
+  onViewResetHistory,
+  resettingDailySpendingKey = null,
 }: CreateApiKeyColumnsOptions): DataTableColumn<ApiKeyEntry>[] => [
   {
     key: "select",
@@ -160,6 +173,76 @@ export const createApiKeyColumns = ({
     ),
   },
   {
+    key: "dailySpending",
+    label: t("api_keys_page.col_daily_spending"),
+    width: "w-[196px] min-w-[196px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
+    headerRender: () => (
+      <HoverTooltip
+        content={t("api_keys_page.daily_spending_help")}
+        className="inline-flex items-center gap-1"
+      >
+        <span>{t("api_keys_page.col_daily_spending")}</span>
+        <Info size={12} className="text-slate-400 dark:text-white/40" />
+      </HoverTooltip>
+    ),
+    render: (row) => {
+      const used = formatApiKeySpendingAmount(row["daily-spending-used"] ?? 0);
+      const limit = row["daily-spending-limit"] ?? 0;
+      if (!(limit > 0)) {
+        return (
+          <span className="inline-flex items-center justify-center gap-1 tabular-nums">
+            {used}
+            <span className="text-slate-400 dark:text-white/40">/</span>
+            <span className="inline-flex items-center gap-1">
+              <InfinityIcon size={14} className="text-green-500" /> {t("api_keys_page.unlimited")}
+            </span>
+          </span>
+        );
+      }
+      return (
+        <span className="tabular-nums">
+          {used}
+          <span className="text-slate-400 dark:text-white/40"> / </span>
+          {formatApiKeySpendingAmount(limit)}
+        </span>
+      );
+    },
+  },
+  {
+    key: "dailySpendingResetCount",
+    label: t("api_keys_page.col_reset_count"),
+    width: "w-[120px] min-w-[120px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
+    headerRender: () => (
+      <HoverTooltip
+        content={t("api_keys_page.reset_count_help")}
+        className="inline-flex items-center gap-1"
+      >
+        <span>{t("api_keys_page.col_reset_count")}</span>
+        <Info size={12} className="text-slate-400 dark:text-white/40" />
+      </HoverTooltip>
+    ),
+    render: (row) => {
+      const count = row["daily-spending-reset-count"] ?? 0;
+      if (count <= 0) {
+        return <span className="tabular-nums text-slate-400 dark:text-white/40">0</span>;
+      }
+      return (
+        <button
+          type="button"
+          onClick={() => onViewResetHistory(row)}
+          className="tabular-nums font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
+          aria-label={t("api_keys_page.view_reset_history")}
+        >
+          {count}
+        </button>
+      );
+    },
+  },
+  {
     key: "key",
     label: t("api_keys_page.col_key"),
     width: "w-[320px] min-w-[320px]",
@@ -169,10 +252,11 @@ export const createApiKeyColumns = ({
   {
     key: "dailyLimit",
     label: t("api_keys_page.col_daily_limit"),
-    width: "w-[132px] min-w-[132px]",
-    cellClassName: "whitespace-nowrap text-slate-700 dark:text-white/70",
+    width: "w-[140px] min-w-[140px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
     render: (row) => (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center justify-center gap-1">
         {!row["daily-limit"] ? (
           <>
             <InfinityIcon size={14} className="text-green-500" /> {t("api_keys_page.unlimited")}
@@ -186,10 +270,11 @@ export const createApiKeyColumns = ({
   {
     key: "totalQuota",
     label: t("api_keys_page.col_total_quota"),
-    width: "w-[132px] min-w-[132px]",
-    cellClassName: "whitespace-nowrap text-slate-700 dark:text-white/70",
+    width: "w-[140px] min-w-[140px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
     render: (row) => (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center justify-center gap-1">
         {!row["total-quota"] ? (
           <>
             <InfinityIcon size={14} className="text-green-500" /> {t("api_keys_page.unlimited")}
@@ -203,8 +288,9 @@ export const createApiKeyColumns = ({
   {
     key: "spendingLimit",
     label: t("api_keys_page.col_spending_limit"),
-    width: "w-[148px] min-w-[148px]",
-    cellClassName: "whitespace-nowrap text-slate-700 dark:text-white/70",
+    width: "w-[156px] min-w-[156px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
     headerRender: () => (
       <HoverTooltip
         content={t("api_keys_page.spending_limit_help")}
@@ -215,7 +301,7 @@ export const createApiKeyColumns = ({
       </HoverTooltip>
     ),
     render: (row) => (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center justify-center gap-1">
         {!row["spending-limit"] ? (
           <>
             <InfinityIcon size={14} className="text-green-500" /> {t("api_keys_page.unlimited")}
@@ -229,8 +315,9 @@ export const createApiKeyColumns = ({
   {
     key: "rpmLimit",
     label: "RPM",
-    width: "w-[108px] min-w-[108px]",
-    cellClassName: "whitespace-nowrap text-slate-700 dark:text-white/70",
+    width: "w-[124px] min-w-[124px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
     headerRender: () => (
       <HoverTooltip content={t("api_keys.rpm_full")} className="inline-flex items-center gap-1">
         <span>{t("api_keys_page.rpm")}</span>
@@ -238,7 +325,7 @@ export const createApiKeyColumns = ({
       </HoverTooltip>
     ),
     render: (row) => (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center justify-center gap-1">
         {!row["rpm-limit"] ? (
           <>
             <InfinityIcon size={14} className="text-green-500" /> {t("api_keys_page.unlimited")}
@@ -252,8 +339,9 @@ export const createApiKeyColumns = ({
   {
     key: "tpmLimit",
     label: "TPM",
-    width: "w-[108px] min-w-[108px]",
-    cellClassName: "whitespace-nowrap text-slate-700 dark:text-white/70",
+    width: "w-[124px] min-w-[124px]",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: centeredMetricCellClass,
     headerRender: () => (
       <HoverTooltip content={t("api_keys.tpm_full")} className="inline-flex items-center gap-1">
         <span>{t("api_keys_page.tpm")}</span>
@@ -261,7 +349,7 @@ export const createApiKeyColumns = ({
       </HoverTooltip>
     ),
     render: (row) => (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center justify-center gap-1">
         {!row["tpm-limit"] ? (
           <>
             <InfinityIcon size={14} className="text-green-500" /> {t("api_keys_page.unlimited")}
@@ -367,13 +455,14 @@ export const createApiKeyColumns = ({
     key: "createdAt",
     label: t("api_keys_page.col_created"),
     width: "w-[168px] min-w-[168px]",
-    cellClassName: "whitespace-nowrap text-slate-500 dark:text-white/50",
+    headerClassName: centeredMetricHeaderClass,
+    cellClassName: "whitespace-nowrap text-center text-slate-500 dark:text-white/50",
     render: (row) => <>{formatApiKeyDate(row["created-at"])}</>,
   },
   {
     key: "actions",
     label: t("api_keys_page.col_actions"),
-    width: "w-[224px] min-w-[224px]",
+    width: "w-[256px] min-w-[256px]",
     lockOrder: "end",
     headerClassName: stickyActionsHeaderClass,
     cellClassName: stickyActionsCellClass,
@@ -386,6 +475,11 @@ export const createApiKeyColumns = ({
       const importLabel = t("ccswitch.import_to_ccswitch");
       const editLabel = t("common.edit");
       const deleteLabel = t("common.delete");
+      const hasDailyLimit = (row["daily-spending-limit"] ?? 0) > 0;
+      const isResetting = resettingDailySpendingKey === row.key;
+      const resetLabel = hasDailyLimit
+        ? t("api_keys_page.reset_today_spending")
+        : t("api_keys_page.reset_today_spending_disabled");
 
       return (
         <div className="flex items-center justify-center gap-1.5">
@@ -431,6 +525,17 @@ export const createApiKeyColumns = ({
               aria-label={importLabel}
             >
               <Upload size={15} />
+            </button>
+          </HoverTooltip>
+          <HoverTooltip content={resetLabel}>
+            <button
+              type="button"
+              onClick={() => onResetDailySpending(idx)}
+              disabled={!hasDailyLimit || isResetting}
+              className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-40 dark:text-white/50 dark:hover:bg-neutral-800 dark:hover:text-orange-400"
+              aria-label={resetLabel}
+            >
+              <RotateCcw size={15} className={isResetting ? "animate-spin" : ""} />
             </button>
           </HoverTooltip>
           <HoverTooltip content={editLabel}>

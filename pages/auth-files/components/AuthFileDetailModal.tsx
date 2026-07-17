@@ -46,7 +46,9 @@ import {
   type AuthFileModelOwnerGroup,
   type ChannelEditorState,
   type ClaudeOAuthHealthWindow,
+  type CodexImageGenerationBridgeEditorState,
   type CodexOAuthAdmissionEditorState,
+  type XAIEndpointEditorState,
   type PrefixProxyEditorState,
 } from "@code-proxy/domain";
 import type { QuotaState } from "@features/quota-preview/quota-helpers";
@@ -210,6 +212,16 @@ interface AuthFileDetailModalProps {
   setCodexOAuthAdmissionEditor: Dispatch<SetStateAction<CodexOAuthAdmissionEditorState>>;
   codexOAuthAdmissionDirty: boolean;
   saveCodexOAuthAdmission: () => Promise<boolean>;
+  codexImageGenerationBridgeEditor: CodexImageGenerationBridgeEditorState;
+  setCodexImageGenerationBridgeEditor: Dispatch<
+    SetStateAction<CodexImageGenerationBridgeEditorState>
+  >;
+  codexImageGenerationBridgeDirty: boolean;
+  saveCodexImageGenerationBridge: () => Promise<boolean>;
+  xaiEndpointEditor: XAIEndpointEditorState;
+  setXAIEndpointEditor: Dispatch<SetStateAction<XAIEndpointEditorState>>;
+  xaiEndpointDirty: boolean;
+  saveXAIEndpoint: () => Promise<boolean>;
 }
 
 export function AuthFileDetailModal({
@@ -256,6 +268,14 @@ export function AuthFileDetailModal({
   setCodexOAuthAdmissionEditor,
   codexOAuthAdmissionDirty,
   saveCodexOAuthAdmission,
+  codexImageGenerationBridgeEditor,
+  setCodexImageGenerationBridgeEditor,
+  codexImageGenerationBridgeDirty,
+  saveCodexImageGenerationBridge,
+  xaiEndpointEditor,
+  setXAIEndpointEditor,
+  xaiEndpointDirty,
+  saveXAIEndpoint,
 }: AuthFileDetailModalProps) {
   const { t, i18n } = useTranslation();
   const isIdentityDesktopLayout = useIdentityDesktopLayout();
@@ -328,7 +348,15 @@ export function AuthFileDetailModal({
     prefixProxyEditor.saving ||
     channelEditor.saving ||
     codexOAuthAdmissionEditor.saving ||
-    !((prefixProxyDirty && prefixProxyEditor.json) || channelDirty || codexOAuthAdmissionDirty);
+    codexImageGenerationBridgeEditor.saving ||
+    xaiEndpointEditor.saving ||
+    !(
+      (prefixProxyDirty && prefixProxyEditor.json) ||
+      channelDirty ||
+      codexOAuthAdmissionDirty ||
+      codexImageGenerationBridgeDirty ||
+      xaiEndpointDirty
+    );
   const translateQuotaLabel = useMemo(
     () => (label: string) => {
       if (!label) return label;
@@ -559,6 +587,14 @@ export function AuthFileDetailModal({
     }
     if (codexOAuthAdmissionDirty) {
       const saved = await saveCodexOAuthAdmission();
+      if (!saved) return;
+    }
+    if (codexImageGenerationBridgeDirty) {
+      const saved = await saveCodexImageGenerationBridge();
+      if (!saved) return;
+    }
+    if (xaiEndpointDirty) {
+      const saved = await saveXAIEndpoint();
       if (!saved) return;
     }
     if (prefixProxyDirty) {
@@ -1493,6 +1529,118 @@ export function AuthFileDetailModal({
                             formatOptionalDate(claudeOAuthHealth.updated_at),
                           )}
                         </div>
+                      </div>
+                    ) : null}
+
+                    {xaiEndpointEditor.supported ? (
+                      <div
+                        className="min-w-0 space-y-4 rounded-lg bg-slate-50/80 px-4 py-4 lg:col-span-2 dark:bg-white/[0.04]"
+                        data-testid="xai-endpoint-panel"
+                      >
+                        <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                              {t("auth_files.xai_endpoint_title")}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500 dark:text-white/55">
+                              {t("auth_files.xai_endpoint_desc")}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-white/10 dark:text-white/65">
+                            {xaiEndpointEditor.usingApi
+                              ? t("auth_files.xai_endpoint_api")
+                              : t("auth_files.xai_endpoint_build")}
+                          </span>
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-white/55">
+                            {t("auth_files.xai_endpoint_mode")}
+                          </p>
+                          <Select
+                            value={xaiEndpointEditor.usingApi ? "api" : "build"}
+                            onChange={(value) =>
+                              setXAIEndpointEditor((prev) => ({
+                                ...prev,
+                                usingApi: value === "api",
+                                error: null,
+                              }))
+                            }
+                            options={[
+                              {
+                                value: "build",
+                                label: t("auth_files.xai_endpoint_build"),
+                              },
+                              {
+                                value: "api",
+                                label: t("auth_files.xai_endpoint_api"),
+                              },
+                            ]}
+                            aria-label={t("auth_files.xai_endpoint_mode")}
+                            disabled={xaiEndpointEditor.saving}
+                          />
+                          <p className="text-xs text-slate-600 dark:text-white/60">
+                            {t(
+                              xaiEndpointEditor.usingApi
+                                ? "auth_files.xai_endpoint_api_hint"
+                                : "auth_files.xai_endpoint_build_hint",
+                            )}
+                          </p>
+                        </div>
+
+                        {xaiEndpointEditor.error ? (
+                          <p className="text-sm text-rose-600 dark:text-rose-300">
+                            {xaiEndpointEditor.error}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {codexImageGenerationBridgeEditor.supported ? (
+                      <div
+                        className="min-w-0 space-y-4 rounded-lg bg-slate-50/80 px-4 py-4 lg:col-span-2 dark:bg-white/[0.04]"
+                        data-testid="codex-image-generation-bridge-panel"
+                      >
+                        <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                              {t("auth_files.codex_image_generation_bridge_title")}
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500 dark:text-white/55">
+                              {t("auth_files.codex_image_generation_bridge_desc")}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-white/10 dark:text-white/65">
+                            {codexImageGenerationBridgeEditor.enabled
+                              ? t("auth_files.enabled")
+                              : t("auth_files.disabled")}
+                          </span>
+                        </div>
+
+                        <div
+                          className="rounded-lg bg-white px-3 py-3 ring-1 ring-slate-200 dark:bg-neutral-950/40 dark:ring-white/10"
+                          data-testid="codex-image-generation-bridge-toggle"
+                        >
+                          <ToggleSwitch
+                            checked={codexImageGenerationBridgeEditor.enabled}
+                            onCheckedChange={(checked) =>
+                              setCodexImageGenerationBridgeEditor((prev) => ({
+                                ...prev,
+                                enabled: checked,
+                                error: null,
+                              }))
+                            }
+                            disabled={codexImageGenerationBridgeEditor.saving}
+                            label={t("auth_files.codex_image_generation_bridge_toggle")}
+                            description={t("auth_files.codex_image_generation_bridge_toggle_hint")}
+                          />
+                        </div>
+
+                        {codexImageGenerationBridgeEditor.error ? (
+                          <p className="text-sm text-rose-600 dark:text-rose-300">
+                            {codexImageGenerationBridgeEditor.error}
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
 

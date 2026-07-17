@@ -35,6 +35,26 @@ const mocks = vi.hoisted(() => ({
     }
     return { logs_deleted: 0 };
   }),
+  apiKeyEntriesResetDailySpending: vi.fn(async ({ id, key }: { id?: string; key?: string }) => {
+    const entry = state.entries.find((item) => (id ? item.id === id : item.key === key));
+    if (entry) {
+      entry["daily-spending-used"] = 0;
+      entry["daily-spending-remaining"] = entry["daily-spending-limit"] ?? 0;
+      entry["daily-spending-reset-count"] = (entry["daily-spending-reset-count"] ?? 0) + 1;
+    }
+    return {
+      status: "ok",
+      id: entry?.id,
+      key: entry?.key,
+      "daily-spending-used": 0,
+      "daily-spending-remaining": entry?.["daily-spending-limit"] ?? 0,
+      "daily-spending-reset-count": entry?.["daily-spending-reset-count"] ?? 0,
+    };
+  }),
+  apiKeyEntriesListDailySpendingResetHistory: vi.fn(async () => ({
+    items: [],
+    total: 0,
+  })),
   apiKeysList: vi.fn(async (): Promise<string[]> => []),
   fetchConfigYaml: vi.fn(async () => state.configYaml),
   saveConfigYaml: vi.fn(async (content: string) => {
@@ -88,6 +108,8 @@ vi.mock("@code-proxy/api-client/endpoints/api-keys", () => ({
     replace: mocks.apiKeyEntriesReplace,
     update: mocks.apiKeyEntriesUpdate,
     delete: mocks.apiKeyEntriesDelete,
+    resetDailySpending: mocks.apiKeyEntriesResetDailySpending,
+    listDailySpendingResetHistory: mocks.apiKeyEntriesListDailySpendingResetHistory,
   },
 }));
 
@@ -427,6 +449,7 @@ describe("ApiKeysPage", () => {
         name: "Standard",
         "daily-limit": 15000,
         "total-quota": 0,
+        "daily-spending-limit": 150,
         "concurrency-limit": 0,
         "rpm-limit": 0,
         "tpm-limit": 0,
@@ -458,6 +481,7 @@ describe("ApiKeysPage", () => {
 
     expect(screen.queryByText(/Daily request limit/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/System prompt/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton", { name: /daily spending limit/i })).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: /^Create$/i }));
 
@@ -472,6 +496,7 @@ describe("ApiKeysPage", () => {
         "permission-profile-id": "standard",
         "daily-limit": 15000,
         "total-quota": 0,
+        "daily-spending-limit": 150,
         "concurrency-limit": 0,
         "rpm-limit": 0,
         "tpm-limit": 0,
@@ -1019,4 +1044,38 @@ describe("ApiKeysPage", () => {
     expect(screen.queryByRole("button", { name: /chatgpt-pro/i })).toBeNull();
     expect(screen.getByRole("button", { name: /kimi\+deepseek/i })).toBeInTheDocument();
   });
+
+  test("resets today spending and refreshes the list", async () => {
+    state.entries = [
+      {
+        id: "id-reset",
+        key: "sk-reset-1",
+        name: "Reset Me",
+        "daily-spending-limit": 100,
+        "daily-spending-used": 20,
+        "daily-spending-remaining": 80,
+        "created-at": "2026-04-14T00:00:00.000Z",
+      },
+    ];
+
+    render(
+      <MemoryRouter>
+        <ThemeProvider>
+          <ToastProvider>
+            <ApiKeysPage />
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Reset Me")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /reset today spending/i }));
+    await waitFor(() => {
+      expect(mocks.apiKeyEntriesResetDailySpending).toHaveBeenCalledWith({ id: "id-reset" });
+    });
+    await waitFor(() => {
+      expect(mocks.apiKeyEntriesList).toHaveBeenCalledTimes(2);
+    });
+  });
+
 });

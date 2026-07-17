@@ -513,10 +513,12 @@ export function DashboardPage() {
     void refresh(range, customRange);
   }, [refresh, range, customRange]);
 
+  // Backend caches dashboard-summary for ~15s; poll slightly above that so
+  // multi-tab remounts do not re-stampede request_logs aggregation.
   useInterval(() => {
     if (customRange) return;
     void refresh(range, null, true);
-  }, 5000);
+  }, 20_000);
 
   const kpi = summary?.kpi;
   const trends = summary?.trends;

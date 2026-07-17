@@ -73,6 +73,23 @@ const baseCodexOAuthAdmissionEditor: DetailModalProps["codexOAuthAdmissionEditor
   error: null,
 };
 
+const baseCodexImageGenerationBridgeEditor: DetailModalProps["codexImageGenerationBridgeEditor"] =
+  {
+    fileName: "codex.json",
+    supported: true,
+    enabled: false,
+    saving: false,
+    error: null,
+  };
+
+const baseXAIEndpointEditor: DetailModalProps["xaiEndpointEditor"] = {
+  fileName: "codex.json",
+  supported: false,
+  usingApi: false,
+  saving: false,
+  error: null,
+};
+
 const codexIdentityFingerprintDetail: NonNullable<DetailModalProps["identityFingerprintDetail"]> = {
   summary: {
     provider: "codex",
@@ -251,6 +268,14 @@ const renderDetailModal = (overrides: Partial<DetailModalProps> = {}) => {
     setCodexOAuthAdmissionEditor: vi.fn(),
     codexOAuthAdmissionDirty: false,
     saveCodexOAuthAdmission: vi.fn(async () => true),
+    codexImageGenerationBridgeEditor: baseCodexImageGenerationBridgeEditor,
+    setCodexImageGenerationBridgeEditor: vi.fn(),
+    codexImageGenerationBridgeDirty: false,
+    saveCodexImageGenerationBridge: vi.fn(async () => true),
+    xaiEndpointEditor: baseXAIEndpointEditor,
+    setXAIEndpointEditor: vi.fn(),
+    xaiEndpointDirty: false,
+    saveXAIEndpoint: vi.fn(async () => true),
     ...overrides,
   };
 
@@ -944,6 +969,38 @@ describe("AuthFileDetailModal", () => {
     expect(saveCodexOAuthAdmission).toHaveBeenCalled();
   });
 
+  test("renders Codex image generation bridge controls and saves the dirty state", () => {
+    const saveCodexImageGenerationBridge = vi.fn(async () => true);
+    const props = renderDetailModal({
+      detailTab: "fields",
+      prefixProxyDirty: false,
+      codexImageGenerationBridgeDirty: true,
+      codexImageGenerationBridgeEditor: {
+        ...baseCodexImageGenerationBridgeEditor,
+        enabled: true,
+      },
+      saveCodexImageGenerationBridge,
+    });
+
+    const panel = screen.getByTestId("codex-image-generation-bridge-panel");
+    expect(within(panel).getByText("Codex image generation bridge")).toBeInTheDocument();
+    expect(
+      within(panel).getByRole("switch", {
+        name: "Inject image_generation tool",
+      }),
+    ).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(
+      within(panel).getByRole("switch", {
+        name: "Inject image_generation tool",
+      }),
+    );
+    expect(props.setCodexImageGenerationBridgeEditor).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(saveCodexImageGenerationBridge).toHaveBeenCalled();
+  });
+
   test("hides Codex OAuth admission controls when the server does not expose metadata", () => {
     renderDetailModal({
       detailTab: "fields",
@@ -956,9 +1013,65 @@ describe("AuthFileDetailModal", () => {
         saving: false,
         error: null,
       },
+      codexImageGenerationBridgeEditor: {
+        fileName: "codex-api-key.json",
+        supported: false,
+        enabled: false,
+        saving: false,
+        error: null,
+      },
     });
 
     expect(screen.queryByTestId("codex-oauth-admission-panel")).not.toBeInTheDocument();
+  });
+
+  test("renders xAI endpoint controls and saves the dirty state", () => {
+    const saveXAIEndpoint = vi.fn(async () => true);
+    const props = renderDetailModal({
+      detailTab: "fields",
+      detailFile: {
+        name: "xai-oauth.json",
+        type: "xai",
+        provider: "xai",
+        account_type: "oauth",
+        email: "grok@example.com",
+        using_api: false,
+        size: 256,
+      },
+      prefixProxyDirty: false,
+      xaiEndpointDirty: true,
+      xaiEndpointEditor: {
+        fileName: "xai-oauth.json",
+        supported: true,
+        usingApi: true,
+        saving: false,
+        error: null,
+      },
+      saveXAIEndpoint,
+    });
+
+    const panel = screen.getByTestId("xai-endpoint-panel");
+    expect(within(panel).getByText("Grok request endpoint")).toBeInTheDocument();
+    expect(within(panel).getByLabelText("Endpoint mode")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(saveXAIEndpoint).toHaveBeenCalled();
+    expect(props.setXAIEndpointEditor).not.toHaveBeenCalled();
+  });
+
+  test("hides xAI endpoint controls when unsupported", () => {
+    renderDetailModal({
+      detailTab: "fields",
+      xaiEndpointEditor: {
+        fileName: "codex.json",
+        supported: false,
+        usingApi: false,
+        saving: false,
+        error: null,
+      },
+    });
+
+    expect(screen.queryByTestId("xai-endpoint-panel")).not.toBeInTheDocument();
   });
 
   test("shows the channel alias editor for Kimi auth files without account_type metadata", () => {

@@ -8,6 +8,14 @@ export interface ApiKeyEntry {
   "daily-limit"?: number;
   "total-quota"?: number;
   "spending-limit"?: number;
+  /** Project-timezone daily USD cap; 0 = unlimited. Key-owned, independent of permission profiles. */
+  "daily-spending-limit"?: number;
+  /** Effective today cost after same-day reset baseline (management list). */
+  "daily-spending-used"?: number;
+  /** Remaining daily budget; null/undefined = unlimited. */
+  "daily-spending-remaining"?: number | null;
+  /** How many times daily spending was manually reset (management list). */
+  "daily-spending-reset-count"?: number;
   "concurrency-limit"?: number;
   "rpm-limit"?: number;
   "tpm-limit"?: number;
@@ -17,6 +25,35 @@ export interface ApiKeyEntry {
   "permission-profile-id"?: string;
   "system-prompt"?: string;
   "created-at"?: string;
+}
+
+export interface ApiKeyDailySpendingResetResult {
+  status?: string;
+  id?: string;
+  key?: string;
+  "daily-spending-limit"?: number;
+  "daily-spending-used"?: number;
+  "daily-spending-remaining"?: number | null;
+  "daily-spending-reset-count"?: number;
+}
+
+export interface ApiKeyDailySpendingResetEvent {
+  id: number;
+  tenant_id?: string;
+  api_key_id?: string;
+  day_key?: string;
+  reset_at: string;
+  actor_user_id?: string;
+  actor_username?: string;
+  actor_kind?: string;
+  cost_baseline?: number;
+  effective_used_before?: number;
+  raw_today_cost?: number;
+}
+
+export interface ApiKeyDailySpendingResetHistoryResponse {
+  items: ApiKeyDailySpendingResetEvent[];
+  total: number;
 }
 
 export const apiKeysApi = {
@@ -58,5 +95,26 @@ export const apiKeyEntriesApi = {
       query.set("delete_logs", String(params.deleteLogs));
     }
     return apiClient.delete(`/api-key-entries?${query.toString()}`);
+  },
+
+  /** Reset same-day effective daily spending for a key (does not delete request logs). */
+  resetDailySpending: (payload: { id?: string; key?: string }) =>
+    apiClient.post<ApiKeyDailySpendingResetResult>(
+      "/api-key-entries/daily-spending/reset",
+      payload,
+    ),
+
+  listDailySpendingResetHistory: (params: {
+    id?: string;
+    key?: string;
+    limit?: number;
+  }) => {
+    const query = new URLSearchParams();
+    if (params.id) query.set("id", params.id);
+    else if (params.key) query.set("key", params.key);
+    if (params.limit != null) query.set("limit", String(params.limit));
+    return apiClient.get<ApiKeyDailySpendingResetHistoryResponse>(
+      `/api-key-entries/daily-spending/reset-history?${query.toString()}`,
+    );
   },
 };

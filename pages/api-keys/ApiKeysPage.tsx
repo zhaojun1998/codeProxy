@@ -4,6 +4,7 @@ import { Plus, KeyRound, RefreshCw, Trash2 } from "lucide-react";
 import {
   apiKeyEntriesApi,
   apiKeysApi,
+  type ApiKeyDailySpendingResetEvent,
   type ApiKeyEntry,
 } from "@code-proxy/api-client/endpoints/api-keys";
 import {
@@ -27,6 +28,7 @@ import { useToast } from "@code-proxy/ui";
 import { DataTable } from "@code-proxy/ui";
 import { ApiKeyFormModal } from "./components/ApiKeyFormModal";
 import { ApiKeyUsageModal } from "./components/ApiKeyUsageModal";
+import { ApiKeyResetHistoryModal } from "./components/ApiKeyResetHistoryModal";
 import { useApiKeyPermissionOptions } from "@features/api-key-restrictions";
 import { useApiKeyUsageView } from "./hooks/useApiKeyUsageView";
 import { CcSwitchImportCardList } from "./components/CcSwitchImportCardList";
@@ -63,6 +65,10 @@ export function ApiKeysPage() {
   );
   const copiedCcSwitchImportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [resettingDailySpendingKey, setResettingDailySpendingKey] = useState<string | null>(null);
+  const [resetHistoryEntry, setResetHistoryEntry] = useState<ApiKeyEntry | null>(null);
+  const [resetHistoryLoading, setResetHistoryLoading] = useState(false);
+  const [resetHistoryEvents, setResetHistoryEvents] = useState<ApiKeyDailySpendingResetEvent[]>([]);
   const [permissionProfiles, setPermissionProfiles] = useState<ApiKeyPermissionProfile[]>([]);
   const [form, setForm] = useState<ApiKeyFormValues>(() => makeEmptyApiKeyForm());
   const { channelGroupItems, channelGroupByName, refreshPermissionOptions } =
@@ -353,30 +359,33 @@ export function ApiKeysPage() {
     }
     setSaving(true);
     try {
+      const permissionPatch =
+        form.permissionProfileId === CUSTOM_PERMISSION_PROFILE_ID
+          ? {
+              "permission-profile-id": entries[editIndex]["permission-profile-id"] ?? "",
+              "daily-limit": entries[editIndex]["daily-limit"] ?? 0,
+              "total-quota": entries[editIndex]["total-quota"] ?? 0,
+              "spending-limit": entries[editIndex]["spending-limit"] ?? 0,
+              "daily-spending-limit": entries[editIndex]["daily-spending-limit"] ?? 0,
+              "concurrency-limit": entries[editIndex]["concurrency-limit"] ?? 0,
+              "rpm-limit": entries[editIndex]["rpm-limit"] ?? 0,
+              "tpm-limit": entries[editIndex]["tpm-limit"] ?? 0,
+              "allowed-models": entries[editIndex]["allowed-models"] ?? [],
+              "allowed-channels": entries[editIndex]["allowed-channels"] ?? [],
+              "allowed-channel-groups": entries[editIndex]["allowed-channel-groups"] ?? [],
+              "system-prompt": entries[editIndex]["system-prompt"] ?? "",
+            }
+          : applyApiKeyPermissionProfile(
+              { key: newKey },
+              selectedPermissionProfile(form.permissionProfileId),
+            );
       await apiKeyEntriesApi.update({
         id: entries[editIndex].id,
         index: editIndex,
         value: {
           ...(newKey !== originalKey ? { key: newKey } : {}),
           name: form.name.trim(),
-          ...(form.permissionProfileId === CUSTOM_PERMISSION_PROFILE_ID
-            ? {
-                "permission-profile-id": entries[editIndex]["permission-profile-id"] ?? "",
-                "daily-limit": entries[editIndex]["daily-limit"] ?? 0,
-                "total-quota": entries[editIndex]["total-quota"] ?? 0,
-                "spending-limit": entries[editIndex]["spending-limit"] ?? 0,
-                "concurrency-limit": entries[editIndex]["concurrency-limit"] ?? 0,
-                "rpm-limit": entries[editIndex]["rpm-limit"] ?? 0,
-                "tpm-limit": entries[editIndex]["tpm-limit"] ?? 0,
-                "allowed-models": entries[editIndex]["allowed-models"] ?? [],
-                "allowed-channels": entries[editIndex]["allowed-channels"] ?? [],
-                "allowed-channel-groups": entries[editIndex]["allowed-channel-groups"] ?? [],
-                "system-prompt": entries[editIndex]["system-prompt"] ?? "",
-              }
-            : applyApiKeyPermissionProfile(
-                {} as ApiKeyEntry,
-                selectedPermissionProfile(form.permissionProfileId),
-              )),
+          ...permissionPatch,
         },
       });
       notify({ type: "success", message: t("api_keys_page.updated_success") });
@@ -391,6 +400,54 @@ export function ApiKeysPage() {
       setSaving(false);
     }
   };
+
+  const handleResetDailySpending = useCallback(
+    async (index: number) => {
+      const entry = entries[index];
+      if (!entry || !((entry["daily-spending-limit"] ?? 0) > 0)) return;
+      setResettingDailySpendingKey(entry.key);
+      try {
+        await apiKeyEntriesApi.resetDailySpending(
+          entry.id ? { id: entry.id } : { key: entry.key },
+        );
+        notify({ type: "success", message: t("api_keys_page.reset_today_spending_success") });
+        await loadEntries();
+      } catch (err: unknown) {
+        notify({
+          type: "error",
+          message:
+            err instanceof Error ? err.message : t("api_keys_page.reset_today_spending_failed"),
+        });
+      } finally {
+        setResettingDailySpendingKey(null);
+      }
+    },
+    [entries, loadEntries, notify, t],
+  );
+
+  const handleViewResetHistory = useCallback(
+    async (entry: ApiKeyEntry) => {
+      setResetHistoryEntry(entry);
+      setResetHistoryEvents([]);
+      setResetHistoryLoading(true);
+      try {
+        const resp = await apiKeyEntriesApi.listDailySpendingResetHistory(
+          entry.id ? { id: entry.id, limit: 200 } : { key: entry.key, limit: 200 },
+        );
+        setResetHistoryEvents(Array.isArray(resp?.items) ? resp.items : []);
+      } catch (err: unknown) {
+        notify({
+          type: "error",
+          message:
+            err instanceof Error ? err.message : t("api_keys_page.reset_history_load_failed"),
+        });
+        setResetHistoryEntry(null);
+      } finally {
+        setResetHistoryLoading(false);
+      }
+    },
+    [notify, t],
+  );
 
   /* ─── delete ─── */
 
@@ -563,6 +620,9 @@ export function ApiKeysPage() {
         onImportToCcSwitch: handleOpenCcSwitchImport,
         onEdit: handleOpenEdit,
         onDelete: handleOpenDelete,
+        onResetDailySpending: (index) => void handleResetDailySpending(index),
+        onViewResetHistory: (entry) => void handleViewResetHistory(entry),
+        resettingDailySpendingKey,
       }),
     [
       handleToggleDisable,
@@ -571,12 +631,15 @@ export function ApiKeysPage() {
       handleOpenCcSwitchImport,
       handleOpenEdit,
       handleOpenDelete,
+      handleResetDailySpending,
+      handleViewResetHistory,
       handleSelectAll,
       handleSelectRow,
       t,
       selectedKeys,
       allRowsSelected,
       someRowsSelected,
+      resettingDailySpendingKey,
     ],
   );
 
@@ -635,7 +698,7 @@ export function ApiKeysPage() {
               rowHeight={44}
               height="h-[calc(100dvh-260px)] md:h-auto md:flex-1"
               minHeight="min-h-[320px] md:min-h-0"
-              minWidth="min-w-[2002px]"
+              minWidth="min-w-[2400px]"
               caption={t("api_keys_page.table_caption")}
               emptyText={t("api_keys_page.no_api_keys")}
               showAllLoadedMessage={false}
@@ -707,6 +770,21 @@ export function ApiKeysPage() {
           setCcSwitchImportEntry(null);
           setCopiedCcSwitchImportConfigId(null);
         }}
+      />
+
+      <ApiKeyResetHistoryModal
+        open={resetHistoryEntry !== null}
+        onClose={() => {
+          setResetHistoryEntry(null);
+          setResetHistoryEvents([]);
+        }}
+        keyName={
+          resetHistoryEntry?.name?.trim() ||
+          t("api_keys_page.unnamed")
+        }
+        maskedKey={resetHistoryEntry ? maskApiKey(resetHistoryEntry.key) : ""}
+        loading={resetHistoryLoading}
+        events={resetHistoryEvents}
       />
 
       <ApiKeyUsageModal
