@@ -2034,7 +2034,8 @@ describe("AuthFilesPage files table", () => {
     const title = await screen.findByText("A_GptPro");
     const card = title.closest("section");
     expect(card).not.toBeNull();
-    expect(within(card as HTMLElement).getByText("5 calls")).toBeInTheDocument();
+    // Status usage is async; wait for cycle volume before asserting success rate.
+    expect(await within(card as HTMLElement).findByText("5 calls")).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText("Success Rate")).toBeInTheDocument();
     expect(within(card as HTMLElement).getByText("80.0%")).toBeInTheDocument();
   });
