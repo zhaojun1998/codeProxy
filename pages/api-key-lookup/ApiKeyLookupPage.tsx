@@ -18,6 +18,7 @@ import {
   fetchPublicChartData,
   fetchPublicLogContent,
   fetchPublicLogs,
+  fetchPublicUsageSummary,
 } from "./api";
 import { LookupEmptyState } from "./components/LookupEmptyState";
 import {
@@ -29,7 +30,11 @@ import { PublicLogsSection } from "./components/PublicLogsSection";
 import { QuickImportTabContent } from "./components/QuickImportTabContent";
 import { UsageTabSection } from "./components/UsageTabSection";
 import { useApiKeyLookupCharts } from "./hooks/useApiKeyLookupCharts";
-import type { ChartDataResponse, PublicLogItem } from "./types";
+import type {
+  ChartDataResponse,
+  PublicLogItem,
+  PublicUsageLimits,
+} from "./types";
 import {
   buildRequestLogsColumns,
   formatOptionalRequestLogLatencyMs,
@@ -353,9 +358,12 @@ export function ApiKeyLookupPage() {
   // ── Chart state ──
   const [chartData, setChartData] = useState<ChartDataResponse | null>(null);
   const [chartLoading, setChartLoading] = useState(false);
+  const [quotaLimits, setQuotaLimits] = useState<PublicUsageLimits | null>(null);
   const chartCacheRef = useRef<Record<string, ChartDataResponse>>({});
   const chartAbortControllerRef = useRef<AbortController | null>(null);
   const chartFetchIdRef = useRef(0);
+  const summaryAbortControllerRef = useRef<AbortController | null>(null);
+  const summaryFetchIdRef = useRef(0);
 
   // ── Models state ──
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -563,6 +571,32 @@ export function ApiKeyLookupPage() {
   //  Chart data fetching (with caching)
   // ================================================================
 
+  const fetchQuotaLimits = useCallback(async (key: string) => {
+    const trimmedKey = key.trim();
+    if (!trimmedKey) return;
+    summaryAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    summaryAbortControllerRef.current = controller;
+    const myFetchId = ++summaryFetchIdRef.current;
+    try {
+      const summary = await fetchPublicUsageSummary({
+        apiKey: trimmedKey,
+        signal: controller.signal,
+      });
+      if (myFetchId !== summaryFetchIdRef.current || controller.signal.aborted)
+        return;
+      setQuotaLimits(summary.limits ?? null);
+    } catch {
+      if (myFetchId !== summaryFetchIdRef.current || controller.signal.aborted)
+        return;
+      setQuotaLimits(null);
+    } finally {
+      if (summaryAbortControllerRef.current === controller) {
+        summaryAbortControllerRef.current = null;
+      }
+    }
+  }, []);
+
   const fetchChartDataFn = useCallback(
     async (key: string, days: number, options?: { force?: boolean }) => {
       const trimmedKey = key.trim();
@@ -589,6 +623,7 @@ export function ApiKeyLookupPage() {
 
       setChartLoading(true);
       setError(null);
+      void fetchQuotaLimits(trimmedKey);
       try {
         const data = await fetchPublicChartData({
           apiKey: trimmedKey,
@@ -624,7 +659,7 @@ export function ApiKeyLookupPage() {
         }
       }
     },
-    [t],
+    [fetchQuotaLimits, t],
   );
 
   // ================================================================
@@ -755,6 +790,7 @@ export function ApiKeyLookupPage() {
         setApiKeyName("");
         if (val !== queriedKey) {
           setChartData(null);
+          setQuotaLimits(null);
           setAvailableModels([]);
         }
         chartCacheRef.current = {};
@@ -800,6 +836,7 @@ export function ApiKeyLookupPage() {
     modelsCacheRef.current = {};
     setAvailableModels([]);
     setChartData(null);
+    setQuotaLimits(null);
 
     setRawItems([]);
     setTotalCount(0);
@@ -1003,6 +1040,7 @@ export function ApiKeyLookupPage() {
                 timeRange={timeRange}
                 chartStats={chartStats}
                 chartLoading={chartLoading}
+                quotaLimits={quotaLimits}
                 modelMetric={modelMetric}
                 setModelMetric={setModelMetric}
                 heatmapSeries={heatmapSeries}

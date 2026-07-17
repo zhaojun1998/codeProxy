@@ -2,7 +2,11 @@ import {
   detectApiBaseFromLocation,
   publicApiClient,
 } from "@code-proxy/api-client";
-import type { ChartDataResponse, PublicLogsResponse } from "./types";
+import type {
+  ChartDataResponse,
+  PublicLogsResponse,
+  PublicUsageSummaryResponse,
+} from "./types";
 
 type LogContentBodyPart = "input" | "output";
 
@@ -80,6 +84,17 @@ export async function fetchPublicChartData(params: {
       api_key: params.apiKey,
       days: params.days,
     },
+    { signal: params.signal },
+  );
+}
+
+export async function fetchPublicUsageSummary(params: {
+  apiKey: string;
+  signal?: AbortSignal;
+}): Promise<PublicUsageSummaryResponse> {
+  return publicApiClient.post<PublicUsageSummaryResponse>(
+    "/usage/summary",
+    { api_key: params.apiKey },
     { signal: params.signal },
   );
 }

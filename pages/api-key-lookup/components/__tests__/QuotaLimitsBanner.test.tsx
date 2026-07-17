@@ -1,0 +1,62 @@
+import { render, screen } from "@testing-library/react";
+import { describe, expect, test } from "vitest";
+import { QuotaLimitsBanner } from "../QuotaLimitsBanner";
+
+const t = (key: string) => {
+  const labels: Record<string, string> = {
+    "apikey_lookup.quota_limits_title": "Quota limits",
+    "apikey_lookup.quota_daily_requests": "Daily requests",
+    "apikey_lookup.quota_total_requests": "Total request quota",
+    "apikey_lookup.quota_daily_spending": "Daily spending",
+    "apikey_lookup.quota_total_spending": "Total spending",
+  };
+  return labels[key] ?? key;
+};
+
+describe("QuotaLimitsBanner", () => {
+  test("renders nothing without limits", () => {
+    const { container } = render(<QuotaLimitsBanner t={t} limits={null} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  test("renders only configured limit rows with used/limit", () => {
+    render(
+      <QuotaLimitsBanner
+        t={t}
+        limits={{
+          "daily-limit": 100,
+          "daily-used": 12,
+          "total-quota": 1000,
+          "total-used": 40,
+          "daily-spending-limit": 5,
+          "daily-spending-used": 1.25,
+          "spending-limit": 50,
+          "spending-used": 9.5,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("api-key-lookup-quota-limits")).toBeInTheDocument();
+    expect(screen.getByText("Daily requests")).toBeInTheDocument();
+    expect(screen.getByText("Total request quota")).toBeInTheDocument();
+    expect(screen.getByText("Daily spending")).toBeInTheDocument();
+    expect(screen.getByText("Total spending")).toBeInTheDocument();
+    expect(screen.getByText(/12/)).toBeInTheDocument();
+    expect(screen.getByText(/\$1\.2500/)).toBeInTheDocument();
+  });
+
+  test("hides unset limits", () => {
+    render(
+      <QuotaLimitsBanner
+        t={t}
+        limits={{
+          "daily-limit": 10,
+          "daily-used": 1,
+        }}
+      />,
+    );
+    expect(screen.getByText("Daily requests")).toBeInTheDocument();
+    expect(screen.queryByText("Total spending")).not.toBeInTheDocument();
+    expect(screen.queryByText("Daily spending")).not.toBeInTheDocument();
+  });
+});

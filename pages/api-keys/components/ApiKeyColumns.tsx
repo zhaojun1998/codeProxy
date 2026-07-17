@@ -38,6 +38,7 @@ type CreateApiKeyColumnsOptions = {
   onEdit: (index: number) => void;
   onDelete: (index: number) => void;
   onResetDailySpending: (index: number) => void;
+  onViewResetHistory: (entry: ApiKeyEntry) => void;
   resettingDailySpendingKey?: string | null;
 };
 
@@ -121,6 +122,7 @@ export const createApiKeyColumns = ({
   onEdit,
   onDelete,
   onResetDailySpending,
+  onViewResetHistory,
   resettingDailySpendingKey = null,
 }: CreateApiKeyColumnsOptions): DataTableColumn<ApiKeyEntry>[] => [
   {
@@ -199,6 +201,37 @@ export const createApiKeyColumns = ({
           <span className="text-slate-400 dark:text-white/40"> / </span>
           {formatApiKeySpendingAmount(limit)}
         </span>
+      );
+    },
+  },
+  {
+    key: "dailySpendingResetCount",
+    label: t("api_keys_page.col_reset_count"),
+    width: "w-[110px] min-w-[100px]",
+    cellClassName: "whitespace-nowrap text-slate-700 dark:text-white/70",
+    headerRender: () => (
+      <HoverTooltip
+        content={t("api_keys_page.reset_count_help")}
+        className="inline-flex items-center gap-1"
+      >
+        <span>{t("api_keys_page.col_reset_count")}</span>
+        <Info size={12} className="text-slate-400 dark:text-white/40" />
+      </HoverTooltip>
+    ),
+    render: (row) => {
+      const count = row["daily-spending-reset-count"] ?? 0;
+      if (count <= 0) {
+        return <span className="tabular-nums text-slate-400 dark:text-white/40">0</span>;
+      }
+      return (
+        <button
+          type="button"
+          onClick={() => onViewResetHistory(row)}
+          className="tabular-nums font-medium text-orange-600 underline-offset-2 hover:underline dark:text-orange-400"
+          aria-label={t("api_keys_page.view_reset_history")}
+        >
+          {count}
+        </button>
       );
     },
   },

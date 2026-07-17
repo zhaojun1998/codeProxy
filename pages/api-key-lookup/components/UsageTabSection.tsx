@@ -17,6 +17,8 @@ import type {
   ModelDistributionDatum,
   DailySeriesPoint,
 } from "@features/monitor-widgets/chart-options/types";
+import type { PublicUsageLimits } from "../types";
+import { QuotaLimitsBanner } from "./QuotaLimitsBanner";
 
 const DAILY_LEGEND_KEYS = {
   input: "daily_input",
@@ -221,6 +223,7 @@ export function UsageTabSection({
   timeRange,
   chartStats,
   chartLoading,
+  quotaLimits,
   modelMetric,
   setModelMetric,
   heatmapSeries,
@@ -245,6 +248,7 @@ export function UsageTabSection({
       }
     | undefined;
   chartLoading: boolean;
+  quotaLimits?: PublicUsageLimits | null;
   modelMetric: "requests" | "tokens";
   setModelMetric: (value: "requests" | "tokens") => void;
   heatmapSeries: HeatmapPoint[];
@@ -273,6 +277,7 @@ export function UsageTabSection({
   return (
     <Reveal>
       <div className="space-y-5">
+        <QuotaLimitsBanner t={t} limits={quotaLimits} />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <KpiCard
             title={t("apikey_lookup.total_requests")}
