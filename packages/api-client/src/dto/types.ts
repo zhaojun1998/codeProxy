@@ -1,6 +1,7 @@
 export interface AuthSnapshot {
   apiBase: string;
   managementKey: string;
+  refreshToken?: string;
   rememberPassword: boolean;
   /** Platform-admin override; empty/omitted means home tenant (no X-Effective-Tenant-ID). */
   effectiveTenantId?: string;
@@ -481,11 +482,7 @@ export interface AiAccountStatusRefreshAcceptedDto {
 
 export type AiAccountStatusRefreshJobState = "running" | "completed";
 
-export type AiAccountStatusRefreshAccountState =
-  | "queued"
-  | "running"
-  | "success"
-  | "error";
+export type AiAccountStatusRefreshAccountState = "queued" | "running" | "success" | "error";
 
 export interface AiAccountStatusRefreshAccountResultDto {
   auth_index: string;

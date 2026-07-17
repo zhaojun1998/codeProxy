@@ -79,14 +79,26 @@ export class ApiClient {
 
   private managementKey = "";
 
+  private refreshToken = "";
+
   private authSuspended = false;
+
+  private refreshInFlight: Promise<boolean> | null = null;
 
   private defaultHeaders = new Headers();
 
-  setConfig(config: ApiClientConfig): void {
+  setConfig(config: ApiClientConfig & { refreshToken?: string | null }): void {
     this.apiBase = computeManagementApiBase(config.apiBase);
     this.managementKey = config.managementKey.trim();
+    // undefined = keep existing refresh; null/string = replace (logout passes null/"").
+    if (config.refreshToken !== undefined) {
+      this.refreshToken = (config.refreshToken ?? "").trim();
+    }
     this.authSuspended = false;
+  }
+
+  setRefreshToken(token: string): void {
+    this.refreshToken = token.trim();
   }
 
   setDefaultHeaders(headers: HeadersInit): void {
@@ -284,16 +296,71 @@ export class ApiClient {
     }
   }
 
+  private async tryRefreshAccessToken(): Promise<boolean> {
+    if (!this.refreshToken) return false;
+    if (this.refreshInFlight) return this.refreshInFlight;
+    this.refreshInFlight = (async () => {
+      try {
+        const base = this.apiBase.replace(/\/v0\/management\/?$/, "");
+        const response = await fetch(`${base}/v0/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refresh_token: this.refreshToken }),
+        });
+        if (!response.ok) return false;
+        const payload = (await response.json()) as {
+          access_token?: string;
+          refresh_token?: string;
+        };
+        if (!payload.access_token) return false;
+        this.managementKey = payload.access_token;
+        if (payload.refresh_token) this.refreshToken = payload.refresh_token;
+        this.authSuspended = false;
+        // best-effort persist for admin session
+        try {
+          const { readPersistedAuthSnapshot, writePersistedAuthSnapshot } =
+            await import("./auth-storage");
+          const current = readPersistedAuthSnapshot();
+          if (current) {
+            writePersistedAuthSnapshot({
+              ...current,
+              managementKey: this.managementKey,
+              refreshToken: this.refreshToken || current.refreshToken,
+            });
+          }
+        } catch {
+          /* ignore */
+        }
+        dispatchWindowEvent(
+          new CustomEvent("auth-token-refreshed", {
+            detail: {
+              accessToken: this.managementKey,
+              refreshToken: this.refreshToken,
+            },
+          }),
+        );
+        return true;
+      } catch {
+        return false;
+      } finally {
+        this.refreshInFlight = null;
+      }
+    })();
+    return this.refreshInFlight;
+  }
+
   private async request<T>(
     path: string,
     {
       init,
       options,
       responseType = "json",
+      retried = false,
     }: {
       init?: RequestInit;
       options?: RequestOptions;
       responseType?: ResponseType;
+      retried?: boolean;
     } = {},
   ): Promise<T> {
     this.assertAuthActive();
@@ -312,6 +379,12 @@ export class ApiClient {
       this.applyVersionHeaders(response);
 
       if (!response.ok) {
+        if (response.status === 401 && !retried && this.refreshToken) {
+          const refreshed = await this.tryRefreshAccessToken();
+          if (refreshed) {
+            return this.request<T>(path, { init, options, responseType, retried: true });
+          }
+        }
         const error = await this.buildApiError(response);
         if (error.isAuthError) {
           this.suspendAuth(extractApiErrorCode(error.payload));
