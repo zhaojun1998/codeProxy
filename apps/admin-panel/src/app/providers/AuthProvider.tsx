@@ -213,17 +213,21 @@ const LEGACY_SERVICE_MENUS: MenuIdentity[] = [
     permission_code: "auth_files.read",
     sort_order: 20,
   }),
-  menu({
-    code: "access.api-keys",
-    parent_code: "group.access",
-    type: "menu",
-    path: "/access/api-keys",
-    component: "api-keys",
-    label_key: "shell.nav_api_keys",
-    icon: "sparkles",
-    permission_code: "api_keys.read",
-    sort_order: 30,
-  }),
+  // Hidden from sidebar: key management is under 用户账号 (?endUserId=). Route kept for deep links.
+  {
+    ...menu({
+      code: "access.api-keys",
+      parent_code: "group.access",
+      type: "menu",
+      path: "/access/api-keys",
+      component: "api-keys",
+      label_key: "shell.nav_api_keys",
+      icon: "sparkles",
+      permission_code: "api_keys.read",
+      sort_order: 30,
+    }),
+    hide_menu: true,
+  },
   menu({
     code: "access.end-users",
     parent_code: "group.access",
@@ -233,7 +237,7 @@ const LEGACY_SERVICE_MENUS: MenuIdentity[] = [
     label_key: "shell.nav_end_users",
     icon: "user-round",
     permission_code: "end_users.read",
-    sort_order: 35,
+    sort_order: 25,
   }),
   menu({
     code: "system.api-key-permissions",

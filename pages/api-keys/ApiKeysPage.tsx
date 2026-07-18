@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Plus, KeyRound, RefreshCw, Trash2 } from "lucide-react";
 import {
@@ -47,6 +48,8 @@ export function ApiKeysPage() {
   const { t, i18n } = useTranslation();
   const { notify } = useToast();
   const auth = useOptionalAuth();
+  const [searchParams] = useSearchParams();
+  const endUserIdFilter = searchParams.get("endUserId")?.trim() || "";
 
   const [entries, setEntries] = useState<ApiKeyEntry[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
@@ -132,7 +135,7 @@ export function ApiKeysPage() {
         .map((k: string): ApiKeyEntry => ({ key: k, "created-at": new Date().toISOString() }));
 
       let finalEntries: ApiKeyEntry[];
-      if (newEntries.length > 0) {
+      if (newEntries.length > 0 && !endUserIdFilter) {
         const merged = [...entriesData, ...newEntries];
         try {
           await apiKeyEntriesApi.replace(merged);
@@ -140,12 +143,15 @@ export function ApiKeysPage() {
             type: "success",
             message: t("api_keys_page.auto_import", { count: newEntries.length }),
           });
+          finalEntries = merged;
         } catch {
-          // silent
+          finalEntries = entriesData;
         }
-        finalEntries = merged;
       } else {
         finalEntries = entriesData;
+      }
+      if (endUserIdFilter) {
+        finalEntries = finalEntries.filter((e) => e.end_user_id === endUserIdFilter);
       }
       setEntries(finalEntries);
       // Load models after entries are available (needs a valid API key)
@@ -158,7 +164,7 @@ export function ApiKeysPage() {
     } finally {
       setLoading(false);
     }
-  }, [notify, refreshPermissionOptions, t]);
+  }, [endUserIdFilter, notify, refreshPermissionOptions, t]);
 
   useEffect(() => {
     void loadEntries();
@@ -258,16 +264,29 @@ export function ApiKeysPage() {
 
   const handleToggleDisable = async (index: number) => {
     const entry = entries[index];
-    const updated = { ...entry, disabled: !entry.disabled };
-    const newEntries = [...entries];
-    newEntries[index] = updated;
-
+    const nextDisabled = !entry.disabled;
     try {
-      await apiKeyEntriesApi.replace(newEntries);
-      setEntries(newEntries);
+      // Prefer id-based patch so user-scoped lists never replace the whole tenant table.
+      if (entry.id) {
+        await apiKeyEntriesApi.update({
+          id: entry.id,
+          value: { disabled: nextDisabled },
+        });
+      } else if (endUserIdFilter) {
+        const all = await apiKeyEntriesApi.list();
+        const next = all.map((e) =>
+          e.key === entry.key ? { ...e, disabled: nextDisabled } : e,
+        );
+        await apiKeyEntriesApi.replace(next);
+      } else {
+        const newEntries = [...entries];
+        newEntries[index] = { ...entry, disabled: nextDisabled };
+        await apiKeyEntriesApi.replace(newEntries);
+      }
+      await loadEntries();
       notify({
         type: "success",
-        message: updated.disabled
+        message: nextDisabled
           ? t("api_keys_page.disabled_toast", { name: entry.name || t("api_keys_page.unnamed") })
           : t("api_keys_page.enabled_toast", { name: entry.name || t("api_keys_page.unnamed") }),
       });
@@ -302,12 +321,25 @@ export function ApiKeysPage() {
         key: form.key.trim(),
         name: form.name.trim(),
         "created-at": new Date().toISOString(),
+        ...(endUserIdFilter
+          ? {
+              end_user_id: endUserIdFilter,
+              is_default: entries.length === 0,
+            }
+          : {}),
       };
       const profiledEntry = applyApiKeyPermissionProfile(
         newEntry,
         selectedPermissionProfile(form.permissionProfileId),
       );
-      await apiKeyEntriesApi.replace([...entries, profiledEntry]);
+      // When scoped to a user, merge into full list so we don't drop other users' keys.
+      let base = entries;
+      if (endUserIdFilter) {
+        const all = await apiKeyEntriesApi.list();
+        base = all.filter((e) => e.end_user_id !== endUserIdFilter);
+        base = [...base, ...entries];
+      }
+      await apiKeyEntriesApi.replace([...base.filter((e) => e.key !== profiledEntry.key), profiledEntry]);
       notify({ type: "success", message: t("api_keys_page.created_success") });
       setShowCreate(false);
       await loadEntries();
@@ -650,8 +682,18 @@ export function ApiKeysPage() {
       <Card
         className="md:flex md:h-[calc(100dvh-112px)] md:min-h-0 md:flex-col md:overflow-hidden"
         bodyClassName="md:flex md:min-h-0 md:flex-1 md:flex-col"
-        title={t("api_keys_page.title")}
-        description={t("api_keys_page.description")}
+        title={
+          endUserIdFilter
+            ? t("end_users.manage_keys_title", { defaultValue: "用户 API 密钥" })
+            : t("api_keys_page.title")
+        }
+        description={
+          endUserIdFilter
+            ? t("end_users.manage_keys_desc", {
+                defaultValue: "管理该用户账号下的全部 API 密钥（限额、权限、启停等）。",
+              })
+            : t("api_keys_page.description")
+        }
         actions={
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="primary" size="sm" onClick={handleOpenCreate}>
