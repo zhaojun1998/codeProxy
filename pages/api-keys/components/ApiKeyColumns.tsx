@@ -39,6 +39,7 @@ type CreateApiKeyColumnsOptions = {
   onDelete: (index: number) => void;
   onResetDailySpending: (index: number) => void;
   onViewResetHistory: (entry: ApiKeyEntry) => void;
+  onSetDefault?: (entry: ApiKeyEntry) => void;
   resettingDailySpendingKey?: string | null;
 };
 
@@ -123,6 +124,7 @@ export const createApiKeyColumns = ({
   onDelete,
   onResetDailySpending,
   onViewResetHistory,
+  onSetDefault,
   resettingDailySpendingKey = null,
 }: CreateApiKeyColumnsOptions): DataTableColumn<ApiKeyEntry>[] => [
   {
@@ -158,13 +160,20 @@ export const createApiKeyColumns = ({
     headerClassName: stickyNameHeaderClass,
     cellClassName: stickyNameCellClass,
     render: (row) => (
-      <OverflowTooltip content={row.name || t("api_keys_page.unnamed")} className="block min-w-0">
-        <span className="block min-w-0 truncate">
-          {row.name || (
-            <span className="text-slate-400 dark:text-white/40">{t("common.unnamed")}</span>
-          )}
-        </span>
-      </OverflowTooltip>
+      <div className="flex min-w-0 items-center gap-1.5">
+        <OverflowTooltip content={row.name || t("api_keys_page.unnamed")} className="block min-w-0">
+          <span className="block min-w-0 truncate">
+            {row.name || (
+              <span className="text-slate-400 dark:text-white/40">{t("common.unnamed")}</span>
+            )}
+          </span>
+        </OverflowTooltip>
+        {row.is_default ? (
+          <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-2xs font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+            default
+          </span>
+        ) : null}
+      </div>
     ),
   },
   {
@@ -525,6 +534,18 @@ export const createApiKeyColumns = ({
               <RotateCcw size={15} className={isResetting ? "animate-spin" : ""} />
             </button>
           </HoverTooltip>
+          {onSetDefault && !row.is_default ? (
+            <HoverTooltip content={t("end_users.set_default_key", { defaultValue: "设为默认" })}>
+              <button
+                type="button"
+                onClick={() => onSetDefault(row)}
+                className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-emerald-600 dark:text-white/50 dark:hover:bg-neutral-800 dark:hover:text-emerald-400"
+                aria-label={t("end_users.set_default_key", { defaultValue: "设为默认" })}
+              >
+                <ShieldCheck size={15} />
+              </button>
+            </HoverTooltip>
+          ) : null}
           <HoverTooltip content={editLabel}>
             <button
               type="button"

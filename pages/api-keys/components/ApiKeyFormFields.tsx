@@ -11,6 +11,7 @@ export function ApiKeyFormFields({
   editMode,
   permissionProfileOptions,
   regenerateKey,
+  serverGeneratesKey = false,
 }: {
   t: (key: string, options?: Record<string, unknown>) => string;
   form: ApiKeyFormValues;
@@ -18,6 +19,8 @@ export function ApiKeyFormFields({
   editMode: boolean;
   permissionProfileOptions: SelectOption[];
   regenerateKey: () => void;
+  /** When true (user-scoped create), key is generated server-side after submit. */
+  serverGeneratesKey?: boolean;
 }) {
   return (
     <div className="space-y-4">
@@ -33,24 +36,32 @@ export function ApiKeyFormFields({
         />
       </div>
 
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-white/80">
-          {t("api_keys_page.form_key_label")}
-        </label>
-        <div className="flex gap-2">
-          <TextInput
-            type="text"
-            value={form.key}
-            onChange={(e) => setForm((prev) => ({ ...prev, key: e.target.value }))}
-            placeholder={t("api_keys_page.form_key_placeholder")}
-            className="flex-1 font-mono"
-          />
-          <Button variant="secondary" size="sm" onClick={regenerateKey}>
-            <RefreshCw size={14} />
-            {editMode ? t("api_keys_page.form_refresh_key") : t("api_keys_page.form_regenerate")}
-          </Button>
+      {serverGeneratesKey && !editMode ? (
+        <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-neutral-800 dark:bg-neutral-900/50 dark:text-white/60">
+          {t("end_users.key_server_generated", {
+            defaultValue: "创建后由服务端生成唯一 API Key，并仅展示一次（将尝试复制到剪贴板）。",
+          })}
+        </p>
+      ) : (
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-white/80">
+            {t("api_keys_page.form_key_label")}
+          </label>
+          <div className="flex gap-2">
+            <TextInput
+              type="text"
+              value={form.key}
+              onChange={(e) => setForm((prev) => ({ ...prev, key: e.target.value }))}
+              placeholder={t("api_keys_page.form_key_placeholder")}
+              className="flex-1 font-mono"
+            />
+            <Button variant="secondary" size="sm" onClick={regenerateKey}>
+              <RefreshCw size={14} />
+              {editMode ? t("api_keys_page.form_refresh_key") : t("api_keys_page.form_regenerate")}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div>
         <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-white/80">

@@ -26,6 +26,7 @@ import { copyTextToClipboard } from "@code-proxy/ui";
 import { Card } from "@code-proxy/ui";
 import { Button } from "@code-proxy/ui";
 import { EmptyState } from "@code-proxy/ui";
+import { Modal } from "@code-proxy/ui";
 import { useToast } from "@code-proxy/ui";
 import { DataTable } from "@code-proxy/ui";
 import { ApiKeyFormModal } from "./components/ApiKeyFormModal";
@@ -69,6 +70,7 @@ export function ApiKeysPage() {
   );
   const copiedCcSwitchImportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [createdSecretOnce, setCreatedSecretOnce] = useState<string | null>(null);
   const [resettingDailySpendingKey, setResettingDailySpendingKey] = useState<string | null>(null);
   const [resetHistoryEntry, setResetHistoryEntry] = useState<ApiKeyEntry | null>(null);
   const [resetHistoryLoading, setResetHistoryLoading] = useState(false);
@@ -274,11 +276,9 @@ export function ApiKeysPage() {
           value: { disabled: nextDisabled },
         });
       } else if (endUserIdFilter) {
-        const all = await apiKeyEntriesApi.list();
-        const next = all.map((e) =>
-          e.key === entry.key ? { ...e, disabled: nextDisabled } : e,
-        );
-        await apiKeyEntriesApi.replace(next);
+        // Fail closed: never tenant-wide replace when scoped without stable id.
+        notify({ type: "error", message: t("api_keys_page.operation_failed") });
+        return;
       } else {
         const newEntries = [...entries];
         newEntries[index] = { ...entry, disabled: nextDisabled };
@@ -302,10 +302,28 @@ export function ApiKeysPage() {
   /* ─── create ─── */
 
   const handleOpenCreate = () => {
-    const next = makeEmptyApiKeyForm(generateApiKey());
+    // User-scoped create: server generates the secret; do not show a client-side fake key.
+    const next = makeEmptyApiKeyForm(endUserIdFilter ? "" : generateApiKey());
     setForm(next);
     setShowCreate(true);
   };
+
+  const handleSetDefault = useCallback(
+    async (entry: ApiKeyEntry) => {
+      if (!endUserIdFilter || !entry.id || entry.is_default) return;
+      try {
+        await endUsersApi.setDefaultKey(endUserIdFilter, entry.id);
+        notify({ type: "success", message: t("end_users.default_key_set", { defaultValue: "已设为默认 Key" }) });
+        await loadEntries();
+      } catch (err: unknown) {
+        notify({
+          type: "error",
+          message: err instanceof Error ? err.message : t("api_keys_page.operation_failed"),
+        });
+      }
+    },
+    [endUserIdFilter, loadEntries, notify, t],
+  );
 
   const handleCreate = async () => {
     if (!form.name.trim()) {
@@ -344,14 +362,10 @@ export function ApiKeysPage() {
           });
         }
         if (plain) {
-          notify({
-            type: "success",
-            message: t("api_keys_page.created_success"),
-          });
+          setCreatedSecretOnce(plain);
           void copyTextToClipboard(plain).catch(() => undefined);
-        } else {
-          notify({ type: "success", message: t("api_keys_page.created_success") });
         }
+        notify({ type: "success", message: t("api_keys_page.created_success") });
       } else {
         if (!form.key.trim()) {
           notify({ type: "error", message: t("api_keys_page.key_empty") });
@@ -702,9 +716,11 @@ export function ApiKeysPage() {
         onDelete: handleOpenDelete,
         onResetDailySpending: (index) => void handleResetDailySpending(index),
         onViewResetHistory: (entry) => void handleViewResetHistory(entry),
+        onSetDefault: endUserIdFilter ? (entry) => void handleSetDefault(entry) : undefined,
         resettingDailySpendingKey,
       }),
     [
+      endUserIdFilter,
       handleToggleDisable,
       handleViewUsage,
       handleCopy,
@@ -713,6 +729,7 @@ export function ApiKeysPage() {
       handleOpenDelete,
       handleResetDailySpending,
       handleViewResetHistory,
+      handleSetDefault,
       handleSelectAll,
       handleSelectRow,
       t,
@@ -809,6 +826,7 @@ export function ApiKeysPage() {
         onClose={() => setShowCreate(false)}
         onSubmit={handleCreate}
         regenerateKey={() => setForm((prev) => ({ ...prev, key: generateApiKey() }))}
+        serverGeneratesKey={Boolean(endUserIdFilter)}
       />
 
       <ApiKeyFormModal
@@ -823,6 +841,21 @@ export function ApiKeysPage() {
         onSubmit={handleEdit}
         regenerateKey={() => setForm((prev) => ({ ...prev, key: generateApiKey() }))}
       />
+
+      <Modal
+        open={Boolean(createdSecretOnce)}
+        onClose={() => setCreatedSecretOnce(null)}
+        title={t("end_users.copy_secret", { defaultValue: "请立即复制 API Key" })}
+      >
+        <p className="mb-2 text-sm text-amber-600 dark:text-amber-300">
+          {t("end_users.copy_secret_hint", {
+            defaultValue: "离开后无法再查看明文 Key。已尝试复制到剪贴板。",
+          })}
+        </p>
+        <code className="block select-all break-all rounded bg-slate-100 p-3 text-sm dark:bg-neutral-900">
+          {createdSecretOnce}
+        </code>
+      </Modal>
 
       <DeleteApiKeyModal
         t={t}
