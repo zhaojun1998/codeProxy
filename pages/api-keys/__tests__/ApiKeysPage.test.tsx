@@ -21,8 +21,14 @@ const mocks = vi.hoisted(() => ({
     state.entries = entries;
     return {};
   }),
-  apiKeyEntriesUpdate: vi.fn(async ({ index, value }: any) => {
-    state.entries[index] = { ...state.entries[index], ...value };
+  apiKeyEntriesUpdate: vi.fn(async ({ id, index, value }: any) => {
+    const targetIndex =
+      typeof index === "number"
+        ? index
+        : state.entries.findIndex((entry) => (id ? entry.id === id : false));
+    if (targetIndex >= 0) {
+      state.entries[targetIndex] = { ...state.entries[targetIndex], ...value };
+    }
     return {};
   }),
   apiKeyEntriesDelete: vi.fn(async ({ id, index, key }: any) => {

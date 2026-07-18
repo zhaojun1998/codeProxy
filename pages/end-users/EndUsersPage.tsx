@@ -110,16 +110,18 @@ export function EndUsersPage() {
         width: "w-40",
         render: (row) => (
           <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              title={t("end_users.manage_keys", { defaultValue: "管理密钥" })}
-              onClick={() =>
-                navigate(`/access/api-keys?endUserId=${encodeURIComponent(row.id)}`)
-              }
-            >
-              <Key className="h-4 w-4" />
-            </Button>
+            {can("api_keys.read") ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                title={t("end_users.manage_keys", { defaultValue: "管理密钥" })}
+                onClick={() =>
+                  navigate(`/access/api-keys?endUserId=${encodeURIComponent(row.id)}`)
+                }
+              >
+                <Key className="h-4 w-4" />
+              </Button>
+            ) : null}
             {canWrite ? (
               <Button
                 size="sm"
@@ -156,7 +158,7 @@ export function EndUsersPage() {
         ),
       },
     ],
-    [canWrite, navigate, t, unlock],
+    [can, canWrite, navigate, t, unlock],
   );
 
   const onCreate = async (e: FormEvent) => {

@@ -5,9 +5,10 @@ import { Plus, KeyRound, RefreshCw, Trash2 } from "lucide-react";
 import {
   apiKeyEntriesApi,
   apiKeysApi,
-  type ApiKeyDailySpendingResetEvent,
   type ApiKeyEntry,
+  type ApiKeyDailySpendingResetEvent,
 } from "@code-proxy/api-client/endpoints/api-keys";
+import { endUsersApi } from "@code-proxy/api-client/endpoints/end-users";
 import {
   applyApiKeyPermissionProfile,
   apiKeyPermissionProfilesApi,
@@ -311,36 +312,63 @@ export function ApiKeysPage() {
       notify({ type: "error", message: t("api_keys_page.name_required") });
       return;
     }
-    if (!form.key.trim()) {
-      notify({ type: "error", message: t("api_keys_page.key_empty") });
-      return;
-    }
     setSaving(true);
     try {
-      const newEntry: ApiKeyEntry = {
-        key: form.key.trim(),
-        name: form.name.trim(),
-        "created-at": new Date().toISOString(),
-        ...(endUserIdFilter
-          ? {
-              end_user_id: endUserIdFilter,
-              is_default: entries.length === 0,
-            }
-          : {}),
-      };
-      const profiledEntry = applyApiKeyPermissionProfile(
-        newEntry,
-        selectedPermissionProfile(form.permissionProfileId),
-      );
-      // When scoped to a user, merge into full list so we don't drop other users' keys.
-      let base = entries;
       if (endUserIdFilter) {
-        const all = await apiKeyEntriesApi.list();
-        base = all.filter((e) => e.end_user_id !== endUserIdFilter);
-        base = [...base, ...entries];
+        // Owner-scoped create: server generates unique key; never tenant-wide replace.
+        const created = await endUsersApi.createKey(endUserIdFilter, form.name.trim());
+        const keyId = created.api_key?.id;
+        const plain = created.plaintext_key;
+        if (keyId && form.permissionProfileId && form.permissionProfileId !== CUSTOM_PERMISSION_PROFILE_ID) {
+          const profiled = applyApiKeyPermissionProfile(
+            { key: plain || "", id: keyId },
+            selectedPermissionProfile(form.permissionProfileId),
+          );
+          await apiKeyEntriesApi.update({
+            id: keyId,
+            value: {
+              name: form.name.trim(),
+              "permission-profile-id": profiled["permission-profile-id"],
+              "daily-limit": profiled["daily-limit"],
+              "total-quota": profiled["total-quota"],
+              "spending-limit": profiled["spending-limit"],
+              "daily-spending-limit": profiled["daily-spending-limit"],
+              "concurrency-limit": profiled["concurrency-limit"],
+              "rpm-limit": profiled["rpm-limit"],
+              "tpm-limit": profiled["tpm-limit"],
+              "allowed-models": profiled["allowed-models"],
+              "allowed-channels": profiled["allowed-channels"],
+              "allowed-channel-groups": profiled["allowed-channel-groups"],
+              "system-prompt": profiled["system-prompt"],
+            },
+          });
+        }
+        if (plain) {
+          notify({
+            type: "success",
+            message: t("api_keys_page.created_success"),
+          });
+          void copyTextToClipboard(plain).catch(() => undefined);
+        } else {
+          notify({ type: "success", message: t("api_keys_page.created_success") });
+        }
+      } else {
+        if (!form.key.trim()) {
+          notify({ type: "error", message: t("api_keys_page.key_empty") });
+          return;
+        }
+        const newEntry: ApiKeyEntry = {
+          key: form.key.trim(),
+          name: form.name.trim(),
+          "created-at": new Date().toISOString(),
+        };
+        const profiledEntry = applyApiKeyPermissionProfile(
+          newEntry,
+          selectedPermissionProfile(form.permissionProfileId),
+        );
+        await apiKeyEntriesApi.replace([...entries, profiledEntry]);
+        notify({ type: "success", message: t("api_keys_page.created_success") });
       }
-      await apiKeyEntriesApi.replace([...base.filter((e) => e.key !== profiledEntry.key), profiledEntry]);
-      notify({ type: "success", message: t("api_keys_page.created_success") });
       setShowCreate(false);
       await loadEntries();
     } catch (err: unknown) {
@@ -411,9 +439,14 @@ export function ApiKeysPage() {
               { key: newKey },
               selectedPermissionProfile(form.permissionProfileId),
             );
+      if (!entries[editIndex].id && endUserIdFilter) {
+        notify({ type: "error", message: t("api_keys_page.update_failed") });
+        return;
+      }
       await apiKeyEntriesApi.update({
         id: entries[editIndex].id,
-        index: editIndex,
+        // Never pass filtered list index to tenant-wide index resolver.
+        ...(entries[editIndex].id ? {} : { index: editIndex }),
         value: {
           ...(newKey !== originalKey ? { key: newKey } : {}),
           name: form.name.trim(),
@@ -485,22 +518,37 @@ export function ApiKeysPage() {
 
   const handleDelete = async () => {
     if (deleteIndex === null) return;
+    const target = entries[deleteIndex];
+    if (!target) return;
     setSaving(true);
     try {
-      const response = (await apiKeyEntriesApi.delete({
-        id: entries[deleteIndex]?.id,
-        index: deleteIndex,
-        deleteLogs: deleteLogsOnDelete,
-      })) as { logs_deleted?: number } | undefined;
-      const logsDeleted =
-        typeof response?.logs_deleted === "number" ? response.logs_deleted : undefined;
-      notify({
-        type: "success",
-        message:
-          deleteLogsOnDelete && typeof logsDeleted === "number"
-            ? t("api_keys_page.deleted_success_with_logs", { count: logsDeleted })
-            : t("api_keys_page.deleted_success"),
-      });
+      if (endUserIdFilter) {
+        if (!target.id) {
+          notify({
+            type: "error",
+            message: t("api_keys_page.delete_failed"),
+          });
+          return;
+        }
+        // Owner-scoped delete promotes default key when needed; never use filtered index.
+        await endUsersApi.deleteKey(endUserIdFilter, target.id);
+        notify({ type: "success", message: t("api_keys_page.deleted_success") });
+      } else {
+        const response = (await apiKeyEntriesApi.delete({
+          id: target.id,
+          key: target.id ? undefined : target.key,
+          deleteLogs: deleteLogsOnDelete,
+        })) as { logs_deleted?: number } | undefined;
+        const logsDeleted =
+          typeof response?.logs_deleted === "number" ? response.logs_deleted : undefined;
+        notify({
+          type: "success",
+          message:
+            deleteLogsOnDelete && typeof logsDeleted === "number"
+              ? t("api_keys_page.deleted_success_with_logs", { count: logsDeleted })
+              : t("api_keys_page.deleted_success"),
+        });
+      }
       setDeleteIndex(null);
       setDeleteLogsOnDelete(true);
       await loadEntries();
@@ -700,7 +748,7 @@ export function ApiKeysPage() {
               <Plus size={14} />
               {t("api_keys_page.create_key")}
             </Button>
-            {selectedEntries.length > 0 ? (
+            {selectedEntries.length > 0 && !endUserIdFilter ? (
               <Button
                 variant="danger"
                 size="sm"

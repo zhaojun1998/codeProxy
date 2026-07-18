@@ -69,6 +69,10 @@ export const endUsersApi = {
       `/end-users/${id}/api-keys`,
       { name: name || "" },
     ),
+  deleteKey: (userId: string, keyId: string) =>
+    apiClient.delete(`/end-users/${userId}/api-keys/${keyId}`),
+  setDefaultKey: (userId: string, keyId: string) =>
+    apiClient.post(`/end-users/${userId}/api-keys/${keyId}/default`, {}),
 };
 
 export const portalApi = {
