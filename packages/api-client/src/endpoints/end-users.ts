@@ -20,7 +20,39 @@ export interface EndUser {
   updated_at: string;
   version: number;
   api_key_count?: number;
+  /** Account-level quota/permissions (shared by all keys). */
+  "permission-profile-id"?: string;
+  "daily-limit"?: number;
+  "total-quota"?: number;
+  "spending-limit"?: number;
+  "daily-spending-limit"?: number;
+  "concurrency-limit"?: number;
+  "rpm-limit"?: number;
+  "tpm-limit"?: number;
+  "allowed-models"?: string[];
+  "allowed-channels"?: string[];
+  "allowed-channel-groups"?: string[];
+  "system-prompt"?: string;
 }
+
+export type EndUserUpdateBody = {
+  username?: string;
+  display_name?: string;
+  password?: string;
+  status?: string;
+  "permission-profile-id"?: string;
+  "daily-limit"?: number;
+  "total-quota"?: number;
+  "spending-limit"?: number;
+  "daily-spending-limit"?: number;
+  "concurrency-limit"?: number;
+  "rpm-limit"?: number;
+  "tpm-limit"?: number;
+  "allowed-models"?: string[];
+  "allowed-channels"?: string[];
+  "allowed-channel-groups"?: string[];
+  "system-prompt"?: string;
+};
 
 export interface EndUserAPIKey {
   id: string;
@@ -54,10 +86,8 @@ export const endUsersApi = {
   list: () => apiClient.get<{ items: EndUser[] }>("/end-users"),
   create: (body: { username?: string; display_name: string; password?: string }) =>
     apiClient.post<CreateEndUserResult>("/end-users", body),
-  update: (
-    id: string,
-    body: { username?: string; display_name?: string; password?: string; status?: string },
-  ) => apiClient.patch<EndUser>(`/end-users/${id}`, body),
+  update: (id: string, body: EndUserUpdateBody) =>
+    apiClient.patch<EndUser>(`/end-users/${id}`, body),
   remove: (id: string) => apiClient.delete(`/end-users/${id}`),
   resetPassword: (id: string, password?: string) =>
     apiClient.post<{ generated_password?: string }>(`/end-users/${id}/reset-password`, {

@@ -1,13 +1,21 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Key, KeyRound, Pencil, Trash2, Unlock } from "lucide-react";
-import { endUsersApi, type CreateEndUserResult, type EndUser } from "@code-proxy/api-client";
+import { Infinity as InfinityIcon, Key, KeyRound, Pencil, Trash2, Unlock } from "lucide-react";
+import {
+  apiKeyPermissionProfilesApi,
+  endUsersApi,
+  type ApiKeyPermissionProfile,
+  type CreateEndUserResult,
+  type EndUser,
+  type EndUserUpdateBody,
+} from "@code-proxy/api-client";
 import {
   Button,
   Card,
   ConfirmModal,
   DataTable,
   Modal,
+  Select,
   TextInput,
   type DataTableColumn,
   useToast,
@@ -15,7 +23,37 @@ import {
 import { PermissionGate } from "@app/guards/PermissionGate";
 import { useAuth } from "@app/providers/AuthProvider";
 
-const emptyForm = { username: "", displayName: "", password: "" };
+const emptyForm = { username: "", displayName: "", password: "", permissionProfileId: "" };
+
+function formatAccountLimit(limit: number | undefined, unlimitedLabel: string) {
+  if (!limit || limit <= 0) {
+    return (
+      <span className="inline-flex items-center justify-center gap-1 text-green-600 dark:text-green-400">
+        <InfinityIcon size={14} /> {unlimitedLabel}
+      </span>
+    );
+  }
+  return <span className="tabular-nums">{limit.toLocaleString()}</span>;
+}
+
+function formatAccountSpending(limit: number | undefined, unlimitedLabel: string) {
+  if (!limit || limit <= 0 || !Number.isFinite(limit)) {
+    return (
+      <span className="inline-flex items-center justify-center gap-1 text-green-600 dark:text-green-400">
+        <InfinityIcon size={14} /> {unlimitedLabel}
+      </span>
+    );
+  }
+  return (
+    <span className="tabular-nums">
+      {new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 2,
+      }).format(limit)}
+    </span>
+  );
+}
 
 const stickyActionsHeaderClass =
   "text-center md:sticky md:z-40 md:bg-slate-100 md:dark:bg-neutral-800";
@@ -41,7 +79,9 @@ export function EndUsersPage() {
   const [deleteUser, setDeleteUser] = useState<EndUser | null>(null);
   const [keysUser, setKeysUser] = useState<EndUser | null>(null);
   const [busy, setBusy] = useState(false);
+  const [permissionProfiles, setPermissionProfiles] = useState<ApiKeyPermissionProfile[]>([]);
   const canWrite = can("end_users.write");
+  const unlimitedLabel = t("api_keys_page.unlimited", { defaultValue: "无限制" });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,9 +95,33 @@ export function EndUsersPage() {
     }
   }, [notify]);
 
+  const loadProfiles = useCallback(async () => {
+    try {
+      const profiles = await apiKeyPermissionProfilesApi.list();
+      setPermissionProfiles(Array.isArray(profiles) ? profiles : []);
+    } catch {
+      setPermissionProfiles([]);
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadProfiles();
+  }, [load, loadProfiles]);
+
+  const profileNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of permissionProfiles) map.set(p.id, p.name);
+    return map;
+  }, [permissionProfiles]);
+
+  const permissionProfileOptions = useMemo(
+    () => [
+      { value: "", label: t("api_keys_page.permission_profile_unrestricted", { defaultValue: "不限制" }) },
+      ...permissionProfiles.map((p) => ({ value: p.id, label: p.name })),
+    ],
+    [permissionProfiles, t],
+  );
 
   const unlock = useCallback(
     async (row: EndUser) => {
@@ -115,6 +179,76 @@ export function EndUsersPage() {
         render: (row) => row.status,
       },
       {
+        key: "permission",
+        label: t("end_users.col_permission", { defaultValue: "权限配置" }),
+        width: "w-36 min-w-[9rem]",
+        minWidthPx: 120,
+        maxWidthPx: 280,
+        headerClassName: "text-center",
+        cellClassName: "text-center text-slate-700 dark:text-white/70",
+        render: (row) => {
+          const id = row["permission-profile-id"]?.trim() ?? "";
+          if (!id) {
+            return (
+              <span className="text-green-600 dark:text-green-400">
+                {t("api_keys_page.permission_profile_unrestricted", { defaultValue: "不限制" })}
+              </span>
+            );
+          }
+          return profileNameById.get(id) || id;
+        },
+      },
+      {
+        key: "dailyLimit",
+        label: t("api_keys_page.col_daily_limit", { defaultValue: "每日限额" }),
+        width: "w-[120px] min-w-[110px]",
+        minWidthPx: 100,
+        maxWidthPx: 180,
+        headerClassName: "text-center",
+        cellClassName: "text-center whitespace-nowrap text-slate-700 dark:text-white/70",
+        render: (row) => formatAccountLimit(row["daily-limit"], unlimitedLabel),
+      },
+      {
+        key: "totalQuota",
+        label: t("api_keys_page.col_total_quota", { defaultValue: "总配额" }),
+        width: "w-[120px] min-w-[110px]",
+        minWidthPx: 100,
+        maxWidthPx: 180,
+        headerClassName: "text-center",
+        cellClassName: "text-center whitespace-nowrap text-slate-700 dark:text-white/70",
+        render: (row) => formatAccountLimit(row["total-quota"], unlimitedLabel),
+      },
+      {
+        key: "spendingLimit",
+        label: t("api_keys_page.col_spending_limit", { defaultValue: "消费限额" }),
+        width: "w-[130px] min-w-[120px]",
+        minWidthPx: 110,
+        maxWidthPx: 200,
+        headerClassName: "text-center",
+        cellClassName: "text-center whitespace-nowrap text-slate-700 dark:text-white/70",
+        render: (row) => formatAccountSpending(row["spending-limit"], unlimitedLabel),
+      },
+      {
+        key: "rpmLimit",
+        label: "RPM",
+        width: "w-[100px] min-w-[90px]",
+        minWidthPx: 80,
+        maxWidthPx: 140,
+        headerClassName: "text-center",
+        cellClassName: "text-center whitespace-nowrap text-slate-700 dark:text-white/70",
+        render: (row) => formatAccountLimit(row["rpm-limit"], unlimitedLabel),
+      },
+      {
+        key: "tpmLimit",
+        label: "TPM",
+        width: "w-[100px] min-w-[90px]",
+        minWidthPx: 80,
+        maxWidthPx: 140,
+        headerClassName: "text-center",
+        cellClassName: "text-center whitespace-nowrap text-slate-700 dark:text-white/70",
+        render: (row) => formatAccountLimit(row["tpm-limit"], unlimitedLabel),
+      },
+      {
         key: "last_login",
         label: t("end_users.last_login", { defaultValue: "最近登录" }),
         width: "w-48 min-w-[12rem]",
@@ -157,6 +291,7 @@ export function EndUsersPage() {
                     username: row.username,
                     displayName: row.display_name,
                     password: "",
+                    permissionProfileId: row["permission-profile-id"] ?? "",
                   });
                 }}
               >
@@ -182,7 +317,7 @@ export function EndUsersPage() {
         ),
       },
     ],
-    [can, canWrite, t, unlock],
+    [can, canWrite, profileNameById, t, unlimitedLabel, unlock],
   );
 
   const onCreate = async (e: FormEvent) => {
@@ -233,17 +368,52 @@ export function EndUsersPage() {
     if (!editUser) return;
     setBusy(true);
     try {
-      const body: {
-        username?: string;
-        display_name?: string;
-        password?: string;
-      } = {};
+      const body: EndUserUpdateBody = {};
       const nextUsername = editForm.username.trim();
       const nextDisplay = editForm.displayName.trim();
+      const nextProfile = editForm.permissionProfileId.trim();
       if (nextUsername && nextUsername !== editUser.username) body.username = nextUsername;
       if (nextDisplay && nextDisplay !== editUser.display_name) body.display_name = nextDisplay;
       if (editForm.password.trim()) body.password = editForm.password;
-      if (!body.username && !body.display_name && !body.password) {
+      const prevProfile = (editUser["permission-profile-id"] ?? "").trim();
+      if (nextProfile !== prevProfile) {
+        body["permission-profile-id"] = nextProfile;
+        // Applying a profile: copy limits from template; empty = unrestricted account.
+        if (nextProfile) {
+          const profile = permissionProfiles.find((p) => p.id === nextProfile);
+          if (profile) {
+            body["daily-limit"] = profile["daily-limit"];
+            body["total-quota"] = profile["total-quota"];
+            body["spending-limit"] = 0;
+            body["daily-spending-limit"] = profile["daily-spending-limit"];
+            body["concurrency-limit"] = profile["concurrency-limit"];
+            body["rpm-limit"] = profile["rpm-limit"];
+            body["tpm-limit"] = profile["tpm-limit"];
+            body["allowed-models"] = [...profile["allowed-models"]];
+            body["allowed-channels"] = [...profile["allowed-channels"]];
+            body["allowed-channel-groups"] = [...profile["allowed-channel-groups"]];
+            body["system-prompt"] = profile["system-prompt"];
+          }
+        } else {
+          body["daily-limit"] = 0;
+          body["total-quota"] = 0;
+          body["spending-limit"] = 0;
+          body["daily-spending-limit"] = 0;
+          body["concurrency-limit"] = 0;
+          body["rpm-limit"] = 0;
+          body["tpm-limit"] = 0;
+          body["allowed-models"] = [];
+          body["allowed-channels"] = [];
+          body["allowed-channel-groups"] = [];
+          body["system-prompt"] = "";
+        }
+      }
+      if (
+        !body.username &&
+        !body.display_name &&
+        !body.password &&
+        body["permission-profile-id"] === undefined
+      ) {
         setEditUser(null);
         return;
       }
@@ -283,7 +453,7 @@ export function EndUsersPage() {
           title={t("end_users.title", { defaultValue: "用户账号" })}
           description={t("end_users.subtitle", {
             defaultValue:
-              "门户用户账号（与后台管理员隔离）。点击「密钥」管理该用户下全部 API Key（限额/权限/启停等）。",
+              "门户用户账号（与后台管理员隔离）。每日限额/总配额/权限在账号上统一配置，该用户下全部 API Key 共用同一额度池。",
           })}
           actions={
             canWrite ? (
@@ -303,7 +473,7 @@ export function EndUsersPage() {
             rowHeight={60}
             height="h-[calc(100dvh-260px)] md:h-auto md:flex-1"
             minHeight="min-h-[320px] md:min-h-0"
-            minWidth="min-w-[720px]"
+            minWidth="min-w-[1100px]"
             emptyText={t("end_users.empty", { defaultValue: "暂无用户账号" })}
             showAllLoadedMessage={false}
             columnResizable
@@ -460,6 +630,25 @@ export function EndUsersPage() {
               autoComplete="new-password"
             />
           </label>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">
+              {t("api_keys_page.form_permission_profile", { defaultValue: "权限配置" })}
+            </span>
+            <Select
+              value={editForm.permissionProfileId}
+              onChange={(value) => setEditForm((f) => ({ ...f, permissionProfileId: value }))}
+              options={permissionProfileOptions}
+              aria-label={t("api_keys_page.form_permission_profile", { defaultValue: "权限配置" })}
+              placeholder={t("api_keys_page.form_permission_profile_placeholder", {
+                defaultValue: "选择权限模板",
+              })}
+            />
+            <p className="text-xs text-slate-400 dark:text-white/40">
+              {t("end_users.quota_on_account_hint", {
+                defaultValue: "限额与模型/渠道权限挂在账号上，该用户所有密钥共用。",
+              })}
+            </p>
+          </label>
         </form>
       </Modal>
 
@@ -505,7 +694,7 @@ export function EndUsersPage() {
             : t("end_users.manage_keys_title", { defaultValue: "用户 API 密钥" })
         }
         description={t("end_users.manage_keys_desc", {
-          defaultValue: "管理该用户账号下的全部 API 密钥（限额、权限、启停等）。",
+          defaultValue: "管理该用户账号下的 API 密钥（名称、启停、默认密钥等）。限额与权限请在账号编辑中配置。",
         })}
         maxWidth="max-w-[96vw]"
         panelClassName="h-[min(90dvh,920px)]"

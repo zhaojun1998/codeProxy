@@ -41,6 +41,8 @@ type CreateApiKeyColumnsOptions = {
   onViewResetHistory: (entry: ApiKeyEntry) => void;
   onSetDefault?: (entry: ApiKeyEntry) => void;
   resettingDailySpendingKey?: string | null;
+  /** Owned keys share account quota; hide per-key limit columns. */
+  accountScoped?: boolean;
 };
 
 type PermissionSummaryTone = "cyan" | "indigo" | "violet";
@@ -126,7 +128,9 @@ export const createApiKeyColumns = ({
   onViewResetHistory,
   onSetDefault,
   resettingDailySpendingKey = null,
-}: CreateApiKeyColumnsOptions): DataTableColumn<ApiKeyEntry>[] => [
+  accountScoped = false,
+}: CreateApiKeyColumnsOptions): DataTableColumn<ApiKeyEntry>[] => {
+  const columns: DataTableColumn<ApiKeyEntry>[] = [
   {
     key: "select",
     label: t("api_keys_page.select_all_keys"),
@@ -570,4 +574,23 @@ export const createApiKeyColumns = ({
       );
     },
   },
-];
+  ];
+
+  if (!accountScoped) {
+    return columns;
+  }
+  // Account-owned keys: quota lives on the end-user; only show credential columns.
+  const hide = new Set([
+    "dailyLimit",
+    "totalQuota",
+    "spendingLimit",
+    "dailySpending",
+    "dailySpendingResetCount",
+    "rpmLimit",
+    "tpmLimit",
+    "allowedModels",
+    "allowedChannelGroups",
+    "allowedChannels",
+  ]);
+  return columns.filter((col) => !hide.has(String(col.key)));
+};

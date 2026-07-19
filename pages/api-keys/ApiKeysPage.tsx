@@ -340,34 +340,9 @@ export function ApiKeysPage({
     setSaving(true);
     try {
       if (endUserIdFilter) {
-        // Owner-scoped create: server generates unique key; never tenant-wide replace.
+        // Owner-scoped create: server generates unique key; quota lives on the account.
         const created = await endUsersApi.createKey(endUserIdFilter, form.name.trim());
-        const keyId = created.api_key?.id;
         const plain = created.plaintext_key;
-        if (keyId && form.permissionProfileId && form.permissionProfileId !== CUSTOM_PERMISSION_PROFILE_ID) {
-          const profiled = applyApiKeyPermissionProfile(
-            { key: plain || "", id: keyId },
-            selectedPermissionProfile(form.permissionProfileId),
-          );
-          await apiKeyEntriesApi.update({
-            id: keyId,
-            value: {
-              name: form.name.trim(),
-              "permission-profile-id": profiled["permission-profile-id"],
-              "daily-limit": profiled["daily-limit"],
-              "total-quota": profiled["total-quota"],
-              "spending-limit": profiled["spending-limit"],
-              "daily-spending-limit": profiled["daily-spending-limit"],
-              "concurrency-limit": profiled["concurrency-limit"],
-              "rpm-limit": profiled["rpm-limit"],
-              "tpm-limit": profiled["tpm-limit"],
-              "allowed-models": profiled["allowed-models"],
-              "allowed-channels": profiled["allowed-channels"],
-              "allowed-channel-groups": profiled["allowed-channel-groups"],
-              "system-prompt": profiled["system-prompt"],
-            },
-          });
-        }
         if (plain) {
           setCreatedSecretOnce(plain);
           void copyTextToClipboard(plain).catch(() => undefined);
@@ -434,46 +409,54 @@ export function ApiKeysPage({
     }
     const originalKey = entries[editIndex].key;
     const newKey = form.key.trim();
-    if (!newKey) {
+    if (!endUserIdFilter && !newKey) {
       notify({ type: "error", message: t("api_keys_page.key_empty") });
       return;
     }
     setSaving(true);
     try {
-      const permissionPatch =
-        form.permissionProfileId === CUSTOM_PERMISSION_PROFILE_ID
-          ? {
-              "permission-profile-id": entries[editIndex]["permission-profile-id"] ?? "",
-              "daily-limit": entries[editIndex]["daily-limit"] ?? 0,
-              "total-quota": entries[editIndex]["total-quota"] ?? 0,
-              "spending-limit": entries[editIndex]["spending-limit"] ?? 0,
-              "daily-spending-limit": entries[editIndex]["daily-spending-limit"] ?? 0,
-              "concurrency-limit": entries[editIndex]["concurrency-limit"] ?? 0,
-              "rpm-limit": entries[editIndex]["rpm-limit"] ?? 0,
-              "tpm-limit": entries[editIndex]["tpm-limit"] ?? 0,
-              "allowed-models": entries[editIndex]["allowed-models"] ?? [],
-              "allowed-channels": entries[editIndex]["allowed-channels"] ?? [],
-              "allowed-channel-groups": entries[editIndex]["allowed-channel-groups"] ?? [],
-              "system-prompt": entries[editIndex]["system-prompt"] ?? "",
-            }
-          : applyApiKeyPermissionProfile(
-              { key: newKey },
-              selectedPermissionProfile(form.permissionProfileId),
-            );
       if (!entries[editIndex].id && endUserIdFilter) {
         notify({ type: "error", message: t("api_keys_page.update_failed") });
         return;
       }
-      await apiKeyEntriesApi.update({
-        id: entries[editIndex].id,
-        // Never pass filtered list index to tenant-wide index resolver.
-        ...(entries[editIndex].id ? {} : { index: editIndex }),
-        value: {
-          ...(newKey !== originalKey ? { key: newKey } : {}),
-          name: form.name.trim(),
-          ...permissionPatch,
-        },
-      });
+      // Owned keys: only rename; account holds quota/permissions.
+      if (endUserIdFilter) {
+        await apiKeyEntriesApi.update({
+          id: entries[editIndex].id,
+          value: { name: form.name.trim() },
+        });
+      } else {
+        const permissionPatch =
+          form.permissionProfileId === CUSTOM_PERMISSION_PROFILE_ID
+            ? {
+                "permission-profile-id": entries[editIndex]["permission-profile-id"] ?? "",
+                "daily-limit": entries[editIndex]["daily-limit"] ?? 0,
+                "total-quota": entries[editIndex]["total-quota"] ?? 0,
+                "spending-limit": entries[editIndex]["spending-limit"] ?? 0,
+                "daily-spending-limit": entries[editIndex]["daily-spending-limit"] ?? 0,
+                "concurrency-limit": entries[editIndex]["concurrency-limit"] ?? 0,
+                "rpm-limit": entries[editIndex]["rpm-limit"] ?? 0,
+                "tpm-limit": entries[editIndex]["tpm-limit"] ?? 0,
+                "allowed-models": entries[editIndex]["allowed-models"] ?? [],
+                "allowed-channels": entries[editIndex]["allowed-channels"] ?? [],
+                "allowed-channel-groups": entries[editIndex]["allowed-channel-groups"] ?? [],
+                "system-prompt": entries[editIndex]["system-prompt"] ?? "",
+              }
+            : applyApiKeyPermissionProfile(
+                { key: newKey },
+                selectedPermissionProfile(form.permissionProfileId),
+              );
+        await apiKeyEntriesApi.update({
+          id: entries[editIndex].id,
+          // Never pass filtered list index to tenant-wide index resolver.
+          ...(entries[editIndex].id ? {} : { index: editIndex }),
+          value: {
+            ...(newKey !== originalKey ? { key: newKey } : {}),
+            name: form.name.trim(),
+            ...permissionPatch,
+          },
+        });
+      }
       notify({ type: "success", message: t("api_keys_page.updated_success") });
       setEditIndex(null);
       await loadEntries();
@@ -725,6 +708,7 @@ export function ApiKeysPage({
         onViewResetHistory: (entry) => void handleViewResetHistory(entry),
         onSetDefault: endUserIdFilter ? (entry) => void handleSetDefault(entry) : undefined,
         resettingDailySpendingKey,
+        accountScoped: Boolean(endUserIdFilter),
       }),
     [
       endUserIdFilter,
@@ -861,6 +845,7 @@ export function ApiKeysPage({
         onSubmit={handleCreate}
         regenerateKey={() => setForm((prev) => ({ ...prev, key: generateApiKey() }))}
         serverGeneratesKey={Boolean(endUserIdFilter)}
+        hidePermissionProfile={Boolean(endUserIdFilter)}
       />
 
       <ApiKeyFormModal
@@ -874,6 +859,7 @@ export function ApiKeysPage({
         onClose={() => setEditIndex(null)}
         onSubmit={handleEdit}
         regenerateKey={() => setForm((prev) => ({ ...prev, key: generateApiKey() }))}
+        hidePermissionProfile={Boolean(endUserIdFilter)}
       />
 
       <Modal
