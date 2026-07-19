@@ -30,20 +30,14 @@ export type PublicModelItem = {
   supportsVision: boolean;
 };
 
-type V1ModelsResponse =
-  | { data?: unknown[] }
-  | { models?: unknown[] }
-  | unknown[]
-  | Record<string, unknown>;
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
-const extractModelItems = (payload: V1ModelsResponse): unknown[] => {
+const extractModelItems = (payload: unknown): unknown[] => {
   if (Array.isArray(payload)) return payload;
   if (!isRecord(payload)) return [];
-  if (Array.isArray(payload.data)) return payload.data as unknown[];
-  if (Array.isArray(payload.models)) return payload.models as unknown[];
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.models)) return payload.models;
   return [];
 };
 
@@ -76,7 +70,7 @@ export const normalizePublicModelItem = (item: unknown): PublicModelItem | null 
   };
 };
 
-const extractModels = (payload: V1ModelsResponse): PublicModelItem[] => {
+const extractModels = (payload: unknown): PublicModelItem[] => {
   const byId = new Map<string, PublicModelItem>();
   for (const item of extractModelItems(payload)) {
     const model = normalizePublicModelItem(item);
@@ -173,6 +167,5 @@ export async function fetchAvailableModels(apiKey: string): Promise<PublicModelI
     const text = await resp.text().catch(() => "");
     throw new Error(text || `Request failed (${resp.status})`);
   }
-  const payload = (await resp.json()) as V1ModelsResponse;
-  return extractModels(payload);
+  return extractModels(await resp.json());
 }
