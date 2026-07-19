@@ -2,10 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usageApi } from "@code-proxy/api-client";
 import type { ApiKeyEntry } from "@code-proxy/api-client/endpoints/api-keys";
-import type { UsageLogItem } from "@code-proxy/api-client/endpoints/usage";
-import { useToast } from "@code-proxy/ui";
+import type {
+  UsageChannelFilterOption,
+  UsageLogItem,
+} from "@code-proxy/api-client/endpoints/usage";
+import { useToast, type SearchableSelectOption } from "@code-proxy/ui";
+import { ModelTag } from "@features/model-tags";
 import {
+  buildRequestLogKeyOptions,
   buildRequestLogsColumns,
+  ChannelIdentityLabel,
   DEFAULT_REQUEST_LOG_PAGE_SIZE,
   toRequestLogsRow,
   type RequestLogsRow,
@@ -14,31 +20,7 @@ import {
 
 type StatusFilter = "" | "success" | "failed";
 
-const normalizeChannelGroupKey = (value: string): string => value.trim().toLowerCase();
-
-const resolveChannelGroupLabel = (value: string): string => {
-  const labels: Record<string, string> = {
-    gemini: "Gemini",
-    claude: "Claude",
-    codex: "Codex",
-    vertex: "Vertex",
-    openai: "OpenAI Compatible",
-    "gemini-cli": "Gemini CLI",
-    antigravity: "Antigravity",
-    kimi: "Kimi",
-    qwen: "Qwen",
-    iflow: "iFlow",
-    kiro: "Kiro",
-  };
-  const key = normalizeChannelGroupKey(value);
-  return labels[key] || value;
-};
-
-export function useApiKeyUsageView({
-  channelGroupByName,
-}: {
-  channelGroupByName: Record<string, string>;
-}) {
+export function useApiKeyUsageView() {
   const { t } = useTranslation();
   const { notify } = useToast();
 
@@ -51,19 +33,21 @@ export function useApiKeyUsageView({
   const [usagePageSize, setUsagePageSize] = useState(DEFAULT_REQUEST_LOG_PAGE_SIZE);
   const [usageLastUpdatedAt, setUsageLastUpdatedAt] = useState<number | null>(null);
   const [usageFilterOptions, setUsageFilterOptions] = useState<{
+    api_keys: string[];
+    api_key_names: Record<string, string>;
     channels: string[];
+    channel_options: UsageChannelFilterOption[];
     models: string[];
   }>({
+    api_keys: [],
+    api_key_names: {},
     channels: [],
-    models: [],
-  });
-  const usageFilterOptionsRef = useRef<{ channels: string[]; models: string[] }>({
-    channels: [],
+    channel_options: [],
     models: [],
   });
   const [usageTimeRange, setUsageTimeRange] = useState<TimeRange>(7);
+  const [usageKeyQuery, setUsageKeyQuery] = useState("");
   const [usageChannelQuery, setUsageChannelQuery] = useState("");
-  const [usageChannelGroupQuery, setUsageChannelGroupQuery] = useState("");
   const [usageModelQuery, setUsageModelQuery] = useState("");
   const [usageStatusFilter, setUsageStatusFilter] = useState<StatusFilter>("");
   const [usageContentModalOpen, setUsageContentModalOpen] = useState(false);
@@ -89,10 +73,7 @@ export function useApiKeyUsageView({
   }, []);
 
   const usageLogColumns = useMemo(
-    () =>
-      buildRequestLogsColumns(t, handleUsageContentClick, handleUsageErrorClick, {
-        identityColumn: "key",
-      }),
+    () => buildRequestLogsColumns(t, handleUsageContentClick, handleUsageErrorClick),
     [t, handleUsageContentClick, handleUsageErrorClick],
   );
 
@@ -103,25 +84,13 @@ export function useApiKeyUsageView({
 
   const usageTotalPages = Math.max(1, Math.ceil(usageTotalCount / usagePageSize));
 
-  const buildUsageChannelQuery = useCallback(
-    (channelName: string, groupKey: string) => {
-      const trimmedChannel = channelName.trim();
-      const normalizedGroup = normalizeChannelGroupKey(groupKey);
-
-      if (trimmedChannel) {
-        if (!normalizedGroup) return trimmedChannel;
-        const mappedGroup = channelGroupByName[trimmedChannel];
-        return mappedGroup === normalizedGroup ? trimmedChannel : "__no_match__";
-      }
-
-      if (!normalizedGroup) return "";
-      const matchedChannels = usageFilterOptionsRef.current.channels.filter(
-        (channel) => channelGroupByName[channel] === normalizedGroup,
-      );
-      return matchedChannels.length > 0 ? matchedChannels.join(",") : "__no_match__";
-    },
-    [channelGroupByName],
-  );
+  const resolveScopedApiKeys = useCallback(() => {
+    const scope = usageViewKeys;
+    if (scope.length === 0) return [];
+    const selected = usageKeyQuery.trim();
+    if (!selected) return scope;
+    return scope.includes(selected) ? [selected] : ["__no_match__"];
+  }, [usageKeyQuery, usageViewKeys]);
 
   const fetchUsageLogs = useCallback(
     async (page: number, size: number) => {
@@ -130,22 +99,36 @@ export function useApiKeyUsageView({
       setUsageLoading(true);
 
       try {
-        const channelQuery = buildUsageChannelQuery(usageChannelQuery, usageChannelGroupQuery);
         const result = await usageApi.getUsageLogs({
           page,
           size,
           days: usageTimeRange,
-          api_keys: usageViewKeys,
+          api_keys: resolveScopedApiKeys(),
           model: usageModelQuery || undefined,
-          channel: channelQuery || undefined,
+          channel: usageChannelQuery || undefined,
           status: usageStatusFilter || undefined,
         });
 
         setUsageRawItems(result.items ?? []);
         setUsageTotalCount(result.total ?? 0);
         setUsageCurrentPage(page);
+        // Keep key options within the opened scope; merge names from response.
+        const scopeSet = new Set(usageViewKeys);
+        const responseKeys = Array.isArray(result.filters?.api_keys)
+          ? result.filters.api_keys.filter((key) => scopeSet.has(key))
+          : [];
+        const keys =
+          responseKeys.length > 0
+            ? responseKeys
+            : usageViewKeys;
+        const names = { ...result.filters?.api_key_names };
         setUsageFilterOptions({
+          api_keys: keys,
+          api_key_names: names,
           channels: Array.isArray(result.filters?.channels) ? result.filters.channels : [],
+          channel_options: Array.isArray(result.filters?.channel_options)
+            ? result.filters.channel_options
+            : [],
           models: Array.isArray(result.filters?.models) ? result.filters.models : [],
         });
         setUsageLastUpdatedAt(Date.now());
@@ -160,10 +143,9 @@ export function useApiKeyUsageView({
       }
     },
     [
-      buildUsageChannelQuery,
       notify,
+      resolveScopedApiKeys,
       t,
-      usageChannelGroupQuery,
       usageChannelQuery,
       usageModelQuery,
       usageStatusFilter,
@@ -178,59 +160,122 @@ export function useApiKeyUsageView({
     setUsageCurrentPage(1);
     setUsagePageSize(DEFAULT_REQUEST_LOG_PAGE_SIZE);
     setUsageLastUpdatedAt(null);
-    setUsageFilterOptions({ channels: [], models: [] });
+    setUsageFilterOptions({
+      api_keys: [],
+      api_key_names: {},
+      channels: [],
+      channel_options: [],
+      models: [],
+    });
     setUsageTimeRange(7);
+    setUsageKeyQuery("");
     setUsageChannelQuery("");
-    setUsageChannelGroupQuery("");
     setUsageModelQuery("");
     setUsageStatusFilter("");
   }, []);
 
   const openUsageView = useCallback(
-    (keys: string[], name: string) => {
+    (keys: string[], name: string, keyNames?: Record<string, string>) => {
       const cleaned = Array.from(new Set(keys.map((k) => k.trim()).filter(Boolean)));
       if (cleaned.length === 0) return;
       resetUsageViewState();
       setUsageViewKeys(cleaned);
       setUsageViewName(name);
+      // Seed key filter options before first fetch so the dropdown is usable immediately.
+      setUsageFilterOptions({
+        api_keys: cleaned,
+        api_key_names: keyNames ?? {},
+        channels: [],
+        channel_options: [],
+        models: [],
+      });
     },
     [resetUsageViewState],
   );
 
   const handleViewUsage = useCallback(
     async (entry: ApiKeyEntry) => {
-      openUsageView([entry.key], entry.name || t("api_keys_page.unnamed"));
+      const name = entry.name || t("api_keys_page.unnamed");
+      openUsageView([entry.key], name, entry.name ? { [entry.key]: entry.name } : undefined);
     },
     [openUsageView, t],
   );
 
-  const usageChannelOptions = useMemo(
-    () => [
-      { value: "", label: t("request_logs.all_channels") },
-      ...usageFilterOptions.channels.map((channel) => ({ value: channel, label: channel })),
-    ],
-    [t, usageFilterOptions.channels],
-  );
-
-  const usageChannelGroupOptions = useMemo(() => {
-    const seen = new Set<string>();
-    const values: { value: string; label: string }[] = [];
-    usageFilterOptions.channels.forEach((channel) => {
-      const groupKey = channelGroupByName[channel];
-      if (!groupKey || seen.has(groupKey)) return;
-      seen.add(groupKey);
-      values.push({ value: groupKey, label: resolveChannelGroupLabel(groupKey) });
+  const usageKeyOptions = useMemo<SearchableSelectOption[]>(() => {
+    const sourceKeys =
+      usageFilterOptions.api_keys.length > 0 ? usageFilterOptions.api_keys : usageViewKeys;
+    const opts = buildRequestLogKeyOptions(sourceKeys, usageFilterOptions.api_key_names, {
+      allKeys: t("request_logs.all_keys"),
+      systemCall: t("request_logs.system_call"),
     });
-    values.sort((a, b) => a.label.localeCompare(b.label));
-    return [{ value: "", label: t("api_keys_page.all_channel_groups") }, ...values];
-  }, [channelGroupByName, t, usageFilterOptions.channels]);
+    return opts.map((option) => ({
+      value: option.value,
+      label: option.label,
+      searchText: option.searchText ?? (typeof option.label === "string" ? option.label : option.value),
+    }));
+  }, [t, usageFilterOptions.api_key_names, usageFilterOptions.api_keys, usageViewKeys]);
 
-  const usageModelOptions = useMemo(
+  const usageChannelOptions = useMemo<SearchableSelectOption[]>(() => {
+    const apiLabel = t("request_logs.auth_type_api");
+    const oauthLabel = t("request_logs.auth_type_oauth");
+    const source: UsageChannelFilterOption[] =
+      usageFilterOptions.channel_options.length > 0
+        ? usageFilterOptions.channel_options
+        : usageFilterOptions.channels.map((ch) => ({
+            value: ch,
+            label: ch,
+          }));
+    return [
+      { value: "", label: t("request_logs.all_channels"), searchText: t("request_logs.all_channels") },
+      ...source.map((option) => {
+        const provider = String(option.provider ?? "").trim();
+        const authType = String(option.auth_type ?? "").trim();
+        return {
+          value: option.value,
+          label: (
+            <ChannelIdentityLabel
+              name={option.label}
+              provider={option.provider}
+              authType={option.auth_type}
+              apiLabel={apiLabel}
+              oauthLabel={oauthLabel}
+              className="w-full"
+              nameClassName="text-sm font-normal text-inherit"
+            />
+          ),
+          searchText: [option.label, provider, authType, option.value].filter(Boolean).join(" "),
+        };
+      }),
+    ];
+  }, [t, usageFilterOptions.channel_options, usageFilterOptions.channels]);
+
+  const usageModelOptions = useMemo<SearchableSelectOption[]>(
     () => [
-      { value: "", label: t("request_logs.all_models") },
-      ...usageFilterOptions.models.map((model) => ({ value: model, label: model })),
+      { value: "", label: t("request_logs.all_models"), searchText: t("request_logs.all_models") },
+      ...usageFilterOptions.models.map((model) => ({
+        value: model,
+        label: <ModelTag id={model} size="sm" />,
+        searchText: model,
+      })),
     ],
     [t, usageFilterOptions.models],
+  );
+
+  const usageStatusOptions = useMemo<SearchableSelectOption[]>(
+    () => [
+      { value: "", label: t("request_logs.all_status"), searchText: t("request_logs.all_status") },
+      {
+        value: "success",
+        label: t("request_logs.status_success"),
+        searchText: t("request_logs.status_success"),
+      },
+      {
+        value: "failed",
+        label: t("request_logs.status_failed"),
+        searchText: t("request_logs.status_failed"),
+      },
+    ],
+    [t],
   );
 
   const usageLastUpdatedText = useMemo(() => {
@@ -242,16 +287,12 @@ export function useApiKeyUsageView({
   }, [t, usageLastUpdatedAt, usageLoading]);
 
   useEffect(() => {
-    usageFilterOptionsRef.current = usageFilterOptions;
-  }, [usageFilterOptions]);
-
-  useEffect(() => {
     if (usageViewKeys.length === 0) return;
     void fetchUsageLogs(1, usagePageSize);
   }, [
     fetchUsageLogs,
-    usageChannelGroupQuery,
     usageChannelQuery,
+    usageKeyQuery,
     usageModelQuery,
     usagePageSize,
     usageStatusFilter,
@@ -278,10 +319,10 @@ export function useApiKeyUsageView({
     usageLastUpdatedText,
     usageTimeRange,
     setUsageTimeRange,
+    usageKeyQuery,
+    setUsageKeyQuery,
     usageChannelQuery,
     setUsageChannelQuery,
-    usageChannelGroupQuery,
-    setUsageChannelGroupQuery,
     usageModelQuery,
     setUsageModelQuery,
     usageStatusFilter,
@@ -297,9 +338,10 @@ export function useApiKeyUsageView({
     usageLogColumns,
     usageRows,
     usageTotalPages,
+    usageKeyOptions,
     usageChannelOptions,
-    usageChannelGroupOptions,
     usageModelOptions,
+    usageStatusOptions,
     fetchUsageLogs,
     handleViewUsage,
     closeUsageModal,

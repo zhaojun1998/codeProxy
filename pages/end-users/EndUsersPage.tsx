@@ -122,7 +122,7 @@ export function EndUsersPage() {
   const canWrite = can("end_users.write");
   const unlimitedLabel = t("api_keys_page.unlimited", { defaultValue: "无限制" });
   const todayUnlimitedLabel = t("end_users.unlimited", { defaultValue: "未限制" });
-  const { channelGroupByName, refreshPermissionOptions } = useApiKeyPermissionOptions();
+  const { refreshPermissionOptions } = useApiKeyPermissionOptions();
   const {
     usageViewKey,
     usageViewName,
@@ -134,10 +134,10 @@ export function EndUsersPage() {
     usageLastUpdatedText,
     usageTimeRange,
     setUsageTimeRange,
+    usageKeyQuery,
+    setUsageKeyQuery,
     usageChannelQuery,
     setUsageChannelQuery,
-    usageChannelGroupQuery,
-    setUsageChannelGroupQuery,
     usageModelQuery,
     setUsageModelQuery,
     usageStatusFilter,
@@ -153,13 +153,14 @@ export function EndUsersPage() {
     usageLogColumns,
     usageRows,
     usageTotalPages,
+    usageKeyOptions,
     usageChannelOptions,
-    usageChannelGroupOptions,
     usageModelOptions,
+    usageStatusOptions,
     fetchUsageLogs,
     openUsageView,
     closeUsageModal,
-  } = useApiKeyUsageView({ channelGroupByName });
+  } = useApiKeyUsageView();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -252,9 +253,14 @@ export function EndUsersPage() {
       const name = row.display_name || row.username || t("end_users.unnamed", { defaultValue: "未命名用户" });
       try {
         const entries = await apiKeyEntriesApi.list();
+        const keyNames: Record<string, string> = {};
         const keys = entries
           .filter((e) => e.end_user_id === row.id && e.key?.trim())
-          .map((e) => e.key.trim());
+          .map((e) => {
+            const key = e.key.trim();
+            if (e.name?.trim()) keyNames[key] = e.name.trim();
+            return key;
+          });
         if (keys.length === 0) {
           notify({
             type: "info",
@@ -264,7 +270,7 @@ export function EndUsersPage() {
           });
           return;
         }
-        openUsageView(keys, name);
+        openUsageView(keys, name, keyNames);
       } catch (e) {
         notify({
           type: "error",
@@ -955,18 +961,18 @@ export function EndUsersPage() {
         usagePageSize={usagePageSize}
         usageLoading={usageLoading}
         usageLastUpdatedText={usageLastUpdatedText}
-        usageChannelGroupQuery={usageChannelGroupQuery}
-        setUsageChannelGroupQuery={setUsageChannelGroupQuery}
-        setUsageChannelQuery={setUsageChannelQuery}
-        usageChannelGroupOptions={usageChannelGroupOptions}
+        usageKeyQuery={usageKeyQuery}
+        setUsageKeyQuery={setUsageKeyQuery}
+        usageKeyOptions={usageKeyOptions}
         usageChannelQuery={usageChannelQuery}
-        setUsageChannelQueryDirect={setUsageChannelQuery}
+        setUsageChannelQuery={setUsageChannelQuery}
         usageChannelOptions={usageChannelOptions}
         usageModelQuery={usageModelQuery}
         setUsageModelQuery={setUsageModelQuery}
         usageModelOptions={usageModelOptions}
         usageStatusFilter={usageStatusFilter}
         setUsageStatusFilter={setUsageStatusFilter}
+        usageStatusOptions={usageStatusOptions}
         usageLogColumns={usageLogColumns}
         usageRows={usageRows}
         usageCurrentPage={usageCurrentPage}

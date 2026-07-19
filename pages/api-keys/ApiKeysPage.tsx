@@ -84,8 +84,7 @@ export function ApiKeysPage({
   const [resetHistoryEvents, setResetHistoryEvents] = useState<ApiKeyDailySpendingResetEvent[]>([]);
   const [permissionProfiles, setPermissionProfiles] = useState<ApiKeyPermissionProfile[]>([]);
   const [form, setForm] = useState<ApiKeyFormValues>(() => makeEmptyApiKeyForm());
-  const { channelGroupItems, channelGroupByName, refreshPermissionOptions } =
-    useApiKeyPermissionOptions();
+  const { channelGroupItems, refreshPermissionOptions } = useApiKeyPermissionOptions();
   const {
     usageViewKey,
     usageViewName,
@@ -97,10 +96,10 @@ export function ApiKeysPage({
     usageLastUpdatedText,
     usageTimeRange,
     setUsageTimeRange,
+    usageKeyQuery,
+    setUsageKeyQuery,
     usageChannelQuery,
     setUsageChannelQuery,
-    usageChannelGroupQuery,
-    setUsageChannelGroupQuery,
     usageModelQuery,
     setUsageModelQuery,
     usageStatusFilter,
@@ -116,13 +115,14 @@ export function ApiKeysPage({
     usageLogColumns,
     usageRows,
     usageTotalPages,
+    usageKeyOptions,
     usageChannelOptions,
-    usageChannelGroupOptions,
     usageModelOptions,
+    usageStatusOptions,
     fetchUsageLogs,
     handleViewUsage,
     closeUsageModal,
-  } = useApiKeyUsageView({ channelGroupByName });
+  } = useApiKeyUsageView();
 
   /* ─── load ─── */
 
@@ -915,18 +915,18 @@ export function ApiKeysPage({
         usagePageSize={usagePageSize}
         usageLoading={usageLoading}
         usageLastUpdatedText={usageLastUpdatedText}
-        usageChannelGroupQuery={usageChannelGroupQuery}
-        setUsageChannelGroupQuery={setUsageChannelGroupQuery}
-        setUsageChannelQuery={setUsageChannelQuery}
-        usageChannelGroupOptions={usageChannelGroupOptions}
+        usageKeyQuery={usageKeyQuery}
+        setUsageKeyQuery={setUsageKeyQuery}
+        usageKeyOptions={usageKeyOptions}
         usageChannelQuery={usageChannelQuery}
-        setUsageChannelQueryDirect={setUsageChannelQuery}
+        setUsageChannelQuery={setUsageChannelQuery}
         usageChannelOptions={usageChannelOptions}
         usageModelQuery={usageModelQuery}
         setUsageModelQuery={setUsageModelQuery}
         usageModelOptions={usageModelOptions}
         usageStatusFilter={usageStatusFilter}
         setUsageStatusFilter={setUsageStatusFilter}
+        usageStatusOptions={usageStatusOptions}
         usageLogColumns={usageLogColumns}
         usageRows={usageRows}
         usageCurrentPage={usageCurrentPage}
