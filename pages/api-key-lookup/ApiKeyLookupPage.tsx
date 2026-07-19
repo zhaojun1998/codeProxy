@@ -15,6 +15,7 @@ import { LanguageSelector } from "@code-proxy/ui";
 import { Reveal } from "@code-proxy/ui";
 import { Button } from "@code-proxy/ui";
 import { Modal } from "@code-proxy/ui";
+import { PageBackground } from "@code-proxy/ui";
 import { SecretRevealModal } from "@code-proxy/ui";
 import { Select, type SelectOption } from "@code-proxy/ui";
 import { TextInput } from "@code-proxy/ui";
@@ -1046,7 +1047,15 @@ export function ApiKeyLookupPage() {
   const showLanding = !queriedKey && !portalUser && !error;
 
   return (
-    <div className="relative min-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100 pt-14 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950">
+    <PageBackground variant="app">
+      <div
+        className={[
+          "relative min-h-dvh pt-14",
+          showLanding
+            ? ""
+            : "bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950",
+        ].join(" ")}
+      >
       {/* Header：滚动后上滑淡出，给 sticky tabs 让位 */}
       <header
         data-testid="apikey-lookup-header"
@@ -1062,11 +1071,22 @@ export function ApiKeyLookupPage() {
       >
         <div className="mx-auto flex h-14 max-w-screen-xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 shadow-sm dark:bg-white">
-              <Key size={16} className="text-white dark:text-neutral-950" />
+            <div
+              className={[
+                "flex h-8 w-8 items-center justify-center rounded-xl",
+                showLanding
+                  ? "border border-slate-200 bg-white/70 text-slate-600 dark:border-white/10 dark:bg-white/[0.05] dark:text-white/65"
+                  : "bg-slate-900 shadow-sm dark:bg-white",
+              ].join(" ")}
+            >
+              {showLanding ? (
+                <KeyRound size={16} />
+              ) : (
+                <Key size={16} className="text-white dark:text-neutral-950" />
+              )}
             </div>
             <span className="text-base font-bold tracking-tight text-slate-900 dark:text-white">
-              {t("apikey_lookup.title")}
+              {showLanding ? "Code Proxy" : t("apikey_lookup.title")}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -1093,9 +1113,13 @@ export function ApiKeyLookupPage() {
             ) : (
               <Button
                 size="sm"
-                variant={showLanding ? "primary" : "ghost"}
+                variant={showLanding ? "default" : "ghost"}
                 onClick={() => setLoginModalOpen(true)}
-                className={showLanding ? "rounded-full px-4" : undefined}
+                className={
+                  showLanding
+                    ? "border border-slate-200 bg-white/75 px-3 text-slate-700 hover:bg-white dark:border-white/10 dark:bg-white/[0.06] dark:text-white/75 dark:hover:bg-white/10"
+                    : undefined
+                }
               >
                 {t("common.login", { defaultValue: "登录" })}
               </Button>
@@ -1106,7 +1130,11 @@ export function ApiKeyLookupPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-screen-xl space-y-5 px-4 py-6 sm:px-6">
+      <main
+        className={
+          showLanding ? "w-full" : "mx-auto max-w-screen-xl space-y-5 px-4 py-6 sm:px-6"
+        }
+      >
         {/* Error */}
         {error && (
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-300">
@@ -1313,8 +1341,13 @@ export function ApiKeyLookupPage() {
       >
         <div className="space-y-8">
           <div className="space-y-2 pr-8">
-            <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 shadow-sm dark:bg-white">
-              <KeyRound size={18} className="text-white dark:text-neutral-950" />
+            <div className="flex items-center gap-3 pb-2">
+              <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-white/[0.06] dark:text-white/65">
+                <KeyRound size={18} />
+              </div>
+              <span className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white">
+                Code Proxy
+              </span>
             </div>
             <h2 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-white">
               {t("apikey_lookup.login_title", { defaultValue: "账号登录" })}
@@ -1383,15 +1416,16 @@ export function ApiKeyLookupPage() {
                 {loginError}
               </div>
             ) : null}
-            <button
+            <Button
               type="submit"
+              variant="default"
               disabled={loginBusy || !loginUsername.trim() || !loginPassword}
-              className="w-full rounded-full bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-70 dark:bg-white/10 dark:hover:bg-white/15"
+              className="h-11 w-full border border-slate-200 bg-slate-100 text-slate-800 hover:bg-slate-200 dark:border-white/10 dark:bg-white/[0.08] dark:text-white dark:hover:bg-white/[0.12]"
             >
               {loginBusy
                 ? t("common.loading", { defaultValue: "登录中…" })
                 : t("common.login", { defaultValue: "登录" })}
-            </button>
+            </Button>
           </form>
         </div>
       </Modal>
@@ -1617,6 +1651,7 @@ export function ApiKeyLookupPage() {
         })}
         onClose={() => setSecretOnce(null)}
       />
-    </div>
+      </div>
+    </PageBackground>
   );
 }
