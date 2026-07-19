@@ -88,7 +88,8 @@
     "sort_column": "排序 {{column}}",
     "sort_ascending": "升序",
     "sort_descending": "降序",
-    "no_data": "暂无数据"
+    "no_data": "暂无数据",
+    "disabled": "已停用"
   },
   "title": {
     "main": "Code Proxy 管理后台",
@@ -3513,7 +3514,31 @@
     "password": "密码",
     "username_placeholder": "请输入账号",
     "password_placeholder": "请输入密码",
-    "unnamed_key": "未命名密钥"
+    "unnamed_key": "未命名密钥",
+    "change_password": "修改密码",
+    "copy_secret": "请立即复制",
+    "create_key": "新建 Key",
+    "create_key_desc": "为新 Key 填写名称，便于在请求日志中区分来源。",
+    "current_password": "当前密码",
+    "default_key": "默认",
+    "keep_one_key": "至少保留一把 Key",
+    "key_name": "Key 名称",
+    "key_name_duplicate": "Key 名称已存在，请换一个。",
+    "key_name_placeholder": "例如：Claude Desktop / 生产环境",
+    "key_name_required": "请输入 Key 名称",
+    "manage_keys": "管理 API Key",
+    "manage_keys_desc": "管理本账号下全部 API Key。",
+    "new_password": "新密码",
+    "new_password_hint": "至少 8 位",
+    "no_keys": "暂无 Key",
+    "pick_key_for_tab": "请先在「管理 API Key」中选择一把 Key 查看用量。",
+    "rotate_key": "重置",
+    "secret_once_warning": "离开后无法再查看明文 Key，请立即复制保存。",
+    "set_default": "设默认",
+    "confirm_delete_title": "删除 API Key？",
+    "confirm_delete_desc": "删除后不可恢复，使用该 Key 的请求将失败。",
+    "confirm_delete": "删除",
+    "deleting": "删除中…"
   },
   "config_page": {
     "runtime_switches": "运行时开关",
