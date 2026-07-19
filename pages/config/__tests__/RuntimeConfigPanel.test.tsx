@@ -154,6 +154,48 @@ describe("RuntimeConfigPanel", () => {
     expect(mocks.getRequestLog).toHaveBeenCalled();
   });
 
+  test("confirms enabling and disabling request logs before writing", async () => {
+    mocks.getRequestLog.mockResolvedValue(false);
+    mocks.updateRequestLog.mockResolvedValue({});
+    renderPanel();
+
+    const toggle = await screen.findByRole("switch", { name: /request logs/i });
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute("aria-checked", "false");
+    });
+
+    await userEvent.click(toggle);
+    expect(screen.getByText(/full request\/response body to disk/i)).toBeInTheDocument();
+    expect(mocks.updateRequestLog).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: /^enable$/i }));
+    await waitFor(() => {
+      expect(mocks.updateRequestLog).toHaveBeenCalledWith(true);
+    });
+    await waitFor(() => {
+      expect(toggle).toHaveAttribute("aria-checked", "true");
+    });
+
+    mocks.updateRequestLog.mockClear();
+    await userEvent.click(toggle);
+    expect(screen.getByText(/stops writing full request\/response payload files/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^disable$/i }));
+    await waitFor(() => {
+      expect(mocks.updateRequestLog).toHaveBeenCalledWith(false);
+    });
+  });
+
+  test("keeps refresh and save actions on the text-fields card only", async () => {
+    renderPanel();
+
+    await screen.findByRole("switch", { name: /request logs/i });
+    const saveButtons = screen.getAllByRole("button", { name: /save changes/i });
+    const refreshButtons = screen.getAllByRole("button", { name: /refresh/i });
+    expect(saveButtons).toHaveLength(1);
+    expect(refreshButtons).toHaveLength(1);
+    expect(screen.getByText(/text fields require save/i)).toBeInTheDocument();
+  });
+
   test("confirms disabling body storage, clears existing bodies, and shows progress", async () => {
     const pending = deferred<void>();
     mocks.updateRequestLogBodyStorage.mockReturnValueOnce(pending.promise);

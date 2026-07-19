@@ -107,6 +107,9 @@ export function RuntimeConfigPanel() {
   const [debugEnabled, setDebugEnabled] = useState(false);
   const [usageStatisticsEnabled, setUsageStatisticsEnabled] = useState(false);
   const [requestLogEnabled, setRequestLogEnabled] = useState(false);
+  const [requestLogSaving, setRequestLogSaving] = useState(false);
+  const [requestLogConfirmOpen, setRequestLogConfirmOpen] = useState(false);
+  const [requestLogConfirmNext, setRequestLogConfirmNext] = useState(false);
   const [requestLogBodyStorageEnabled, setRequestLogBodyStorageEnabled] = useState(false);
   const [requestLogBodyStorageSaving, setRequestLogBodyStorageSaving] = useState(false);
   const [requestLogBodyStorageConfirmOpen, setRequestLogBodyStorageConfirmOpen] = useState(false);
@@ -252,6 +255,31 @@ export function RuntimeConfigPanel() {
           message: err instanceof Error ? err.message : t("config_page.toast_update_failed"),
         });
         throw err;
+      }
+    },
+    [notify, t],
+  );
+
+  const applyRequestLog = useCallback(
+    async (next: boolean) => {
+      setRequestLogSaving(true);
+      try {
+        await configApi.updateRequestLog(next);
+        setRequestLogEnabled(next);
+        setRequestLogConfirmOpen(false);
+        notify({
+          type: "success",
+          message: next
+            ? t("config_page.request_logs_enabled_toast")
+            : t("config_page.request_logs_disabled_toast"),
+        });
+      } catch (err: unknown) {
+        notify({
+          type: "error",
+          message: err instanceof Error ? err.message : t("config_page.toast_update_failed"),
+        });
+      } finally {
+        setRequestLogSaving(false);
       }
     },
     [notify, t],
@@ -408,28 +436,6 @@ export function RuntimeConfigPanel() {
       <Card
         title={t("config_page.runtime_switches")}
         description={t("config_page.runtime_desc")}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void loadRuntimeConfig()}
-              disabled={loading || isPending}
-            >
-              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-              {t("common.refresh")}
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => void saveRuntimeText()}
-              disabled={loading || isPending || !runtimeTextDirty}
-            >
-              <Save size={14} />
-              {t("config_page.save_changes")}
-            </Button>
-          </div>
-        }
         loading={loading}
       >
         <div className="grid gap-4 lg:grid-cols-2">
@@ -458,11 +464,10 @@ export function RuntimeConfigPanel() {
               label={t("config_page.request_logs")}
               description={t("config_page.request_logs_desc")}
               checked={requestLogEnabled}
+              disabled={loading || requestLogSaving}
               onCheckedChange={(next) => {
-                setRequestLogEnabled(next);
-                void updateToggle("requestLog", next).catch(() =>
-                  setRequestLogEnabled((prev) => !prev),
-                );
+                setRequestLogConfirmNext(next);
+                setRequestLogConfirmOpen(true);
               }}
             />
             <ToggleSwitch
@@ -617,61 +622,116 @@ export function RuntimeConfigPanel() {
             </p>
           </div>
 
-          <Card
-            title={t("config_page.proxy_retry")}
-            description={t("config_page.proxy_retry_desc")}
-          >
-            <div className="space-y-3">
-              <TextInput
-                value={proxyUrl}
-                onChange={(e) => setProxyUrl(e.currentTarget.value)}
-                placeholder={t("config_page.proxy_url_placeholder")}
-              />
-              <div className="flex flex-wrap items-center gap-2">
-                <TextInput
-                  value={requestRetry}
-                  onChange={(e) => setRequestRetry(e.currentTarget.value)}
-                  placeholder={t("config_page.retry_placeholder")}
-                  inputMode="numeric"
-                />
-              </div>
-              <p className="text-xs text-slate-600 dark:text-white/65">
-                {t("config_page.save_hint")}
-              </p>
-            </div>
-          </Card>
-
-          <Card
-            title={t("config_page.logs_routing")}
-            description={t("config_page.logs_routing_desc")}
-          >
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <TextInput
-                  value={logsMaxTotalSizeMb}
-                  onChange={(e) => setLogsMaxTotalSizeMb(e.currentTarget.value)}
-                  placeholder="logs-max-total-size-mb"
-                  inputMode="numeric"
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <TextInput
-                  value={routingStrategy}
-                  onChange={(e) => setRoutingStrategy(e.currentTarget.value)}
-                  placeholder={t("config_page.routing_placeholder")}
-                />
-              </div>
-              <p className="text-xs text-slate-600 dark:text-white/65">
-                {t("config_page.config_preview", {
-                  status: rawConfig
-                    ? t("config_page.config_loaded")
-                    : t("config_page.config_not_loaded"),
-                })}
-              </p>
-            </div>
-          </Card>
         </div>
       </Card>
+
+      <Card
+        title={t("config_page.runtime_text_fields")}
+        description={t("config_page.runtime_text_fields_desc")}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void loadRuntimeConfig()}
+              disabled={loading || isPending}
+            >
+              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+              {t("common.refresh")}
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => void saveRuntimeText()}
+              disabled={loading || isPending || !runtimeTextDirty}
+            >
+              <Save size={14} />
+              {t("config_page.save_changes")}
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-3 rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-950/60">
+            <div>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                {t("config_page.proxy_retry")}
+              </p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-white/65">
+                {t("config_page.proxy_retry_desc")}
+              </p>
+            </div>
+            <TextInput
+              value={proxyUrl}
+              onChange={(e) => setProxyUrl(e.currentTarget.value)}
+              placeholder={t("config_page.proxy_url_placeholder")}
+            />
+            <TextInput
+              value={requestRetry}
+              onChange={(e) => setRequestRetry(e.currentTarget.value)}
+              placeholder={t("config_page.retry_placeholder")}
+              inputMode="numeric"
+            />
+            <p className="text-xs text-slate-600 dark:text-white/65">{t("config_page.save_hint")}</p>
+          </div>
+
+          <div className="space-y-3 rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-950/60">
+            <div>
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                {t("config_page.logs_routing")}
+              </p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-white/65">
+                {t("config_page.logs_routing_desc")}
+              </p>
+            </div>
+            <TextInput
+              value={logsMaxTotalSizeMb}
+              onChange={(e) => setLogsMaxTotalSizeMb(e.currentTarget.value)}
+              placeholder="logs-max-total-size-mb"
+              inputMode="numeric"
+            />
+            <TextInput
+              value={routingStrategy}
+              onChange={(e) => setRoutingStrategy(e.currentTarget.value)}
+              placeholder={t("config_page.routing_placeholder")}
+            />
+            <p className="text-xs text-slate-600 dark:text-white/65">
+              {t("config_page.config_preview", {
+                status: rawConfig
+                  ? t("config_page.config_loaded")
+                  : t("config_page.config_not_loaded"),
+              })}
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <ConfirmModal
+        open={requestLogConfirmOpen}
+        title={
+          requestLogConfirmNext
+            ? t("config_page.request_logs_enable_title")
+            : t("config_page.request_logs_disable_title")
+        }
+        description={
+          requestLogConfirmNext
+            ? t("config_page.request_logs_enable_desc")
+            : t("config_page.request_logs_disable_desc")
+        }
+        confirmText={
+          requestLogSaving
+            ? t("config_page.request_logs_saving")
+            : requestLogConfirmNext
+              ? t("config_page.request_logs_enable_confirm")
+              : t("config_page.request_logs_disable_confirm")
+        }
+        variant={requestLogConfirmNext ? "primary" : "danger"}
+        busy={requestLogSaving}
+        onClose={() => {
+          if (!requestLogSaving) setRequestLogConfirmOpen(false);
+        }}
+        onConfirm={() => void applyRequestLog(requestLogConfirmNext)}
+      />
 
       <ConfirmModal
         open={requestLogBodyStorageConfirmOpen}
