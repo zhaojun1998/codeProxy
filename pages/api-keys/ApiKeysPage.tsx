@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Plus, KeyRound, RefreshCw, Trash2 } from "lucide-react";
 import {
   apiKeyEntriesApi,
   apiKeysApi,
-  type ApiKeyDailySpendingResetEvent,
   type ApiKeyEntry,
+  type ApiKeyDailySpendingResetEvent,
 } from "@code-proxy/api-client/endpoints/api-keys";
+import { endUsersApi } from "@code-proxy/api-client/endpoints/end-users";
 import {
   applyApiKeyPermissionProfile,
   apiKeyPermissionProfilesApi,
@@ -24,6 +26,7 @@ import { copyTextToClipboard } from "@code-proxy/ui";
 import { Card } from "@code-proxy/ui";
 import { Button } from "@code-proxy/ui";
 import { EmptyState } from "@code-proxy/ui";
+import { Modal } from "@code-proxy/ui";
 import { useToast } from "@code-proxy/ui";
 import { DataTable } from "@code-proxy/ui";
 import { ApiKeyFormModal } from "./components/ApiKeyFormModal";
@@ -47,6 +50,8 @@ export function ApiKeysPage() {
   const { t, i18n } = useTranslation();
   const { notify } = useToast();
   const auth = useOptionalAuth();
+  const [searchParams] = useSearchParams();
+  const endUserIdFilter = searchParams.get("endUserId")?.trim() || "";
 
   const [entries, setEntries] = useState<ApiKeyEntry[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
@@ -65,6 +70,7 @@ export function ApiKeysPage() {
   );
   const copiedCcSwitchImportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saving, setSaving] = useState(false);
+  const [createdSecretOnce, setCreatedSecretOnce] = useState<string | null>(null);
   const [resettingDailySpendingKey, setResettingDailySpendingKey] = useState<string | null>(null);
   const [resetHistoryEntry, setResetHistoryEntry] = useState<ApiKeyEntry | null>(null);
   const [resetHistoryLoading, setResetHistoryLoading] = useState(false);
@@ -132,7 +138,7 @@ export function ApiKeysPage() {
         .map((k: string): ApiKeyEntry => ({ key: k, "created-at": new Date().toISOString() }));
 
       let finalEntries: ApiKeyEntry[];
-      if (newEntries.length > 0) {
+      if (newEntries.length > 0 && !endUserIdFilter) {
         const merged = [...entriesData, ...newEntries];
         try {
           await apiKeyEntriesApi.replace(merged);
@@ -140,12 +146,15 @@ export function ApiKeysPage() {
             type: "success",
             message: t("api_keys_page.auto_import", { count: newEntries.length }),
           });
+          finalEntries = merged;
         } catch {
-          // silent
+          finalEntries = entriesData;
         }
-        finalEntries = merged;
       } else {
         finalEntries = entriesData;
+      }
+      if (endUserIdFilter) {
+        finalEntries = finalEntries.filter((e) => e.end_user_id === endUserIdFilter);
       }
       setEntries(finalEntries);
       // Load models after entries are available (needs a valid API key)
@@ -158,7 +167,7 @@ export function ApiKeysPage() {
     } finally {
       setLoading(false);
     }
-  }, [notify, refreshPermissionOptions, t]);
+  }, [endUserIdFilter, notify, refreshPermissionOptions, t]);
 
   useEffect(() => {
     void loadEntries();
@@ -258,16 +267,27 @@ export function ApiKeysPage() {
 
   const handleToggleDisable = async (index: number) => {
     const entry = entries[index];
-    const updated = { ...entry, disabled: !entry.disabled };
-    const newEntries = [...entries];
-    newEntries[index] = updated;
-
+    const nextDisabled = !entry.disabled;
     try {
-      await apiKeyEntriesApi.replace(newEntries);
-      setEntries(newEntries);
+      // Prefer id-based patch so user-scoped lists never replace the whole tenant table.
+      if (entry.id) {
+        await apiKeyEntriesApi.update({
+          id: entry.id,
+          value: { disabled: nextDisabled },
+        });
+      } else if (endUserIdFilter) {
+        // Fail closed: never tenant-wide replace when scoped without stable id.
+        notify({ type: "error", message: t("api_keys_page.operation_failed") });
+        return;
+      } else {
+        const newEntries = [...entries];
+        newEntries[index] = { ...entry, disabled: nextDisabled };
+        await apiKeyEntriesApi.replace(newEntries);
+      }
+      await loadEntries();
       notify({
         type: "success",
-        message: updated.disabled
+        message: nextDisabled
           ? t("api_keys_page.disabled_toast", { name: entry.name || t("api_keys_page.unnamed") })
           : t("api_keys_page.enabled_toast", { name: entry.name || t("api_keys_page.unnamed") }),
       });
@@ -282,33 +302,87 @@ export function ApiKeysPage() {
   /* ─── create ─── */
 
   const handleOpenCreate = () => {
-    const next = makeEmptyApiKeyForm(generateApiKey());
+    // User-scoped create: server generates the secret; do not show a client-side fake key.
+    const next = makeEmptyApiKeyForm(endUserIdFilter ? "" : generateApiKey());
     setForm(next);
     setShowCreate(true);
   };
+
+  const handleSetDefault = useCallback(
+    async (entry: ApiKeyEntry) => {
+      if (!endUserIdFilter || !entry.id || entry.is_default) return;
+      try {
+        await endUsersApi.setDefaultKey(endUserIdFilter, entry.id);
+        notify({ type: "success", message: t("end_users.default_key_set", { defaultValue: "已设为默认 Key" }) });
+        await loadEntries();
+      } catch (err: unknown) {
+        notify({
+          type: "error",
+          message: err instanceof Error ? err.message : t("api_keys_page.operation_failed"),
+        });
+      }
+    },
+    [endUserIdFilter, loadEntries, notify, t],
+  );
 
   const handleCreate = async () => {
     if (!form.name.trim()) {
       notify({ type: "error", message: t("api_keys_page.name_required") });
       return;
     }
-    if (!form.key.trim()) {
-      notify({ type: "error", message: t("api_keys_page.key_empty") });
-      return;
-    }
     setSaving(true);
     try {
-      const newEntry: ApiKeyEntry = {
-        key: form.key.trim(),
-        name: form.name.trim(),
-        "created-at": new Date().toISOString(),
-      };
-      const profiledEntry = applyApiKeyPermissionProfile(
-        newEntry,
-        selectedPermissionProfile(form.permissionProfileId),
-      );
-      await apiKeyEntriesApi.replace([...entries, profiledEntry]);
-      notify({ type: "success", message: t("api_keys_page.created_success") });
+      if (endUserIdFilter) {
+        // Owner-scoped create: server generates unique key; never tenant-wide replace.
+        const created = await endUsersApi.createKey(endUserIdFilter, form.name.trim());
+        const keyId = created.api_key?.id;
+        const plain = created.plaintext_key;
+        if (keyId && form.permissionProfileId && form.permissionProfileId !== CUSTOM_PERMISSION_PROFILE_ID) {
+          const profiled = applyApiKeyPermissionProfile(
+            { key: plain || "", id: keyId },
+            selectedPermissionProfile(form.permissionProfileId),
+          );
+          await apiKeyEntriesApi.update({
+            id: keyId,
+            value: {
+              name: form.name.trim(),
+              "permission-profile-id": profiled["permission-profile-id"],
+              "daily-limit": profiled["daily-limit"],
+              "total-quota": profiled["total-quota"],
+              "spending-limit": profiled["spending-limit"],
+              "daily-spending-limit": profiled["daily-spending-limit"],
+              "concurrency-limit": profiled["concurrency-limit"],
+              "rpm-limit": profiled["rpm-limit"],
+              "tpm-limit": profiled["tpm-limit"],
+              "allowed-models": profiled["allowed-models"],
+              "allowed-channels": profiled["allowed-channels"],
+              "allowed-channel-groups": profiled["allowed-channel-groups"],
+              "system-prompt": profiled["system-prompt"],
+            },
+          });
+        }
+        if (plain) {
+          setCreatedSecretOnce(plain);
+          void copyTextToClipboard(plain).catch(() => undefined);
+        }
+        notify({ type: "success", message: t("api_keys_page.created_success") });
+      } else {
+        if (!form.key.trim()) {
+          notify({ type: "error", message: t("api_keys_page.key_empty") });
+          return;
+        }
+        const newEntry: ApiKeyEntry = {
+          key: form.key.trim(),
+          name: form.name.trim(),
+          "created-at": new Date().toISOString(),
+        };
+        const profiledEntry = applyApiKeyPermissionProfile(
+          newEntry,
+          selectedPermissionProfile(form.permissionProfileId),
+        );
+        await apiKeyEntriesApi.replace([...entries, profiledEntry]);
+        notify({ type: "success", message: t("api_keys_page.created_success") });
+      }
       setShowCreate(false);
       await loadEntries();
     } catch (err: unknown) {
@@ -379,9 +453,14 @@ export function ApiKeysPage() {
               { key: newKey },
               selectedPermissionProfile(form.permissionProfileId),
             );
+      if (!entries[editIndex].id && endUserIdFilter) {
+        notify({ type: "error", message: t("api_keys_page.update_failed") });
+        return;
+      }
       await apiKeyEntriesApi.update({
         id: entries[editIndex].id,
-        index: editIndex,
+        // Never pass filtered list index to tenant-wide index resolver.
+        ...(entries[editIndex].id ? {} : { index: editIndex }),
         value: {
           ...(newKey !== originalKey ? { key: newKey } : {}),
           name: form.name.trim(),
@@ -453,22 +532,37 @@ export function ApiKeysPage() {
 
   const handleDelete = async () => {
     if (deleteIndex === null) return;
+    const target = entries[deleteIndex];
+    if (!target) return;
     setSaving(true);
     try {
-      const response = (await apiKeyEntriesApi.delete({
-        id: entries[deleteIndex]?.id,
-        index: deleteIndex,
-        deleteLogs: deleteLogsOnDelete,
-      })) as { logs_deleted?: number } | undefined;
-      const logsDeleted =
-        typeof response?.logs_deleted === "number" ? response.logs_deleted : undefined;
-      notify({
-        type: "success",
-        message:
-          deleteLogsOnDelete && typeof logsDeleted === "number"
-            ? t("api_keys_page.deleted_success_with_logs", { count: logsDeleted })
-            : t("api_keys_page.deleted_success"),
-      });
+      if (endUserIdFilter) {
+        if (!target.id) {
+          notify({
+            type: "error",
+            message: t("api_keys_page.delete_failed"),
+          });
+          return;
+        }
+        // Owner-scoped delete promotes default key when needed; never use filtered index.
+        await endUsersApi.deleteKey(endUserIdFilter, target.id);
+        notify({ type: "success", message: t("api_keys_page.deleted_success") });
+      } else {
+        const response = (await apiKeyEntriesApi.delete({
+          id: target.id,
+          key: target.id ? undefined : target.key,
+          deleteLogs: deleteLogsOnDelete,
+        })) as { logs_deleted?: number } | undefined;
+        const logsDeleted =
+          typeof response?.logs_deleted === "number" ? response.logs_deleted : undefined;
+        notify({
+          type: "success",
+          message:
+            deleteLogsOnDelete && typeof logsDeleted === "number"
+              ? t("api_keys_page.deleted_success_with_logs", { count: logsDeleted })
+              : t("api_keys_page.deleted_success"),
+        });
+      }
       setDeleteIndex(null);
       setDeleteLogsOnDelete(true);
       await loadEntries();
@@ -622,9 +716,11 @@ export function ApiKeysPage() {
         onDelete: handleOpenDelete,
         onResetDailySpending: (index) => void handleResetDailySpending(index),
         onViewResetHistory: (entry) => void handleViewResetHistory(entry),
+        onSetDefault: endUserIdFilter ? (entry) => void handleSetDefault(entry) : undefined,
         resettingDailySpendingKey,
       }),
     [
+      endUserIdFilter,
       handleToggleDisable,
       handleViewUsage,
       handleCopy,
@@ -633,6 +729,7 @@ export function ApiKeysPage() {
       handleOpenDelete,
       handleResetDailySpending,
       handleViewResetHistory,
+      handleSetDefault,
       handleSelectAll,
       handleSelectRow,
       t,
@@ -650,15 +747,33 @@ export function ApiKeysPage() {
       <Card
         className="md:flex md:h-[calc(100dvh-112px)] md:min-h-0 md:flex-col md:overflow-hidden"
         bodyClassName="md:flex md:min-h-0 md:flex-1 md:flex-col"
-        title={t("api_keys_page.title")}
-        description={t("api_keys_page.description")}
+        title={
+          endUserIdFilter
+            ? t("end_users.manage_keys_title", { defaultValue: "用户 API 密钥" })
+            : t("api_keys_page.title")
+        }
+        description={
+          endUserIdFilter
+            ? t("end_users.manage_keys_desc", {
+                defaultValue: "管理该用户账号下的全部 API 密钥（限额、权限、启停等）。",
+              })
+            : t("api_keys_page.description")
+        }
         actions={
           <div className="flex flex-wrap justify-end gap-2">
+            {endUserIdFilter ? (
+              <Link
+                to="/access/end-users"
+                className="inline-flex h-8 items-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white/80 dark:hover:bg-neutral-800"
+              >
+                {t("end_users.back_to_users", { defaultValue: "返回用户账号" })}
+              </Link>
+            ) : null}
             <Button variant="primary" size="sm" onClick={handleOpenCreate}>
               <Plus size={14} />
               {t("api_keys_page.create_key")}
             </Button>
-            {selectedEntries.length > 0 ? (
+            {selectedEntries.length > 0 && !endUserIdFilter ? (
               <Button
                 variant="danger"
                 size="sm"
@@ -719,6 +834,7 @@ export function ApiKeysPage() {
         onClose={() => setShowCreate(false)}
         onSubmit={handleCreate}
         regenerateKey={() => setForm((prev) => ({ ...prev, key: generateApiKey() }))}
+        serverGeneratesKey={Boolean(endUserIdFilter)}
       />
 
       <ApiKeyFormModal
@@ -733,6 +849,21 @@ export function ApiKeysPage() {
         onSubmit={handleEdit}
         regenerateKey={() => setForm((prev) => ({ ...prev, key: generateApiKey() }))}
       />
+
+      <Modal
+        open={Boolean(createdSecretOnce)}
+        onClose={() => setCreatedSecretOnce(null)}
+        title={t("end_users.copy_secret", { defaultValue: "请立即复制 API Key" })}
+      >
+        <p className="mb-2 text-sm text-amber-600 dark:text-amber-300">
+          {t("end_users.copy_secret_hint", {
+            defaultValue: "离开后无法再查看明文 Key。已尝试复制到剪贴板。",
+          })}
+        </p>
+        <code className="block select-all break-all rounded bg-slate-100 p-3 text-sm dark:bg-neutral-900">
+          {createdSecretOnce}
+        </code>
+      </Modal>
 
       <DeleteApiKeyModal
         t={t}

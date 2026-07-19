@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { KeyRound, Pencil, Trash2, Unlock } from "lucide-react";
+import { Key, KeyRound, Pencil, Trash2, Unlock } from "lucide-react";
 import { endUsersApi, type CreateEndUserResult, type EndUser } from "@code-proxy/api-client";
 import {
   Button,
@@ -19,6 +20,7 @@ const emptyForm = { username: "", displayName: "", password: "" };
 export function EndUsersPage() {
   const { notify } = useToast();
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { can } = useAuth();
   const [users, setUsers] = useState<EndUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,6 +110,18 @@ export function EndUsersPage() {
         width: "w-40",
         render: (row) => (
           <div className="flex items-center gap-1">
+            {can("api_keys.read") ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                title={t("end_users.manage_keys", { defaultValue: "管理密钥" })}
+                onClick={() =>
+                  navigate(`/access/api-keys?endUserId=${encodeURIComponent(row.id)}`)
+                }
+              >
+                <Key className="h-4 w-4" />
+              </Button>
+            ) : null}
             {canWrite ? (
               <Button
                 size="sm"
@@ -144,7 +158,7 @@ export function EndUsersPage() {
         ),
       },
     ],
-    [canWrite, t, unlock],
+    [can, canWrite, navigate, t, unlock],
   );
 
   const onCreate = async (e: FormEvent) => {
@@ -246,7 +260,8 @@ export function EndUsersPage() {
               </h2>
               <p className="mt-1 text-sm text-slate-500 dark:text-white/55">
                 {t("end_users.subtitle", {
-                  defaultValue: "门户账号（与后台管理员隔离），每人可持有多把 API Key。",
+                  defaultValue:
+                    "门户用户账号（与后台管理员隔离）。点击「密钥」管理该用户下全部 API Key（限额/权限/启停等）。",
                 })}
               </p>
             </div>
