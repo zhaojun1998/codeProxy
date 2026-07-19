@@ -136,7 +136,7 @@ describe("ApiKeyLookupPage", () => {
     vi.clearAllMocks();
   });
 
-  test("opens the account login modal when no session is stored", async () => {
+  test("shows landing first, then opens login modal from CTA", async () => {
     const { portalApi } = await import("@code-proxy/api-client");
     vi.mocked(portalApi.login).mockResolvedValue({
       user: {
@@ -181,7 +181,12 @@ describe("ApiKeyLookupPage", () => {
       </ThemeProvider>,
     );
 
-    const dialog = screen.getByRole("dialog");
+    expect(screen.getByTestId("apikey-lookup-landing")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /登录查看|sign in/i }));
+
+    const dialog = await screen.findByRole("dialog");
     expect(dialog).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/enter username|请输入账号/i)).toBeInTheDocument();
     expect(screen.queryByPlaceholderText(/enter api key|输入 API 密钥/i)).not.toBeInTheDocument();
@@ -469,7 +474,7 @@ describe("ApiKeyLookupPage", () => {
     );
   });
 
-  test("logs out from the header menu and asks for the API key again", async () => {
+  test("logs out from the header menu and returns to the landing page", async () => {
     window.sessionStorage.setItem("apiKeyLookup.lastApiKey.v1", "sk-restored-key");
 
     render(
@@ -484,7 +489,8 @@ describe("ApiKeyLookupPage", () => {
     await userEvent.click(screen.getByRole("option", { name: /logout/i }));
 
     expect(window.sessionStorage.getItem("apiKeyLookup.lastApiKey.v1")).toBeNull();
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByTestId("apikey-lookup-landing")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   test("shows cached usage data while refreshing chart data", async () => {

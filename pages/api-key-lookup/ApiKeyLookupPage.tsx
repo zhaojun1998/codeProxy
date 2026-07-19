@@ -337,7 +337,8 @@ export function ApiKeyLookupPage() {
   const [, setApiKeyInput] = useState(initialLookupKey);
   const [queriedKey, setQueriedKey] = useState(initialLookupKey);
   const [apiKeyName, setApiKeyName] = useState("");
-  const [loginModalOpen, setLoginModalOpen] = useState(!initialLookupKey);
+  // ponytail: landing first; open login only via CTA / header
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
 
   // ── Content modal state ──
   const [contentModalOpen, setContentModalOpen] = useState(false);
@@ -907,7 +908,7 @@ export function ApiKeyLookupPage() {
     setPortalUser(null);
     setPortalKeys([]);
     handleApiKeyInputChange("");
-    setLoginModalOpen(true);
+    setLoginModalOpen(false);
   }, [handleApiKeyInputChange]);
 
   const refreshPortalKeys = useCallback(async () => {
@@ -1096,8 +1097,17 @@ export function ApiKeyLookupPage() {
   //  Render
   // ================================================================
 
+  const showLanding = !queriedKey && !portalUser && !error;
+
   return (
-    <div className="relative min-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100 pt-14 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950">
+    <div
+      className={[
+        "relative min-h-dvh pt-14",
+        showLanding
+          ? "bg-[#fafbfc] dark:bg-[#08090a]"
+          : "bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950",
+      ].join(" ")}
+    >
       {/* Header：滚动后上滑淡出，给 sticky tabs 让位 */}
       <header
         data-testid="apikey-lookup-header"
@@ -1142,7 +1152,12 @@ export function ApiKeyLookupPage() {
                 size="sm"
               />
             ) : (
-              <Button size="sm" variant="ghost" onClick={() => setLoginModalOpen(true)}>
+              <Button
+                size="sm"
+                variant={showLanding ? "primary" : "ghost"}
+                onClick={() => setLoginModalOpen(true)}
+                className={showLanding ? "rounded-full px-4" : undefined}
+              >
                 {t("common.login", { defaultValue: "登录" })}
               </Button>
             )}
@@ -1342,7 +1357,9 @@ export function ApiKeyLookupPage() {
           }
         />
 
-        {!queriedKey && !portalUser && !error ? <LookupEmptyState t={t} /> : null}
+        {showLanding ? (
+          <LookupEmptyState t={t} onLogin={() => setLoginModalOpen(true)} />
+        ) : null}
       </main>
 
       <Modal
