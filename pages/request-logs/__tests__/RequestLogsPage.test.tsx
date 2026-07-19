@@ -591,7 +591,7 @@ describe("RequestLogsPage", () => {
     expect(await screen.findByRole("button", { name: "Deselect all" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Deselect all" }));
-    expect(screen.getByRole("combobox", { name: "Filter by Key name" })).toHaveTextContent(
+    expect(screen.getByRole("combobox", { name: "Filter by account name" })).toHaveTextContent(
       "0 selected",
     );
 
