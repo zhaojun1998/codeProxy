@@ -515,6 +515,111 @@ describe("ApiKeyLookupPage", () => {
     );
   });
 
+  test("confirms before deleting a managed API key", async () => {
+    const { portalApi } = await import("@code-proxy/api-client");
+    const keys = [
+      {
+        id: "k1",
+        tenant_id: "t1",
+        end_user_id: "u1",
+        name: "primary",
+        key_masked: "sk-****1",
+        disabled: false,
+        is_default: true,
+        created_at: "",
+        updated_at: "",
+      },
+      {
+        id: "k2",
+        tenant_id: "t1",
+        end_user_id: "u1",
+        name: "secondary",
+        key_masked: "sk-****2",
+        disabled: false,
+        is_default: false,
+        created_at: "",
+        updated_at: "",
+      },
+    ];
+    vi.mocked(portalApi.login).mockResolvedValue({
+      user: {
+        id: "u1",
+        tenant_id: "t1",
+        username: "alice",
+        display_name: "Alice",
+        status: "active",
+        must_change_password: false,
+        failed_login_count: 0,
+        lock_stage: 0,
+        created_at: "",
+        updated_at: "",
+        version: 1,
+      },
+      access_token: "cpt_test",
+      refresh_token: "cpr_test",
+      must_change_password: false,
+    } as never);
+    vi.mocked(portalApi.listKeys)
+      .mockResolvedValueOnce({ items: keys } as never)
+      .mockResolvedValue({ items: [keys[0]] } as never);
+    vi.mocked(portalApi.keySecret).mockResolvedValue({ id: "k1", key: "sk-primary" });
+    vi.mocked(portalApi.deleteKey).mockResolvedValue(undefined as never);
+
+    render(
+      <ThemeProvider>
+        <ToastProvider>
+          <ApiKeyLookupPage />
+        </ToastProvider>
+      </ThemeProvider>,
+    );
+
+    const landing = screen.getByTestId("apikey-lookup-landing");
+    await userEvent.click(
+      within(landing).getByRole("button", { name: /^(login|sign in|登录)$/i }),
+    );
+    const loginDialog = await screen.findByRole("dialog");
+    await userEvent.type(screen.getByPlaceholderText(/enter username|请输入账号/i), "alice");
+    await userEvent.type(screen.getByPlaceholderText(/enter password|请输入密码/i), "password123");
+    await userEvent.click(
+      within(loginDialog).getByRole("button", { name: /^(login|sign in|登录)$/i }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByTestId("apikey-lookup-landing")).not.toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      await screen.findByRole("tab", { name: /manage api keys|管理 api key/i }),
+    );
+    expect(await screen.findByText("secondary")).toBeInTheDocument();
+    const deleteButtons = screen.getAllByRole("button", { name: /^(delete|删除)$/i });
+    expect(deleteButtons.length).toBeGreaterThanOrEqual(2);
+    await userEvent.click(deleteButtons[1]);
+
+    expect(portalApi.deleteKey).not.toHaveBeenCalled();
+    const confirmDialog = await screen.findByRole("dialog");
+    expect(confirmDialog).toHaveTextContent(/delete api key|删除 api key/i);
+    expect(confirmDialog).toHaveTextContent("secondary");
+
+    await userEvent.click(
+      within(confirmDialog).getByRole("button", { name: /^(cancel|取消)$/i }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(portalApi.deleteKey).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getAllByRole("button", { name: /^(delete|删除)$/i })[1]);
+    await userEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: /^(delete|删除)$/i,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(portalApi.deleteKey).toHaveBeenCalledWith("k2");
+    });
+  });
+
   test("logs out from the header menu and returns to the landing page", async () => {
     window.sessionStorage.setItem("apiKeyLookup.lastApiKey.v1", "sk-restored-key");
 

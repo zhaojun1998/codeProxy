@@ -86,7 +86,8 @@
     "sort_column": "Sort {{column}}",
     "sort_ascending": "Ascending",
     "sort_descending": "Descending",
-    "no_data": "No data"
+    "no_data": "No data",
+    "disabled": "Disabled"
   },
   "title": {
     "main": "Code Proxy Admin Dashboard",
@@ -3216,7 +3217,31 @@
     "password": "Password",
     "username_placeholder": "Enter username",
     "password_placeholder": "Enter password",
-    "unnamed_key": "Unnamed key"
+    "unnamed_key": "Unnamed key",
+    "change_password": "Change password",
+    "copy_secret": "Copy now",
+    "create_key": "New Key",
+    "create_key_desc": "Give the new key a name so you can tell sources apart in request logs.",
+    "current_password": "Current password",
+    "default_key": "Default",
+    "keep_one_key": "Keep at least one key",
+    "key_name": "Key name",
+    "key_name_duplicate": "Key name already exists. Choose another.",
+    "key_name_placeholder": "e.g. Claude Desktop / Production",
+    "key_name_required": "Enter a key name",
+    "manage_keys": "Manage API Keys",
+    "manage_keys_desc": "Manage all API keys under this account.",
+    "new_password": "New password",
+    "new_password_hint": "At least 8 characters",
+    "no_keys": "No keys yet",
+    "pick_key_for_tab": "Select a key under Manage API Keys first to view usage.",
+    "rotate_key": "Rotate",
+    "secret_once_warning": "You won't be able to view the plaintext key again after leaving. Copy and save it now.",
+    "set_default": "Set as default",
+    "confirm_delete_title": "Delete API key?",
+    "confirm_delete_desc": "This cannot be undone. Requests using this key will stop working.",
+    "confirm_delete": "Delete",
+    "deleting": "Deleting…"
   },
   "auth_files_page": {
     "files_tab": "Files",

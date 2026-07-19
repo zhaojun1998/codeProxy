@@ -811,6 +811,7 @@ export function ApiKeyLookupPage() {
   const [createKeyOpen, setCreateKeyOpen] = useState(false);
   const [createKeyName, setCreateKeyName] = useState("");
   const [createKeyError, setCreateKeyError] = useState<string | null>(null);
+  const [deleteKeyTarget, setDeleteKeyTarget] = useState<EndUserAPIKey | null>(null);
   const [portalKeysBusy, setPortalKeysBusy] = useState(false);
   const [portalKeysLoading, setPortalKeysLoading] = useState(false);
 
@@ -1222,17 +1223,7 @@ export function ApiKeyLookupPage() {
                   }}
                   onDelete={(key) => {
                     if (portalKeys.length <= 1) return;
-                    setPortalKeysBusy(true);
-                    void portalApi
-                      .deleteKey(key.id)
-                      .then(async () => {
-                        const items = (await portalApi.listKeys()).items ?? [];
-                        setPortalKeys(items);
-                        const next = items.find((x) => x.is_default) ?? items[0];
-                        if (next) await activateOwnedKey(next.id);
-                        else handleApiKeyInputChange("");
-                      })
-                      .finally(() => setPortalKeysBusy(false));
+                    setDeleteKeyTarget(key);
                   }}
                 />
               </Reveal>
@@ -1516,6 +1507,63 @@ export function ApiKeyLookupPage() {
           </label>
           {pwdError ? <p className="text-sm text-rose-600 dark:text-rose-300">{pwdError}</p> : null}
         </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(deleteKeyTarget)}
+        title={t("apikey_lookup.confirm_delete_title")}
+        description={t("apikey_lookup.confirm_delete_desc")}
+        maxWidth="max-w-md"
+        onClose={() => {
+          if (portalKeysBusy) return;
+          setDeleteKeyTarget(null);
+        }}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              disabled={portalKeysBusy}
+              onClick={() => setDeleteKeyTarget(null)}
+            >
+              {t("common.cancel", { defaultValue: "取消" })}
+            </Button>
+            <Button
+              variant="danger"
+              disabled={portalKeysBusy || !deleteKeyTarget}
+              onClick={() => {
+                const key = deleteKeyTarget;
+                if (!key || portalKeys.length <= 1) return;
+                setPortalKeysBusy(true);
+                void portalApi
+                  .deleteKey(key.id)
+                  .then(async () => {
+                    setDeleteKeyTarget(null);
+                    const items = (await portalApi.listKeys()).items ?? [];
+                    setPortalKeys(items);
+                    const next = items.find((x) => x.is_default) ?? items[0];
+                    if (next) await activateOwnedKey(next.id);
+                    else handleApiKeyInputChange("");
+                  })
+                  .finally(() => setPortalKeysBusy(false));
+              }}
+            >
+              {portalKeysBusy
+                ? t("apikey_lookup.deleting")
+                : t("apikey_lookup.confirm_delete")}
+            </Button>
+          </>
+        }
+      >
+        {deleteKeyTarget ? (
+          <div className="rounded-xl bg-red-50 p-3 dark:bg-red-900/20">
+            <div className="text-sm font-medium text-red-800 dark:text-red-300">
+              {deleteKeyTarget.name || deleteKeyTarget.id.slice(0, 8)}
+            </div>
+            <code className="text-xs text-red-600 dark:text-red-400">
+              {deleteKeyTarget.key_masked}
+            </code>
+          </div>
+        ) : null}
       </Modal>
 
       <Modal
