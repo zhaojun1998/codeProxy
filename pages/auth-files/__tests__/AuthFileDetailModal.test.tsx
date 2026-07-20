@@ -776,7 +776,8 @@ describe("AuthFileDetailModal", () => {
       useIdentityFingerprintCLIPreferred: useCliPreferred,
     });
 
-    expect(screen.getByTestId("auth-file-identity-summary")).toHaveTextContent("Shared account");
+    expect(screen.getByTestId("auth-file-identity-summary")).toBeInTheDocument();
+    expect(screen.queryByText("Shared account")).not.toBeInTheDocument();
     expect(screen.getByTestId("identity-profile-codex_cli_rs")).toHaveTextContent("In use");
     expect(screen.getByTestId("auth-file-identity-fields")).toHaveTextContent(
       "codex_cli_rs/0.144.1",
