@@ -1984,7 +1984,7 @@ describe("AuthFilesPage files table", () => {
     expect(within(card as HTMLElement).queryByText("pro")).not.toBeInTheDocument();
   });
 
-  test("table view shows shared scope and separate cycle and lifetime calls", async () => {
+  test("table view shows cycle calls without shared-scope or lifetime noise", async () => {
     useTableFilesView();
     mocks.list.mockImplementation(async () => ({
       files: [
@@ -2034,12 +2034,11 @@ describe("AuthFilesPage files table", () => {
     const title = await screen.findByText("Shared Codex");
     const row = title.closest("tr");
     expect(row).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: "Account scope" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Cycle calls" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Lifetime calls" })).toBeInTheDocument();
-    expect(await within(row as HTMLElement).findByText("Shared account")).toBeInTheDocument();
-    expect(within(row as HTMLElement).getByText("7")).toBeInTheDocument();
-    expect(within(row as HTMLElement).getByText("99")).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Account scope" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Lifetime calls" })).not.toBeInTheDocument();
+    expect(within(row as HTMLElement).queryByText("Shared account")).not.toBeInTheDocument();
+    expect(await within(row as HTMLElement).findByText("7")).toBeInTheDocument();
     expect(within(row as HTMLElement).getByText("90")).toBeInTheDocument();
     expect(within(row as HTMLElement).getByText("9")).toBeInTheDocument();
   });
@@ -2167,15 +2166,18 @@ describe("AuthFilesPage files table", () => {
       await within(card as HTMLElement).findByText("Cycle 7"),
     ).toBeInTheDocument();
     expect(
-      within(card as HTMLElement).getByText("Lifetime 99"),
-    ).toBeInTheDocument();
+      within(card as HTMLElement).queryByText("Lifetime 99"),
+    ).not.toBeInTheDocument();
     expect(
-      within(card as HTMLElement).getByText("Tenant only"),
-    ).toBeInTheDocument();
+      within(card as HTMLElement).queryByText("Tenant only"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(card as HTMLElement).queryByText("Success 99 / Failed 0"),
+    ).not.toBeInTheDocument();
     expect(mocks.getStatus).toHaveBeenCalled();
   });
 
-  test("cards view shows unknown cycle and lifetime total when xAI weekly cycle is unknown", async () => {
+  test("cards view shows unknown cycle without lifetime/scope noise when weekly cycle is unknown", async () => {
     window.localStorage.setItem(
       "authFilesPage.filesViewMode.v1",
       JSON.stringify("cards"),
@@ -2272,19 +2274,14 @@ describe("AuthFilesPage files table", () => {
       await within(card as HTMLElement).findByText("Cycle --"),
     ).toBeInTheDocument();
     expect(
-      within(card as HTMLElement).getByText("Lifetime 116"),
-    ).toBeInTheDocument();
+      within(card as HTMLElement).queryByText("Lifetime 116"),
+    ).not.toBeInTheDocument();
     expect(
       within(card as HTMLElement).getByText("SUPERGROK"),
     ).toBeInTheDocument();
     expect(
-      within(card as HTMLElement).getByText("Shared account"),
-    ).toBeInTheDocument();
-    const user = userEvent.setup();
-    await user.hover(within(card as HTMLElement).getByText("Lifetime 116"));
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      "Shared history is projected from",
-    );
+      within(card as HTMLElement).queryByText("Shared account"),
+    ).not.toBeInTheDocument();
     expect(mocks.getStatus).toHaveBeenCalled();
   });
 
@@ -2901,7 +2898,7 @@ describe("AuthFilesPage files table", () => {
       within(card as HTMLElement).queryByText("Plan Pro"),
     ).not.toBeInTheDocument();
     expect(
-      within(card as HTMLElement).getByText("Lifetime 0"),
+      within(card as HTMLElement).getByText("Cycle --"),
     ).toBeInTheDocument();
   });
 
@@ -3077,7 +3074,7 @@ describe("AuthFilesPage files table", () => {
     expect(screen.queryByText("z-last.json")).not.toBeInTheDocument();
     expect(screen.queryByText("codex-prod.json")).not.toBeInTheDocument();
     expect(screen.getAllByText("PLUS").length).toBeGreaterThan(0);
-    expect(await screen.findByText("Lifetime 9")).toBeInTheDocument();
+    expect(await screen.findByText("Cycle 9")).toBeInTheDocument();
 
     const cards = screen.getByTestId("auth-files-cards");
     expect(cards.textContent?.indexOf("Alpha Channel")).toBeLessThan(
@@ -4531,7 +4528,7 @@ describe("AuthFilesPage files table", () => {
     const firstCard = firstTitle.closest("section");
     expect(firstCard).not.toBeNull();
     expect(
-      await within(firstCard as HTMLElement).findByText("Lifetime 1"),
+      await within(firstCard as HTMLElement).findByText("Cycle 1"),
     ).toBeInTheDocument();
 
     await waitFor(() => expect(mocks.getStatus).toHaveBeenCalled());
@@ -4549,7 +4546,7 @@ describe("AuthFilesPage files table", () => {
       expect(mocks.getStatusRefreshJob).toHaveBeenCalled();
       expect(mocks.getStatus).toHaveBeenCalled();
       expect(
-        within(firstCard as HTMLElement).getByText("Lifetime 101"),
+        within(firstCard as HTMLElement).getByText("Cycle 101"),
       ).toBeInTheDocument();
     });
 
@@ -4560,7 +4557,7 @@ describe("AuthFilesPage files table", () => {
     expect(tenthCard).not.toBeNull();
     // Final snapshot may refresh all accounts; page 2 still shows a finite call badge.
     expect(
-      within(tenthCard as HTMLElement).getByText(/Lifetime \d+/),
+      within(tenthCard as HTMLElement).getByText(/Cycle \d+/),
     ).toBeInTheDocument();
   });
 
@@ -5213,7 +5210,7 @@ describe("AuthFilesPage files table", () => {
     const resetTooltip = await screen.findByRole("tooltip");
     expect(resetTooltip).toHaveTextContent("Reset credit expiration times:");
     expect(resetTooltip).toHaveTextContent("2026");
-    const callsBadge = within(cards).getByText("Lifetime 0");
+    const callsBadge = within(cards).getByText(/Cycle/);
     expect(
       resetButton.compareDocumentPosition(callsBadge) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();

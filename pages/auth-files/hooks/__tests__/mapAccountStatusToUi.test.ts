@@ -67,6 +67,23 @@ describe("mapAccountStatusToUi", () => {
     expect(state.error).toBe("upstream_timeout");
   });
 
+  test("unknown cycle does not emit a cycle snapshot that would wipe local 本周期", () => {
+    const patch = applyAccountStatuses([
+      {
+        auth_index: "77",
+        auth_subject_id: "sub-77",
+        quotas: [],
+        usage: {
+          cycle_known: false,
+          cycle_request_total: 0,
+          request_total: 89,
+        },
+      },
+    ]);
+    expect(patch.cycleByKey["77"]).toBeUndefined();
+    expect(patch.cycleByKey["sub-77"]).toBeUndefined();
+  });
+
   test("isAccountStatusFresher prefers version then time", () => {
     expect(
       isAccountStatusFresher({ version: 2, timeMs: 1 }, { version: 1, timeMs: 99 }),

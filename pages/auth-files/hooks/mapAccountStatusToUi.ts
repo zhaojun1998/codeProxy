@@ -151,14 +151,12 @@ export const mapAccountStatusToCycleUsage = (
   const usage = account.usage;
   if (!usage) return null;
   const cycleTotal = usage.cycle_request_total;
-  const calls =
-    usage.cycle_known === true &&
-    typeof cycleTotal === "number" &&
-    Number.isFinite(cycleTotal)
-      ? Math.max(0, Math.round(cycleTotal))
-      : null;
+  // Only emit a cycle snapshot when the weekly cycle is known. Returning
+  // calls:null here would overwrite a good local value after partial refresh.
+  if (usage.cycle_known !== true) return null;
+  if (typeof cycleTotal !== "number" || !Number.isFinite(cycleTotal)) return null;
   return {
-    calls,
+    calls: Math.max(0, Math.round(cycleTotal)),
     cycleCostTotal:
       typeof usage.cycle_cost_total === "number" && Number.isFinite(usage.cycle_cost_total)
         ? usage.cycle_cost_total

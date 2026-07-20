@@ -835,31 +835,6 @@ export function useAuthFilesFilesPresentation({
         },
       },
       {
-        key: "subject_scope",
-        label: t("auth_files.col_subject_scope"),
-        width: "w-32",
-        render: (file) => {
-          if (!file.subject_scope) {
-            return <span className="text-xs text-slate-400 dark:text-white/40">--</span>;
-          }
-          const shared = file.subject_scope === "shared";
-          return (
-            <HoverTooltip content={t("auth_files.shared_usage_scope_help")}>
-              <span
-                className={[
-                  "inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold",
-                  shared
-                    ? "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-200"
-                    : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-white/65",
-                ].join(" ")}
-              >
-                {t(shared ? "auth_files.shared_subject" : "auth_files.tenant_subject")}
-              </span>
-            </HoverTooltip>
-          );
-        },
-      },
-      {
         key: "cycle_calls",
         label: t("auth_files.col_cycle_calls"),
         width: "w-24",
@@ -872,34 +847,6 @@ export function useAuthFilesFilesPresentation({
             <span className="text-xs font-semibold tabular-nums text-slate-700 dark:text-white/70">
               {typeof calls === "number" ? calls : "--"}
             </span>
-          );
-        },
-      },
-      {
-        key: "lifetime_calls",
-        label: t("auth_files.col_lifetime_calls"),
-        width: "w-24",
-        headerClassName: "text-right",
-        cellClassName: "text-right",
-        render: (file) => {
-          const stats = resolveAuthFileStats(file, usageIndex);
-          const calls = stats.success + stats.failure;
-          return (
-            <HoverTooltip
-              content={
-                file.usage_history_complete === false
-                  ? t("auth_files.shared_history_incomplete", {
-                      since: file.usage_projected_since
-                        ? new Date(file.usage_projected_since).toLocaleString()
-                        : "--",
-                    })
-                  : t("auth_files.shared_usage_scope_help")
-              }
-            >
-              <span className="text-xs font-semibold tabular-nums text-slate-700 dark:text-white/70">
-                {calls}
-              </span>
-            </HoverTooltip>
           );
         },
       },

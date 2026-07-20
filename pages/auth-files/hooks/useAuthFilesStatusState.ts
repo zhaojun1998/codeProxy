@@ -412,7 +412,8 @@ export function useAuthFilesStatusState({
               : group.authIndexes.find((key) => patch.cycleByKey[key]);
           if (!sourceKey) continue;
           const cycle = patch.cycleByKey[sourceKey];
-          if (!cycle) continue;
+          // Skip unknown cycle: never wipe a known 本周期 with null after partial refresh.
+          if (!cycle || typeof cycle.calls !== "number") continue;
           if (!changed) {
             next = { ...prev };
             changed = true;
