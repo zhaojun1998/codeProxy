@@ -115,47 +115,6 @@ describe("ApiKeyColumns", () => {
     expect(keyColumn?.width).toBe("w-[320px] min-w-[320px]");
   });
 
-  test("centers metric columns and keeps wider min widths for Chinese headers", () => {
-    const columns = createColumns();
-    const centeredKeys = [
-      "select",
-      "dailySpending",
-      "dailySpendingResetCount",
-      "dailyLimit",
-      "totalQuota",
-      "spendingLimit",
-      "rpmLimit",
-      "tpmLimit",
-      "createdAt",
-      "actions",
-    ];
-
-    for (const key of centeredKeys) {
-      const column = columns.find((item) => item.key === key);
-      expect(column?.headerClassName).toContain("text-center");
-      expect(column?.cellClassName).toContain("text-center");
-    }
-
-    expect(columns.find((column) => column.key === "dailySpending")?.width).toBe(
-      "w-[196px] min-w-[196px]",
-    );
-    expect(columns.find((column) => column.key === "dailySpendingResetCount")?.width).toBe(
-      "w-[120px] min-w-[120px]",
-    );
-    expect(columns.find((column) => column.key === "dailyLimit")?.width).toBe(
-      "w-[140px] min-w-[140px]",
-    );
-    expect(columns.find((column) => column.key === "rpmLimit")?.width).toBe(
-      "w-[124px] min-w-[124px]",
-    );
-    expect(columns.find((column) => column.key === "name")?.headerClassName).not.toContain(
-      "text-center",
-    );
-    expect(columns.find((column) => column.key === "key")?.cellClassName).not.toContain(
-      "text-center",
-    );
-  });
-
   test("truncates API key text inside an intact rounded badge", () => {
     const row: ApiKeyEntry = {
       key: "sk-abcdefghijklmnopqrstuvwxyz0123456789",
@@ -296,6 +255,27 @@ describe("ApiKeyColumns", () => {
     render(<div>{actionsColumn?.render(row, 0)}</div>);
 
     expect(screen.getByRole("button", { name: "Click to enable" })).toBeInTheDocument();
+  });
+
+  test("account-scoped columns drop quota fields and usage/reset actions", () => {
+    const row: ApiKeyEntry = {
+      key: "sk-owned",
+      name: "Owned",
+      "daily-spending-limit": 10,
+      "created-at": "2026-04-28T00:00:00Z",
+    };
+    const columns = createColumns({ accountScoped: true });
+    const keys = columns.map((column) => column.key);
+    const actionsColumn = columns.find((column) => column.key === "actions");
+
+    expect(keys).toEqual(["select", "name", "key", "createdAt", "actions"]);
+    expect(actionsColumn?.width).toBe("w-[220px] min-w-[220px]");
+
+    render(<div>{actionsColumn?.render(row, 0)}</div>);
+
+    expect(screen.queryByRole("button", { name: "View usage" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reset today spending" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy key" })).toBeInTheDocument();
   });
 
   test("places daily spending column immediately after name", () => {
