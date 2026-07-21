@@ -798,10 +798,20 @@ export function AuthFilesFilesTab({
   const denseCards = cardColumns >= 4;
   const cardColumnOptions = useMemo(
     () =>
-      AUTH_FILES_CARD_COLUMN_OPTIONS.map((count) => ({
-        value: String(count),
-        label: t("auth_files.card_columns_option", { count }),
-      })),
+      AUTH_FILES_CARD_COLUMN_OPTIONS.map((count) => {
+        const label = t("auth_files.card_columns_option", { count });
+        return {
+          value: String(count),
+          label,
+          // Icon lives inside the select trigger; no separate leading glyph.
+          triggerLabel: (
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              <Columns3 size={14} className="shrink-0 opacity-70" aria-hidden />
+              <span className="truncate">{label}</span>
+            </span>
+          ),
+        };
+      }),
     [t],
   );
   const [draftModelOwnerEnabled, setDraftModelOwnerEnabled] = useState(
@@ -1368,29 +1378,22 @@ export function AuthFilesFilesTab({
                     {renderFilesViewModeTabs}
                   </div>
                   {filesViewMode === "cards" ? (
-                    <HoverTooltip content={t("auth_files.card_columns")}>
-                      <div
-                        className="hidden min-w-[7.5rem] items-center gap-1.5 xl:flex"
-                        data-testid="auth-files-card-columns"
-                      >
-                        <Columns3
-                          size={15}
-                          className="shrink-0 text-slate-500 dark:text-white/50"
-                          aria-hidden
-                        />
-                        <Select
-                          value={String(cardColumns)}
-                          onChange={(value) =>
-                            setCardColumnsRaw(normalizeAuthFilesCardColumns(value))
-                          }
-                          options={cardColumnOptions}
-                          aria-label={t("auth_files.card_columns")}
-                          variant="chip"
-                          size="sm"
-                          className="min-w-[5.5rem]"
-                        />
-                      </div>
-                    </HoverTooltip>
+                    <div
+                      className="hidden xl:block"
+                      data-testid="auth-files-card-columns"
+                    >
+                      <Select
+                        value={String(cardColumns)}
+                        onChange={(value) =>
+                          setCardColumnsRaw(normalizeAuthFilesCardColumns(value))
+                        }
+                        options={cardColumnOptions}
+                        aria-label={t("auth_files.card_columns")}
+                        variant="chip"
+                        size="sm"
+                        className="min-w-[6.25rem]"
+                      />
+                    </div>
                   ) : null}
                   {modelOwnerToolbarButton}
                   {selectedCount === 0 ? selectionActionsMenu : null}
