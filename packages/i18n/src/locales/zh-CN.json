@@ -147,7 +147,6 @@
     "error_management_key_required": "请输入管理密钥",
     "login_success": "登录成功",
     "signing_in": "登录中...",
-    "account_login_hint": "使用账号密码登录，系统会自动识别所属租户。",
     "tenant_expired": "当前租户已到期，请联系平台管理员续期后再登录。",
     "tenant_suspended": "当前租户已被暂停或禁用，请联系平台管理员。",
     "account_unavailable": "当前账号已被禁用或锁定，请联系租户管理员。",
