@@ -143,7 +143,6 @@
     "error_management_key_required": "Please enter the management key",
     "login_success": "Login successful",
     "signing_in": "Signing in...",
-    "account_login_hint": "Use your account credentials. Your tenant is resolved automatically.",
     "tenant_expired": "This tenant has expired. Contact the platform administrator to renew access.",
     "tenant_suspended": "This tenant is suspended or disabled. Contact the platform administrator.",
     "account_unavailable": "This account is disabled or locked. Contact your tenant administrator.",
