@@ -28,6 +28,16 @@ describe("VisualConfigEditor auto update config", () => {
     await i18n.changeLanguage("en");
   });
 
+  test("moves persistent descriptions into info tooltips", async () => {
+    renderEditor();
+
+    const description = "Host/port, auth directory & API Keys.";
+    expect(screen.queryByText(description)).not.toBeInTheDocument();
+
+    await userEvent.hover(screen.getByRole("button", { name: description }));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(description);
+  });
+
   test("shows automatic update settings and exposes main/dev source branches", async () => {
     const onChange = renderEditor();
 

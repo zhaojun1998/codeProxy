@@ -1,8 +1,9 @@
-import { Gauge, Leaf, ShieldCheck } from "lucide-react";
+import { Gauge, Leaf } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { VisualConfigValues } from "@features/visual-config-editor";
-import { Button, Card, TextInput, ToggleSwitch } from "@code-proxy/ui";
+import { Button, TextInput } from "@code-proxy/ui";
+import { HintCard as Card, HintLabel, HintToggle as ToggleSwitch } from "./VisualHint";
 
 type ResourceEfficiencyPanelProps = {
   values: VisualConfigValues;
@@ -27,8 +28,9 @@ function ResourceField({
 }) {
   return (
     <div className="space-y-1.5">
-      <div className="text-sm font-semibold text-slate-900 dark:text-white">{label}</div>
-      <p className="text-xs leading-5 text-slate-600 dark:text-white/65">{hint}</p>
+      <div className="text-sm font-semibold text-slate-900 dark:text-white">
+        <HintLabel label={label} hint={hint} />
+      </div>
       <TextInput
         value={value}
         placeholder={placeholder}
@@ -106,7 +108,15 @@ export function ResourceEfficiencyPanel({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-base font-semibold text-emerald-950 dark:text-emerald-100">
-                  {t("resource_config.title")}
+                  <HintLabel
+                    label={t("resource_config.title")}
+                    hint={`${t("resource_config.description")}
+
+${t("resource_config.stats_preserved", {
+  defaultValue:
+    "清理明细不会清理统计。KPI/限额/public usage 等已切到小型聚合投影的指标不受 request_logs 清理影响；仍依赖明细的趋势/诊断能力仅覆盖保留期内数据。",
+})}`}
+                  />
                 </h3>
                 <span className="rounded-full bg-emerald-200/80 px-2.5 py-1 text-2xs font-semibold text-emerald-900 dark:bg-emerald-300/15 dark:text-emerald-200">
                   {recommendedActive
@@ -114,9 +124,6 @@ export function ResourceEfficiencyPanel({
                     : t("resource_config.profile_custom")}
                 </span>
               </div>
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-emerald-900/75 dark:text-emerald-100/70">
-                {t("resource_config.description")}
-              </p>
             </div>
           </div>
           <Button
@@ -331,16 +338,6 @@ export function ResourceEfficiencyPanel({
             />
           </div>
         </Card>
-      </div>
-
-      <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/70">
-        <ShieldCheck size={18} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-        <p>
-          {t("resource_config.stats_preserved", {
-            defaultValue:
-              "清理明细不会清理统计。KPI/限额/public usage 等已切到小型聚合投影的指标不受 request_logs 清理影响；仍依赖明细的趋势/诊断能力仅覆盖保留期内数据。",
-          })}
-        </p>
       </div>
     </div>
   );
