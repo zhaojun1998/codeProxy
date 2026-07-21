@@ -1,7 +1,9 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type RefObject,
   type ReactNode,
@@ -94,6 +96,8 @@ const CARD_GRID_COLUMN_CLASS: Record<AuthFilesCardColumns, string> = {
   5: "xl:grid-cols-[repeat(5,minmax(0,1fr))]",
   6: "xl:grid-cols-[repeat(6,minmax(0,1fr))]",
 };
+const CARD_COLUMN_ANIMATION_MS = 240;
+const CARD_COLUMN_ANIMATION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -792,9 +796,96 @@ export function AuthFilesFilesTab({
     DEFAULT_AUTH_FILES_CARD_COLUMNS,
   );
   const cardColumns = normalizeAuthFilesCardColumns(cardColumnsRaw);
+  const cardGridHostRef = useRef<HTMLDivElement>(null);
+  const cardColumnFirstRectsRef = useRef<DOMRect[] | null>(null);
+  const cardColumnAnimationsRef = useRef<Animation[]>([]);
   useEffect(() => {
     if (cardColumnsRaw !== cardColumns) setCardColumnsRaw(cardColumns);
   }, [cardColumns, cardColumnsRaw, setCardColumnsRaw]);
+  const cancelCardColumnAnimations = useCallback(() => {
+    cardColumnAnimationsRef.current.forEach((animation) => animation.cancel());
+    cardColumnAnimationsRef.current = [];
+  }, []);
+  const handleCardColumnsChange = useCallback(
+    (value: string) => {
+      const nextColumns = normalizeAuthFilesCardColumns(value);
+      if (nextColumns === cardColumns) return;
+
+      cancelCardColumnAnimations();
+      const reducedMotion =
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      const grid = cardGridHostRef.current?.querySelector<HTMLElement>(
+        "[data-scroll-area-content]",
+      );
+
+      cardColumnFirstRectsRef.current =
+        !reducedMotion && grid
+          ? Array.from(grid.children)
+              .filter((element): element is HTMLElement => element instanceof HTMLElement)
+              .map((element) => element.getBoundingClientRect())
+          : null;
+      setCardColumnsRaw(nextColumns);
+    },
+    [cancelCardColumnAnimations, cardColumns, setCardColumnsRaw],
+  );
+
+  useLayoutEffect(() => {
+    const firstRects = cardColumnFirstRectsRef.current;
+    cardColumnFirstRectsRef.current = null;
+    if (!firstRects || firstRects.length === 0) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+
+    const grid = cardGridHostRef.current?.querySelector<HTMLElement>(
+      "[data-scroll-area-content]",
+    );
+    if (!grid) return;
+
+    const animations: Animation[] = [];
+    Array.from(grid.children).forEach((element, index) => {
+      if (!(element instanceof HTMLElement) || typeof element.animate !== "function") return;
+      const first = firstRects[index];
+      if (!first) return;
+
+      const last = element.getBoundingClientRect();
+      if (last.width <= 0 || last.height <= 0) return;
+      const deltaX = first.left - last.left;
+      const deltaY = first.top - last.top;
+      const scaleX = first.width / last.width;
+      const scaleY = first.height / last.height;
+      if (
+        Math.abs(deltaX) < 0.5 &&
+        Math.abs(deltaY) < 0.5 &&
+        Math.abs(scaleX - 1) < 0.01 &&
+        Math.abs(scaleY - 1) < 0.01
+      ) {
+        return;
+      }
+
+      animations.push(
+        element.animate(
+          [
+            {
+              transform: `translate3d(${deltaX}px, ${deltaY}px, 0) scale(${scaleX}, ${scaleY})`,
+              transformOrigin: "top left",
+            },
+            {
+              transform: "translate3d(0, 0, 0) scale(1, 1)",
+              transformOrigin: "top left",
+            },
+          ],
+          {
+            duration: CARD_COLUMN_ANIMATION_MS,
+            easing: CARD_COLUMN_ANIMATION_EASING,
+          },
+        ),
+      );
+    });
+    cardColumnAnimationsRef.current = animations;
+
+    return cancelCardColumnAnimations;
+  }, [cancelCardColumnAnimations, cardColumns]);
+
   const denseCards = cardColumns >= 4;
   const cardColumnOptions = useMemo(
     () =>
@@ -1377,24 +1468,6 @@ export function AuthFilesFilesTab({
                   >
                     {renderFilesViewModeTabs}
                   </div>
-                  {filesViewMode === "cards" ? (
-                    <div
-                      className="hidden xl:block"
-                      data-testid="auth-files-card-columns"
-                    >
-                      <Select
-                        value={String(cardColumns)}
-                        onChange={(value) =>
-                          setCardColumnsRaw(normalizeAuthFilesCardColumns(value))
-                        }
-                        options={cardColumnOptions}
-                        aria-label={t("auth_files.card_columns")}
-                        variant="chip"
-                        size="sm"
-                        className="min-w-[6.25rem]"
-                      />
-                    </div>
-                  ) : null}
                   {modelOwnerToolbarButton}
                   {selectedCount === 0 ? selectionActionsMenu : null}
                 </div>
@@ -1495,6 +1568,22 @@ export function AuthFilesFilesTab({
                     </Button>
                   </HoverTooltip>
                   {configActionsMenu}
+                  {filesViewMode === "cards" ? (
+                    <div
+                      className="hidden xl:block"
+                      data-testid="auth-files-card-columns"
+                    >
+                      <Select
+                        value={String(cardColumns)}
+                        onChange={handleCardColumnsChange}
+                        options={cardColumnOptions}
+                        aria-label={t("auth_files.card_columns")}
+                        variant="chip"
+                        size="sm"
+                        className="min-w-[6.25rem]"
+                      />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1539,6 +1628,7 @@ export function AuthFilesFilesTab({
       ) : (
         <>
           <div
+            ref={cardGridHostRef}
             className={[
               "md:min-h-0 md:flex-1 md:overflow-hidden",
               filesViewMode === "table" ? "p-4 sm:p-5" : "",
@@ -1741,7 +1831,7 @@ export function AuthFilesFilesTab({
 
                   return (
                     <Card
-                      key={file.name}
+                      key={`${file.name}:${cardColumns}`}
                       padding={denseCards ? "compact" : "default"}
                       bodyClassName="mt-0 flex min-h-0 flex-1 flex-col"
                       className={[

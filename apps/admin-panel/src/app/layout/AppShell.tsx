@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -873,7 +874,9 @@ function ShellSidebar({
           "group/sidebar shrink-0 overflow-visible bg-white/94 dark:bg-neutral-950/88",
           isMobile ? "fixed inset-y-0 left-0 z-40 w-60" : "relative z-30 h-[100dvh]",
           "border-r border-slate-200 shadow-[12px_0_28px_rgba(15,23,42,0.04)] dark:border-neutral-800",
-          "motion-reduce:transition-none motion-safe:transition-[width,transform,background-color,border-color,box-shadow] motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]",
+          isMobile
+            ? "will-change-transform motion-reduce:transition-none motion-safe:transition-transform motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]"
+            : "motion-reduce:transition-none motion-safe:transition-[width,background-color,border-color,box-shadow] motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]",
           isMobile
             ? collapsed
               ? "pointer-events-none -translate-x-full shadow-none"
@@ -1322,6 +1325,34 @@ export function AppShell({ children, onLogout }: PropsWithChildren<{ onLogout?: 
   );
 
   const sidebarCollapsed = isMobile ? !mobileSidebarOpen : desktopSidebarCollapsed;
+  const mobileSidebarLayer = isMobile
+    ? createPortal(
+        <>
+          <button
+            type="button"
+            data-testid="app-shell-mobile-sidebar-backdrop"
+            className={[
+              "fixed inset-0 z-30 bg-black/35 backdrop-blur-[1px]",
+              "motion-reduce:transition-none motion-safe:transition-[opacity,backdrop-filter] motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]",
+              mobileSidebarOpen
+                ? "opacity-100"
+                : "pointer-events-none opacity-0",
+            ].join(" ")}
+            aria-label={t("common.close")}
+            aria-hidden={!mobileSidebarOpen}
+            tabIndex={mobileSidebarOpen ? 0 : -1}
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+          <ShellSidebar
+            collapsed={sidebarCollapsed}
+            mode="mobile"
+            onToggleSidebar={toggleSidebar}
+            onNavigate={() => setMobileSidebarOpen(false)}
+          />
+        </>,
+        document.body,
+      )
+    : null;
 
   return (
     <ShellContext value={value}>
@@ -1332,30 +1363,15 @@ export function AppShell({ children, onLogout }: PropsWithChildren<{ onLogout?: 
         >
           {t("shell.skip_to_content")}
         </a>
-        {isMobile ? (
-          <button
-            type="button"
-            data-testid="app-shell-mobile-sidebar-backdrop"
-            className={[
-              "fixed inset-0 z-30 bg-black/35 backdrop-blur-[1px]",
-              "motion-reduce:transition-none motion-safe:transition-[opacity,backdrop-filter] motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]",
-              mobileSidebarOpen
-                ? "opacity-100"
-                : "pointer-events-none opacity-0",
-            ].join(" ")}
-            aria-label={t("common.close")}
-            aria-hidden={!mobileSidebarOpen}
-            tabIndex={mobileSidebarOpen ? 0 : -1}
-            onClick={() => setMobileSidebarOpen(false)}
-          />
-        ) : null}
+        {mobileSidebarLayer}
         <div className="flex h-[100dvh] overflow-hidden">
-          <ShellSidebar
-            collapsed={sidebarCollapsed}
-            mode={isMobile ? "mobile" : "desktop"}
-            onToggleSidebar={toggleSidebar}
-            onNavigate={isMobile ? () => setMobileSidebarOpen(false) : undefined}
-          />
+          {isMobile ? null : (
+            <ShellSidebar
+              collapsed={sidebarCollapsed}
+              mode="desktop"
+              onToggleSidebar={toggleSidebar}
+            />
+          )}
           <div className="flex min-w-0 flex-1 flex-col">
             <ShellHeader
               isMobile={isMobile}
