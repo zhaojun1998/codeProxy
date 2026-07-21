@@ -807,9 +807,12 @@ export function ApiKeyLookupPage() {
     setLastUpdatedAt(null);
     setStats({ total: 0, success_rate: 0, total_tokens: 0, total_cost: 0 });
     setFilterOptions({
+      api_key_ids: [],
+      api_key_id_names: {},
       models: [],
       statuses: ["success", "failed"],
     });
+    setSelectedApiKeyIds(null);
     setSelectedModels(null);
     setSelectedStatuses(null);
 
@@ -983,9 +986,12 @@ export function ApiKeyLookupPage() {
       setLastUpdatedAt(null);
       setStats({ total: 0, success_rate: 0, total_tokens: 0, total_cost: 0 });
       setFilterOptions({
+        api_key_ids: [],
+        api_key_id_names: {},
         models: [],
         statuses: ["success", "failed"],
       });
+      setSelectedApiKeyIds(null);
       setSelectedModels(null);
       setSelectedStatuses(null);
       setQuotaLimits(null);
