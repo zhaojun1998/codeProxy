@@ -1089,16 +1089,9 @@ export const resolveAuthFileRestrictionBadges = (
   weeklyResetAtMs?: number | null,
 ): AuthFileRestrictionBadge[] => {
   const rawRestrictions = Array.isArray(file.restrictions) ? file.restrictions : [];
-  const displayableRawRestrictions = rawRestrictions.filter((restriction) => {
-    const scope = normalizeTagValue(restriction.scope);
-    if (scope === "model") return false;
-    const status = Number(restriction.http_status);
-    if (status >= 500) return false;
-    return true;
-  });
   const restrictions =
     rawRestrictions.length > 0
-      ? displayableRawRestrictions
+      ? rawRestrictions
       : isLegacyAuthRestrictionActive(file)
         ? [
             {

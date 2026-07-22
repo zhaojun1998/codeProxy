@@ -2091,6 +2091,23 @@ export function AuthFilesFilesTab({
                               {item.node}
                             </div>
                           ))}
+                          {restrictionBadges ? (
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              disabled={clearStatusDisabled}
+                              onClick={() => void clearAuthFileStatus(file)}
+                              title={t("auth_files.clear_status")}
+                              aria-label={t("auth_files.clear_status")}
+                            >
+                              {clearStatusBusy ? (
+                                <Loader2 size={13} className="animate-spin" />
+                              ) : (
+                                <CircleOff size={13} />
+                              )}
+                              <span>{t("auth_files.clear_status")}</span>
+                            </Button>
+                          ) : null}
                         </div>
                       ) : null}
 

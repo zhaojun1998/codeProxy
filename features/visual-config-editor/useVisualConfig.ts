@@ -613,6 +613,18 @@ export function useVisualConfig() {
           forceModelPrefix: Boolean(parsed["force-model-prefix"]),
           requestRetry: String(parsed["request-retry"] ?? ""),
           maxRetryInterval: String(parsed["max-retry-interval"] ?? ""),
+          statusCooldowns: {
+            status401: String(asRecord(parsed["status-cooldown-seconds"])?.["401"] ?? ""),
+            status402: String(asRecord(parsed["status-cooldown-seconds"])?.["402"] ?? ""),
+            status403: String(asRecord(parsed["status-cooldown-seconds"])?.["403"] ?? ""),
+            status404: String(asRecord(parsed["status-cooldown-seconds"])?.["404"] ?? ""),
+            status408: String(asRecord(parsed["status-cooldown-seconds"])?.["408"] ?? ""),
+            status429: String(asRecord(parsed["status-cooldown-seconds"])?.["429"] ?? ""),
+            status500: String(asRecord(parsed["status-cooldown-seconds"])?.["500"] ?? ""),
+            status502: String(asRecord(parsed["status-cooldown-seconds"])?.["502"] ?? ""),
+            status503: String(asRecord(parsed["status-cooldown-seconds"])?.["503"] ?? ""),
+            status504: String(asRecord(parsed["status-cooldown-seconds"])?.["504"] ?? ""),
+          },
           wsAuth: Boolean(parsed["ws-auth"]),
 
           quotaSwitchProject: Boolean(quotaExceeded?.["switch-project"] ?? true),
@@ -822,6 +834,18 @@ export function useVisualConfig() {
         setBoolean(parsed, "force-model-prefix", values.forceModelPrefix);
         setIntFromString(parsed, "request-retry", values.requestRetry);
         setIntFromString(parsed, "max-retry-interval", values.maxRetryInterval);
+        const cooldowns = ensureRecord(parsed, "status-cooldown-seconds");
+        setIntFromString(cooldowns, "401", values.statusCooldowns.status401);
+        setIntFromString(cooldowns, "402", values.statusCooldowns.status402);
+        setIntFromString(cooldowns, "403", values.statusCooldowns.status403);
+        setIntFromString(cooldowns, "404", values.statusCooldowns.status404);
+        setIntFromString(cooldowns, "408", values.statusCooldowns.status408);
+        setIntFromString(cooldowns, "429", values.statusCooldowns.status429);
+        setIntFromString(cooldowns, "500", values.statusCooldowns.status500);
+        setIntFromString(cooldowns, "502", values.statusCooldowns.status502);
+        setIntFromString(cooldowns, "503", values.statusCooldowns.status503);
+        setIntFromString(cooldowns, "504", values.statusCooldowns.status504);
+        deleteIfEmpty(parsed, "status-cooldown-seconds");
         setBoolean(parsed, "ws-auth", values.wsAuth);
 
         if (

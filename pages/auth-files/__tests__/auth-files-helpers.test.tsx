@@ -678,7 +678,7 @@ describe("Auth Files helper coverage", () => {
     ]);
   });
 
-  test("ignores model-scoped transport errors as auth-file restriction badges", () => {
+  test("shows model-scoped transport errors as auth-file restriction badges", () => {
     const rawError =
       'Post "https://chatgpt.com/backend-api/codex/responses": read tcp [2607:8700:5500:8131::2]:44434->[2a06:98c1:310b::ac40:9bd1]:443: read: connection reset by peer';
     const file = {
@@ -693,10 +693,16 @@ describe("Auth Files helper coverage", () => {
       ],
     } as AuthFileItem;
 
-    expect(resolveAuthFileRestrictionBadges(file, Date.now())).toEqual([]);
+    expect(resolveAuthFileRestrictionBadges(file, Date.now())).toEqual([
+      expect.objectContaining({
+        label: "Restricted",
+        model: "gpt-5.4",
+        reason: rawError,
+      }),
+    ]);
   });
 
-  test("ignores model-scoped 429 usage errors as auth-file restriction badges", () => {
+  test("shows model-scoped 429 usage errors as auth-file restriction badges", () => {
     const file = {
       name: "codex.json",
       restrictions: [
@@ -711,9 +717,14 @@ describe("Auth Files helper coverage", () => {
       ],
     } as AuthFileItem;
 
-    expect(resolveAuthFileRestrictionBadges(file, Date.parse("2026-05-06T08:00:00.000Z"))).toEqual(
-      [],
-    );
+    expect(resolveAuthFileRestrictionBadges(file, Date.parse("2026-05-06T08:00:00.000Z"))).toEqual([
+      expect.objectContaining({
+        label: "429 Error",
+        model: "gpt-5.5",
+        quotaLimited: true,
+        recoverAtMs: Date.parse("2026-05-06T13:00:00.000Z"),
+      }),
+    ]);
   });
 
   

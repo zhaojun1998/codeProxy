@@ -1221,7 +1221,7 @@ describe("AuthFilesPage files table", () => {
     expect(tooltip).toHaveTextContent("Auto recovery in");
   });
 
-  test("hides model-scoped transport errors from table restriction badges", async () => {
+  test("shows model-scoped transport errors in table restriction badges", async () => {
     useTableFilesView();
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(80);
     vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(640);
@@ -1267,13 +1267,16 @@ describe("AuthFilesPage files table", () => {
     const title = await screen.findByText("A_GptPro");
     const row = title.closest("tr");
     expect(row).not.toBeNull();
-    expect(within(row as HTMLElement).queryByText("Restricted")).not.toBeInTheDocument();
+    const badge = within(row as HTMLElement).getByText("Restricted");
+    fireEvent.mouseEnter(badge.closest("[aria-describedby]") ?? badge);
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("gpt-5.4");
+    expect(tooltip).toHaveTextContent(rawError);
     expect(within(row as HTMLElement).queryByText("500 Error")).not.toBeInTheDocument();
     expect(within(row as HTMLElement).queryByText("429 Error")).not.toBeInTheDocument();
-    expect(within(row as HTMLElement).queryByText(rawError)).not.toBeInTheDocument();
   });
 
-  test("cards view hides model-scoped transient errors from badge rows", async () => {
+  test("cards view shows model-scoped transient errors and reset action", async () => {
     const now = Date.now();
     const rawError = "context canceled";
     window.localStorage.setItem("authFilesPage.filesViewMode.v1", JSON.stringify("cards"));
@@ -1315,10 +1318,12 @@ describe("AuthFilesPage files table", () => {
     const title = await screen.findByText("A_GptPro");
     const card = title.closest("section");
     expect(card).not.toBeNull();
-    expect(within(card as HTMLElement).queryByText("Restricted")).not.toBeInTheDocument();
+    expect(within(card as HTMLElement).getByText("Restricted")).toBeInTheDocument();
+    expect(
+      within(card as HTMLElement).getByRole("button", { name: "Clear status" }),
+    ).toBeInTheDocument();
     expect(within(card as HTMLElement).queryByText("500 Error")).not.toBeInTheDocument();
     expect(within(card as HTMLElement).queryByText("429 Error")).not.toBeInTheDocument();
-    expect(within(card as HTMLElement).queryByText(rawError)).not.toBeInTheDocument();
   });
 
   test("cards view shows auth-level quota recovery records with a clean 429 tooltip", async () => {

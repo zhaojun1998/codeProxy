@@ -7,6 +7,19 @@ import { PayloadFilterRulesEditor, PayloadRulesEditor } from "./PayloadRuleEdito
 import { ResourceEfficiencyPanel } from "./ResourceEfficiencyPanel";
 import { HintCard as Card, HintLabel, HintToggle as ToggleSwitch } from "./VisualHint";
 
+const STATUS_COOLDOWN_FIELDS = [
+  ["401", "status401"],
+  ["402", "status402"],
+  ["403", "status403"],
+  ["404", "status404"],
+  ["408", "status408"],
+  ["429", "status429"],
+  ["500", "status500"],
+  ["502", "status502"],
+  ["503", "status503"],
+  ["504", "status504"],
+] as const;
+
 function Field({
   label,
   hint,
@@ -315,6 +328,36 @@ chrome-extension://<extension-id>`}
                   disabled={disabled}
                 />
               </Field>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {t("visual_config.status_cooldowns")}
+                </div>
+                <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-white/50">
+                  {t("visual_config.status_cooldowns_hint")}
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                {STATUS_COOLDOWN_FIELDS.map(([status, key]) => (
+                  <Field key={status} label={`HTTP ${status}`}>
+                    <TextInput
+                      value={values.statusCooldowns[key]}
+                      onChange={(e) =>
+                        update({
+                          statusCooldowns: {
+                            ...values.statusCooldowns,
+                            [key]: e.currentTarget.value,
+                          },
+                        })
+                      }
+                      placeholder={t("visual_config.status_cooldown_default")}
+                      inputMode="numeric"
+                      disabled={disabled}
+                    />
+                  </Field>
+                ))}
+              </div>
             </div>
             <ToggleSwitch
               label={t("visual_config.force_prefix_label")}

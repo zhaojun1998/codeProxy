@@ -52,6 +52,19 @@ export interface StreamingConfig {
   nonstreamKeepaliveInterval: string;
 }
 
+export interface StatusCooldownVisualConfig {
+  status401: string;
+  status402: string;
+  status403: string;
+  status404: string;
+  status408: string;
+  status429: string;
+  status500: string;
+  status502: string;
+  status503: string;
+  status504: string;
+}
+
 export interface RequestLogArchiveVisualConfig {
   enabled: boolean;
   directory: string;
@@ -133,6 +146,7 @@ export type VisualConfigValues = {
   forceModelPrefix: boolean;
   requestRetry: string;
   maxRetryInterval: string;
+  statusCooldowns: StatusCooldownVisualConfig;
   wsAuth: boolean;
 
   quotaSwitchProject: boolean;
@@ -213,6 +227,18 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   forceModelPrefix: false,
   requestRetry: "",
   maxRetryInterval: "",
+  statusCooldowns: {
+    status401: "",
+    status402: "",
+    status403: "",
+    status404: "",
+    status408: "",
+    status429: "",
+    status500: "",
+    status502: "",
+    status503: "",
+    status504: "",
+  },
   wsAuth: false,
   quotaSwitchProject: true,
   quotaSwitchPreviewModel: true,

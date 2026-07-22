@@ -119,6 +119,42 @@ describe("VisualConfigEditor auto update config", () => {
     });
   });
 
+  test("loads and writes per-status cooldown seconds including zero", async () => {
+    const { result } = renderHook(() => useVisualConfig());
+
+    act(() => {
+      result.current.loadVisualValuesFromYaml(
+        ["status-cooldown-seconds:", "  401: 300", "  404: 0", "  503: 15"].join("\n"),
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.visualValues.statusCooldowns).toMatchObject({
+        status401: "300",
+        status404: "0",
+        status503: "15",
+      });
+    });
+
+    act(() => {
+      result.current.setVisualValues({
+        statusCooldowns: {
+          ...result.current.visualValues.statusCooldowns,
+          status429: "0",
+          status504: "45",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      const nextYaml = result.current.applyVisualChangesToYaml("");
+      expect(nextYaml).toContain("status-cooldown-seconds:");
+      expect(nextYaml).toContain('"404": 0');
+      expect(nextYaml).toContain('"429": 0');
+      expect(nextYaml).toContain('"504": 45');
+    });
+  });
+
   test("edits request archive settings with form controls", async () => {
     const onChange = renderEditor();
 
