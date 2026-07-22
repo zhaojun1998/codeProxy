@@ -275,6 +275,7 @@ export const usageApi = {
       hourly_models: Array.isArray(resp?.hourly_models) ? resp.hourly_models : [],
       apikey_distribution: Array.isArray(resp?.apikey_distribution) ? resp.apikey_distribution : [],
       latency_throughput: resp?.latency_throughput,
+      performance_stats: Array.isArray(resp?.performance_stats) ? resp.performance_stats : [],
     };
   },
 

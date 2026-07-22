@@ -183,11 +183,33 @@ describe("usage logs api", () => {
         max_tokens_per_second: 60,
         sample_count: 2,
       },
+      performance_stats: [
+        {
+          model: "gpt-5.4",
+          reasoning_effort: "high",
+          request_count: 3,
+          ttfb_sample_count: 2,
+          avg_ttfb_ms: 250,
+          min_ttfb_ms: 100,
+          max_ttfb_ms: 400,
+          throughput_sample_count: 2,
+          tokens_per_second: 42,
+          min_tokens_per_second: 20,
+          max_tokens_per_second: 60,
+        },
+      ],
     });
     const result = await usageApi.getChartData(7);
     expect(result.latency_throughput).toMatchObject({
       avg_ttfb_ms: 250,
       tokens_per_second: 42,
     });
+    expect(result.performance_stats).toEqual([
+      expect.objectContaining({
+        model: "gpt-5.4",
+        reasoning_effort: "high",
+        request_count: 3,
+      }),
+    ]);
   });
 });
