@@ -275,6 +275,7 @@ function toLogRow(item: PublicLogItem): RequestLogsRow {
     channelAuthType: channelAuthType || undefined,
     maskedApiKey: item.api_key_masked || maskRequestLogApiKey(item.api_key || ""),
     model: item.model,
+    reasoningEffort: String(item.reasoning_effort ?? "").trim(),
     upstreamModel: item.upstream_model || "",
     visionFallbackModel: item.vision_fallback_model || "",
     failed: item.failed,

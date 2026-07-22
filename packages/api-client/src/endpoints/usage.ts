@@ -1,5 +1,10 @@
 import { apiClient } from "../client/client";
-import type { UsageData, ChartDataResponse, EntityStatsResponse } from "../dto/types";
+import type {
+  UsageData,
+  ChartDataResponse,
+  EntityStatsResponse,
+} from "../dto/types";
+export type { UsageLogPerformanceStats } from "../dto/types";
 
 export interface UsageExportPayload {
   version?: number;
@@ -605,6 +610,7 @@ export interface UsageLogItem {
   api_key_own_name?: string;
   end_user_display_name?: string;
   model: string;
+  reasoning_effort?: string;
   upstream_model?: string;
   vision_fallback_model?: string;
   source: string;

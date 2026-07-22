@@ -265,6 +265,21 @@ export interface ChartDataResponse {
     max_tokens_per_second: number;
     sample_count: number;
   };
+  performance_stats?: UsageLogPerformanceStats[];
+}
+
+export interface UsageLogPerformanceStats {
+  model: string;
+  reasoning_effort: string;
+  request_count: number;
+  ttfb_sample_count: number;
+  avg_ttfb_ms: number;
+  min_ttfb_ms: number;
+  max_ttfb_ms: number;
+  throughput_sample_count: number;
+  tokens_per_second: number;
+  min_tokens_per_second: number;
+  max_tokens_per_second: number;
 }
 
 export interface EntityStatPoint {

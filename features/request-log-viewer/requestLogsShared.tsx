@@ -47,6 +47,7 @@ export type RequestLogsRow = {
   channelAuthType?: string;
   maskedApiKey: string;
   model: string;
+  reasoningEffort: string;
   upstreamModel: string;
   visionFallbackModel: string;
   failed: boolean;
@@ -547,6 +548,7 @@ export const toRequestLogsRow = (item: UsageLogItem): RequestLogsRow => {
     channelAuthType: channelAuthType || undefined,
     maskedApiKey: item.api_key_masked || maskRequestLogApiKey(item.api_key),
     model: item.model,
+    reasoningEffort: String(item.reasoning_effort ?? "").trim(),
     upstreamModel: item.upstream_model || "",
     visionFallbackModel: item.vision_fallback_model || "",
     failed: item.failed,
@@ -1029,6 +1031,11 @@ export function buildRequestLogsColumns(
                   aria-label={t("request_logs.vision_fallback_model_id")}
                 />
               </HoverTooltip>
+            ) : null}
+            {row.reasoningEffort ? (
+              <span className="shrink-0 rounded-full bg-violet-50 px-1.5 py-0.5 font-mono text-2xs font-semibold text-violet-700 dark:bg-violet-500/15 dark:text-violet-200">
+                {row.reasoningEffort}
+              </span>
             ) : null}
           </span>
         ) : (

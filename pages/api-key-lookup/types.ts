@@ -21,6 +21,7 @@ export interface PublicLogItem {
   provider?: string;
   auth_type?: "oauth" | "api" | string;
   model: string;
+  reasoning_effort?: string;
   upstream_model?: string;
   vision_fallback_model?: string;
   failed: boolean;

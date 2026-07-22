@@ -3,12 +3,14 @@ import { useEffect, useState } from "react";
 import type { HourWindow } from "@features/monitor-widgets/monitor-constants";
 import { formatNumber, formatRate } from "@features/monitor-widgets/monitor-utils";
 import { formatFixedNumber } from "@code-proxy/domain";
+import type { UsageLogPerformanceStats } from "@code-proxy/api-client/endpoints/usage";
 import { AnimatedNumber } from "@code-proxy/ui";
 import { Reveal } from "@code-proxy/ui";
 import { EChart } from "@code-proxy/ui";
 import { ChartLegend } from "@code-proxy/ui";
 import { Tabs, TabsList, TabsTrigger } from "@code-proxy/ui";
 import { HourWindowSelector, KpiCard, MonitorCard as Card } from "@features/monitor-widgets";
+import { ModelTag } from "@features/model-tags";
 
 const formatTtfb = (value: number) => `${formatFixedNumber(value, { fractionDigits: 0 })} ms`;
 const formatTps = (value: number) => formatFixedNumber(value, { fractionDigits: 1 });
@@ -130,6 +132,79 @@ export function MonitorKpiSection({
         </Reveal>
       ) : null}
     </>
+  );
+}
+
+export function MonitorPerformanceSection({
+  t,
+  stats,
+  isRefreshing,
+}: {
+  t: (key: string, options?: Record<string, unknown>) => string;
+  stats: UsageLogPerformanceStats[];
+  isRefreshing: boolean;
+}) {
+  if (stats.length === 0 && !isRefreshing) return null;
+
+  return (
+    <Reveal>
+      <Card
+        title={t("monitor.performance_by_model_effort")}
+        description={t("monitor.performance_by_model_effort_desc")}
+        loading={isRefreshing}
+      >
+        <div className="max-h-72 overflow-auto">
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="sticky top-0 bg-white/95 text-xs text-slate-500 backdrop-blur dark:bg-neutral-950/95 dark:text-white/45">
+              <tr>
+                <th className="px-3 py-2 font-medium">{t("monitor.performance_model")}</th>
+                <th className="px-3 py-2 font-medium">{t("monitor.reasoning_effort")}</th>
+                <th className="px-3 py-2 text-right font-medium">{t("monitor.requests")}</th>
+                <th className="px-3 py-2 text-right font-medium">{t("monitor.avg_ttfb")}</th>
+                <th className="px-3 py-2 text-right font-medium">{t("monitor.tokens_per_second")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200/70 dark:divide-white/[0.06]">
+              {stats.map((item) => (
+                <tr key={`${item.model}::${item.reasoning_effort}`}>
+                  <td className="px-3 py-2">
+                    {item.model ? <ModelTag id={item.model} size="sm" /> : "--"}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-violet-700 dark:text-violet-300">
+                    {item.reasoning_effort || t("monitor.reasoning_default")}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono tabular-nums">
+                    {item.request_count}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono tabular-nums text-sky-700 dark:text-sky-300">
+                    {item.ttfb_sample_count > 0
+                      ? `${formatFixedNumber(item.avg_ttfb_ms, { fractionDigits: 0 })} ms`
+                      : "--"}
+                    {item.ttfb_sample_count > 0 ? (
+                      <span className="ml-1 text-2xs text-slate-400 dark:text-white/35">
+                        ({formatFixedNumber(item.min_ttfb_ms, { fractionDigits: 0 })}–
+                        {formatFixedNumber(item.max_ttfb_ms, { fractionDigits: 0 })})
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono tabular-nums text-violet-700 dark:text-violet-300">
+                    {item.throughput_sample_count > 0
+                      ? `${formatFixedNumber(item.tokens_per_second, { fractionDigits: 1 })} t/s`
+                      : "--"}
+                    {item.throughput_sample_count > 0 ? (
+                      <span className="ml-1 text-2xs text-slate-400 dark:text-white/35">
+                        ({formatFixedNumber(item.min_tokens_per_second, { fractionDigits: 1 })}–
+                        {formatFixedNumber(item.max_tokens_per_second, { fractionDigits: 1 })})
+                      </span>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </Reveal>
   );
 }
 

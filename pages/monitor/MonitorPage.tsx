@@ -17,6 +17,7 @@ import {
   MonitorDistributionSections,
   MonitorHourlySections,
   MonitorKpiSection,
+  MonitorPerformanceSection,
 } from "./MonitorDashboardSections";
 import { useMonitorDashboardState } from "./hooks/useMonitorDashboardState";
 import { MonitorToolbarSection } from "./MonitorToolbarSection";
@@ -622,6 +623,12 @@ export function MonitorPage() {
         hasData={hasData}
         isLoading={isLoading}
         refreshData={refreshData}
+      />
+
+      <MonitorPerformanceSection
+        t={t}
+        stats={chartData?.performance_stats ?? []}
+        isRefreshing={isRefreshing}
       />
 
       <MonitorDistributionSections
