@@ -20,6 +20,19 @@ const STATUS_COOLDOWN_FIELDS = [
   ["504", "status504"],
 ] as const;
 
+const STATUS_COOLDOWN_DEFAULTS = {
+  status401: "1800",
+  status402: "1800",
+  status403: "1800",
+  status404: "43200",
+  status408: "60",
+  status429: "1–1800",
+  status500: "60",
+  status502: "60",
+  status503: "60",
+  status504: "60",
+} as const;
+
 function Field({
   label,
   hint,
@@ -351,7 +364,8 @@ chrome-extension://<extension-id>`}
                           },
                         })
                       }
-                      placeholder={t("visual_config.status_cooldown_default")}
+                      placeholder={STATUS_COOLDOWN_DEFAULTS[key]}
+                      aria-label={`HTTP ${status}`}
                       inputMode="numeric"
                       disabled={disabled}
                     />

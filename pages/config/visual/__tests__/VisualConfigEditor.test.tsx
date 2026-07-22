@@ -155,6 +155,29 @@ describe("VisualConfigEditor auto update config", () => {
     });
   });
 
+  test("shows built-in cooldown values when status overrides are empty", () => {
+    renderEditor();
+
+    expect(screen.getByRole("textbox", { name: "HTTP 401" })).toHaveAttribute(
+      "placeholder",
+      "1800",
+    );
+    expect(screen.getByRole("textbox", { name: "HTTP 404" })).toHaveAttribute(
+      "placeholder",
+      "43200",
+    );
+    expect(screen.getByRole("textbox", { name: "HTTP 429" })).toHaveAttribute(
+      "placeholder",
+      "1–1800",
+    );
+    for (const status of ["408", "500", "502", "503", "504"]) {
+      expect(screen.getByRole("textbox", { name: `HTTP ${status}` })).toHaveAttribute(
+        "placeholder",
+        "60",
+      );
+    }
+  });
+
   test("edits request archive settings with form controls", async () => {
     const onChange = renderEditor();
 
