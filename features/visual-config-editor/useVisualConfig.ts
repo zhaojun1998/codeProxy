@@ -92,6 +92,17 @@ function deleteIfEmpty(parent: Record<string, unknown>, key: string): void {
   if (Object.keys(value).length === 0) delete parent[key];
 }
 
+function useNumericYamlKeys(parent: Record<string, unknown>, key: string): void {
+  const value = asRecord(parent[key]);
+  if (!value) return;
+  parent[key] = new Map(
+    Object.entries(value).map(([entryKey, entryValue]) => [
+      /^\d+$/.test(entryKey) ? Number(entryKey) : entryKey,
+      entryValue,
+    ]),
+  );
+}
+
 function hasPayloadRuleSections(
   payload: Record<string, unknown> | null,
 ): payload is Record<string, unknown> {
@@ -979,6 +990,8 @@ export function useVisualConfig() {
             }
           }
         }
+
+        useNumericYamlKeys(parsed, "status-cooldown-seconds");
 
         return stringifyYaml(parsed, { indent: 2, lineWidth: 120, minContentWidth: 0 });
       } catch {

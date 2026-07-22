@@ -149,9 +149,10 @@ describe("VisualConfigEditor auto update config", () => {
     await waitFor(() => {
       const nextYaml = result.current.applyVisualChangesToYaml("");
       expect(nextYaml).toContain("status-cooldown-seconds:");
-      expect(nextYaml).toContain('"404": 0');
-      expect(nextYaml).toContain('"429": 0');
-      expect(nextYaml).toContain('"504": 45');
+      expect(nextYaml).toContain("  404: 0");
+      expect(nextYaml).toContain("  429: 0");
+      expect(nextYaml).toContain("  504: 45");
+      expect(nextYaml).not.toContain('"404":');
     });
   });
 
