@@ -38,8 +38,12 @@ test("Config: page should not horizontally scroll; editor should allow horizonta
 }) => {
   await setAuthed(page);
 
-  const longValue = "a".repeat(2500);
-  const yaml = `long_key: "${longValue}"\n`;
+  const longValue = `${"a".repeat(2500)}horizontal-target`;
+  const yaml = [
+    `long_key: "${longValue}"`,
+    ...Array.from({ length: 80 }, (_, index) => `key-${index}: value-${index}`),
+    "target-key: target-value",
+  ].join("\n");
 
   await page.route("**/v0/management/config.yaml", async (route) => {
     await route.fulfill({
@@ -80,6 +84,55 @@ test("Config: page should not horizontally scroll; editor should allow horizonta
 
   expect(editorCanScroll.canOverflow).toBe(true);
   expect(editorCanScroll.moved).toBe(true);
+
+  const search = page.getByPlaceholder(/Search config content|搜索配置内容/i);
+  await editor.evaluate((element) => {
+    element.scrollLeft = 0;
+  });
+  await search.fill("horizontal-target");
+  await search.press("Enter");
+  await expect
+    .poll(async () => editor.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+
+  await search.fill("target-key");
+  await search.press("Enter");
+  await expect
+    .poll(async () => editor.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  const syncedScroll = await editor.evaluate((element) => ({
+    editor: element.scrollTop,
+    highlight: element.parentElement?.querySelector("pre")?.scrollTop,
+    gutter: element.parentElement?.previousElementSibling?.scrollTop,
+  }));
+  expect(syncedScroll.highlight).toBe(syncedScroll.editor);
+  expect(syncedScroll.gutter).toBe(syncedScroll.editor);
+});
+
+test("Config visual editor keeps descriptions in info tooltips", async ({ page }) => {
+  await setAuthed(page);
+
+  await page.route("**/v0/management/config.yaml", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/yaml; charset=utf-8",
+      body: "host: 0.0.0.0\nport: 8318\n",
+    });
+  });
+  await page.route("**/v0/management/config", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({}),
+    });
+  });
+
+  await page.goto("/#/system/config");
+
+  const description = "Host/port, auth directory & API Keys.";
+  await expect(page.getByText(description, { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: description }).hover();
+  await expect(page.getByRole("tooltip")).toContainText(description);
 });
 
 test("Sidebar: collapse/expand should keep nav items nowrap and slide out of view", async ({
@@ -601,14 +654,109 @@ test("Config: source editor save should persist edited yaml through save path", 
   await expect(editor).toHaveValue(nextYaml);
 });
 
-test("Config: global Codex OAuth allowed-client preset should persist through runtime settings", async ({
+test("Config: unified visual editor confirms the low-resource profile cleanup", async ({
+  page,
+}) => {
+  await setAuthed(page);
+
+  let currentYaml = [
+    "port: 8318",
+    "request-log-storage:",
+    "  store-content: true",
+    "  content-retention-days: 30",
+    "  cleanup-interval-minutes: 1440",
+    "  max-total-size-mb: 1024",
+    "  vacuum-on-cleanup: true",
+  ].join("\n");
+  const savedYaml: string[] = [];
+  const cleanupPayloads: unknown[] = [];
+
+  await page.route("**/v0/management/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+
+    if (path.endsWith("/v0/management/config.yaml")) {
+      if (request.method() === "PUT") {
+        currentYaml = request.postData() ?? "";
+        savedYaml.push(currentYaml);
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: true }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "text/yaml; charset=utf-8",
+        body: currentYaml,
+      });
+      return;
+    }
+
+    if (path.endsWith("/v0/management/request-log-storage/store-content")) {
+      cleanupPayloads.push(JSON.parse(request.postData() ?? "{}"));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          enabled: false,
+          cleanup: { physical_reclaim_deferred: true },
+        }),
+      });
+      return;
+    }
+
+    if (path.endsWith("/v0/management/codex-oauth-admission")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ allowed_clients: [], available_allowed_clients: [] }),
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({}),
+    });
+  });
+
+  await page.goto("/#/system/config");
+
+  await expect(page.getByRole("tab", { name: /可视化编辑|Visual Editor/i })).toBeVisible();
+  await expect(page.getByText(/监控连接轮换周期|Monitor connection rotation/i)).toBeVisible();
+  await expect(page.getByRole("tab", { name: /源码编辑|Source Editor/i })).toBeVisible();
+
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByText(/监控连接轮换周期|Monitor connection rotation/i)).toBeVisible();
+  const overflowX = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflowX).toBeLessThanOrEqual(1);
+  await expect(page.getByRole("tab", { name: /运行时配置|Runtime Config/i })).toHaveCount(0);
+
+  await page.getByRole("button", { name: /应用推荐值|Apply recommended values/i }).click();
+  await page.getByRole("button", { name: /^保存$|^Save$/i }).click();
+
+  const dialog = page.getByRole("dialog", { name: /确认高影响配置变更|Review high-impact/i });
+  await expect(dialog).toContainText(/历史请求与响应正文|historical request and response bodies/i);
+  await dialog.getByRole("button", { name: /仍要保存|Save anyway/i }).click();
+
+  await expect.poll(() => savedYaml.length).toBe(1);
+  expect(savedYaml[0]).toContain("store-content: false");
+  expect(savedYaml[0]).toContain("system-stats-websocket-max-age-seconds: 300");
+  await expect.poll(() => cleanupPayloads.length).toBe(1);
+  expect(cleanupPayloads[0]).toEqual({ value: false, clear_existing: true });
+});
+
+test("Config: tenant Codex OAuth admission stays available in the unified visual editor", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await setAuthed(page);
-  await page.addInitScript(() => {
-    localStorage.setItem("config-panel:tab", "runtime");
-  });
 
   let allowedClients: string[] = [];
   const savedPayloads: unknown[] = [];
@@ -727,6 +875,7 @@ test("Config: global Codex OAuth allowed-client preset should persist through ru
   const preset = page.getByTestId("codex-oauth-global-preset-claude_code");
   await expect(preset).not.toBeChecked();
   await preset.click();
+  await page.getByRole("button", { name: /Confirm change|确认变更/i }).click();
 
   await expect.poll(() => savedPayloads.length).toBe(1);
   expect(readAllowedClients(savedPayloads[0])).toEqual(["claude_code"]);

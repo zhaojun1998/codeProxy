@@ -37,7 +37,10 @@ export type RequestLogsRow = {
   timestamp: string;
   timestampMs: number;
   apiKey: string;
+  apiKeyId: string;
   apiKeyName: string;
+  apiKeyOwnName: string;
+  endUserDisplayName: string;
   isSystemCall: boolean;
   channelName: string;
   channelProvider?: string;
@@ -339,6 +342,7 @@ export function RequestLogFacetFilters({
   onModelsClear,
   onChannelsClear,
   onStatusesClear,
+  hideChannel = false,
 }: {
   modelOptions: SearchableCheckboxMultiSelectOption[];
   channelOptions: SearchableCheckboxMultiSelectOption[];
@@ -352,6 +356,7 @@ export function RequestLogFacetFilters({
   onModelsClear: () => void;
   onChannelsClear: () => void;
   onStatusesClear: () => void;
+  hideChannel?: boolean;
 }) {
   const { t } = useTranslation();
   const statusChangeAdapter = useMemo(
@@ -391,7 +396,8 @@ export function RequestLogFacetFilters({
           emptySelectionLabel={t("request_logs.none_selected")}
         />
       </div>
-      <div className="w-full min-[480px]:w-auto sm:w-[180px]">
+      {!hideChannel ? (
+        <div className="w-full min-[480px]:w-auto sm:w-[180px]">
         <SearchableCheckboxMultiSelect
           value={selectedChannels ?? []}
           onChange={onChannelsChange}
@@ -417,7 +423,8 @@ export function RequestLogFacetFilters({
           deselectAllLabel={t("request_logs.deselect_all")}
           emptySelectionLabel={t("request_logs.none_selected")}
         />
-      </div>
+        </div>
+      ) : null}
       <div className="w-full min-[480px]:w-auto sm:w-[150px]">
         <SearchableCheckboxMultiSelect
           value={selectedStatuses ?? []}
@@ -453,7 +460,44 @@ export type RequestLogKeyOption = {
   value: string;
   label: string;
   searchText?: string;
+  count: number;
 };
+
+export function RequestLogFilterCount({ count }: { count: number }) {
+  const { t, i18n } = useTranslation();
+  const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  const formattedCount = new Intl.NumberFormat(i18n.resolvedLanguage || undefined).format(
+    safeCount,
+  );
+  const accessibleLabel = t("request_logs.calls_count", { count: safeCount, formattedCount });
+
+  return (
+    <span
+      className="inline-flex min-w-[4.5rem] justify-end whitespace-nowrap text-xs font-semibold tabular-nums text-slate-500 dark:text-white/50"
+      aria-label={accessibleLabel}
+      title={accessibleLabel}
+    >
+      {formattedCount}
+    </span>
+  );
+}
+
+export function sortRequestLogKeyOptionsByCount(
+  options: RequestLogKeyOption[],
+  locale?: string,
+): RequestLogKeyOption[] {
+  const collator = new Intl.Collator(locale, { numeric: true, sensitivity: "base" });
+  const allOption = options.find((option) => option.value === "");
+  const sorted = options
+    .filter((option) => option.value !== "")
+    .sort(
+      (left, right) =>
+        right.count - left.count ||
+        collator.compare(left.label, right.label) ||
+        left.value.localeCompare(right.value),
+    );
+  return allOption ? [allOption, ...sorted] : sorted;
+}
 
 export const maskRequestLogApiKey = (value: string): string => {
   const trimmed = value.trim();
@@ -493,12 +537,15 @@ export const toRequestLogsRow = (item: UsageLogItem): RequestLogsRow => {
     timestamp: item.timestamp,
     timestampMs: parseUsageTimestampMs(item.timestamp),
     apiKey: item.api_key,
+    apiKeyId: item.api_key_id || "",
     apiKeyName: item.api_key_name || "",
+    apiKeyOwnName: item.api_key_own_name || "",
+    endUserDisplayName: item.end_user_display_name || item.api_key_name || "",
     isSystemCall,
     channelName: item.channel_name || "",
     channelProvider: String(item.provider ?? "").trim() || undefined,
     channelAuthType: channelAuthType || undefined,
-    maskedApiKey: maskRequestLogApiKey(item.api_key),
+    maskedApiKey: item.api_key_masked || maskRequestLogApiKey(item.api_key),
     model: item.model,
     upstreamModel: item.upstream_model || "",
     visionFallbackModel: item.vision_fallback_model || "",
@@ -531,26 +578,43 @@ export const buildRequestLogKeyOptions = (
     allKeys: string;
     systemCall: string;
   },
+  apiKeyCounts: Record<string, number> = {},
 ): RequestLogKeyOption[] => {
-  const options: RequestLogKeyOption[] = [{ value: "", label: labels.allKeys }];
-  let systemIncluded = false;
+  const countFor = (key: string) => {
+    const count = apiKeyCounts[key];
+    return Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  };
+  const options: RequestLogKeyOption[] = [
+    {
+      value: "",
+      label: labels.allKeys,
+      count: apiKeys.reduce((total, key) => total + countFor(key), 0),
+    },
+  ];
+  let systemOption: RequestLogKeyOption | null = null;
 
   for (const key of apiKeys) {
     const name = apiKeyNames[key];
+    const count = countFor(key);
     if (isSystemRequestLogKey(key, name)) {
-      if (systemIncluded) continue;
-      options.push({
+      if (systemOption) {
+        systemOption.count += count;
+        continue;
+      }
+      systemOption = {
         value: SYSTEM_REQUEST_LOG_FILTER_VALUE,
         label: labels.systemCall,
         searchText: labels.systemCall,
-      });
-      systemIncluded = true;
+        count,
+      };
+      options.push(systemOption);
       continue;
     }
     options.push({
       value: key,
       label: name || maskRequestLogApiKey(key),
       searchText: `${name || ""} ${key}`,
+      count,
     });
   }
 
@@ -589,11 +653,20 @@ export function buildRequestLogsColumns(
   t: (key: string) => string,
   onContentClick?: (logId: number, tab: "input" | "output") => void,
   onErrorClick?: (logId: number, model: string) => void,
-  onPromptFilterClick?: (logId: number) => void,
+  onPromptFilterClickOrOptions?:
+    | ((logId: number) => void)
+    | { identityColumn?: "user" | "key"; hideChannel?: boolean },
+  options: { identityColumn?: "user" | "key"; hideChannel?: boolean } = {},
 ): RequestLogsTableColumn<RequestLogsRow>[] {
+  const onPromptFilterClick =
+    typeof onPromptFilterClickOrOptions === "function" ? onPromptFilterClickOrOptions : undefined;
+  const resolvedOptions =
+    typeof onPromptFilterClickOrOptions === "object" ? onPromptFilterClickOrOptions : options;
   const apiLabel = t("request_logs.auth_type_api");
   const oauthLabel = t("request_logs.auth_type_oauth");
-  return [
+  const identityColumn = resolvedOptions.identityColumn ?? "user";
+  const hideChannel = resolvedOptions.hideChannel === true;
+  const columns: RequestLogsTableColumn<RequestLogsRow>[] = [
     {
       key: "id",
       label: t("request_logs.col_id"),
@@ -652,7 +725,9 @@ export function buildRequestLogsColumns(
           <span className="text-slate-400 dark:text-white/30">--</span>
         ),
     },
-    {
+  ];
+  if (!hideChannel) {
+    columns.push({
       key: "channelName",
       label: t("request_logs.col_channel"),
       // Wider default so icon + name + auth badge can share the cell; DataTable
@@ -687,7 +762,9 @@ export function buildRequestLogsColumns(
           </OverflowTooltip>
         );
       },
-    },
+    });
+  }
+  columns.push(
     {
       key: "status",
       label: t("request_logs.col_status"),
@@ -870,22 +947,54 @@ export function buildRequestLogsColumns(
     },
     {
       key: "apiKeyName",
-      label: t("request_logs.col_key_name"),
-      width: "w-28",
+      label:
+        identityColumn === "key" ? t("request_logs.col_key_name") : t("request_logs.col_user_name"),
+      width: "w-40",
       headerClassName: CENTERED_REQUEST_LOG_HEADER_CLASS,
       cellClassName: "text-center",
-      render: (row) => (
-        <OverflowTooltip
-          content={row.isSystemCall ? t("request_logs.system_call") : row.apiKeyName || "--"}
-          className="block min-w-0"
-        >
-          <span
-            className={`block min-w-0 truncate text-xs font-medium ${row.apiKeyName || row.isSystemCall ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-white/30"}`}
+      render: (row) => {
+        const keyFallback = row.maskedApiKey || (row.apiKeyId ? row.apiKeyId.slice(0, 8) : "");
+        const keyName =
+          row.apiKeyOwnName ||
+          (!row.endUserDisplayName ? row.apiKeyName : "") ||
+          keyFallback ||
+          "--";
+        if (identityColumn === "key") {
+          const displayName = row.isSystemCall ? t("request_logs.system_call") : keyName;
+          return (
+            <HoverTooltip content={displayName} className="block min-w-0">
+              <span
+                className={`block min-w-0 truncate text-xs font-medium ${displayName !== "--" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-white/30"}`}
+              >
+                {displayName}
+              </span>
+            </HoverTooltip>
+          );
+        }
+        const userName = row.isSystemCall
+          ? t("request_logs.system_call")
+          : row.endUserDisplayName || row.apiKeyName || "--";
+        const showKeyName = Boolean(keyName && keyName !== userName);
+        return (
+          <HoverTooltip
+            content={showKeyName ? `${userName} · ${keyName}` : userName}
+            className="block min-w-0"
           >
-            {row.isSystemCall ? t("request_logs.system_call") : row.apiKeyName || "--"}
-          </span>
-        </OverflowTooltip>
-      ),
+            <span className="block min-w-0">
+              <span
+                className={`block truncate text-xs font-medium ${userName !== "--" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 dark:text-white/30"}`}
+              >
+                {userName}
+              </span>
+              {showKeyName ? (
+                <span className="mt-0.5 block truncate text-2xs text-slate-400 dark:text-white/35">
+                  {keyName}
+                </span>
+              ) : null}
+            </span>
+          </HoverTooltip>
+        );
+      },
     },
     {
       key: "model",
@@ -926,7 +1035,8 @@ export function buildRequestLogsColumns(
           <span className="text-xs text-slate-400 dark:text-white/30">--</span>
         ),
     },
-  ];
+  );
+  return columns;
 }
 
 export function RequestLogsPaginationBar({

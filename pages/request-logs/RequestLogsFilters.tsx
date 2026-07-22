@@ -87,14 +87,14 @@ export function RequestLogsFilters({
             value={selectedApiKeys ?? []}
             onChange={onApiKeysChange}
             options={keyOptions}
-            placeholder={t("request_logs.all_keys_placeholder")}
-            searchPlaceholder={t("request_logs.search_keys")}
+            placeholder={t("request_logs.all_users_placeholder")}
+            searchPlaceholder={t("request_logs.search_users")}
             selectFilteredLabel={t("request_logs.select_filtered")}
             deselectFilteredLabel={t("request_logs.deselect_filtered")}
             selectedCountLabel={(count: number) => t("request_logs.selected_count", { count })}
             noResultsLabel={t("request_logs.no_filter_results")}
-            aria-label={t("request_logs.filter_key")}
-            clearLabel={t("request_logs.clear_key_filter")}
+            aria-label={t("request_logs.filter_user")}
+            clearLabel={t("request_logs.clear_user_filter")}
             onClear={onApiKeysClear}
             showClearButton
             size="sm"
@@ -104,9 +104,9 @@ export function RequestLogsFilters({
             applyMode="manual"
             applyLabel={t("request_logs.apply_filters")}
             cancelLabel={t("common.cancel")}
-            selectAllLabel={t("request_logs.select_all")}
-            deselectAllLabel={t("request_logs.deselect_all")}
-            emptySelectionLabel={t("request_logs.none_selected")}
+            neutralAllSelection
+            allSelectionLabel={t("request_logs.unrestricted")}
+            selectionHint={t("request_logs.calls_sorted_hint")}
           />
         </div>
         <RequestLogFacetFilters

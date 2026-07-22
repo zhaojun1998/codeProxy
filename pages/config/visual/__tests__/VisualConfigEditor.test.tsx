@@ -28,6 +28,33 @@ describe("VisualConfigEditor auto update config", () => {
     await i18n.changeLanguage("en");
   });
 
+  test("moves persistent descriptions into info tooltips", async () => {
+    renderEditor();
+
+    const description = "Host/port, auth directory & API Keys.";
+    expect(screen.queryByText(description)).not.toBeInTheDocument();
+
+    await userEvent.hover(screen.getByRole("button", { name: description }));
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(description);
+  });
+
+  test("resource profile tooltip stays English when UI language is English", async () => {
+    renderEditor();
+
+    const enHint =
+      "Cleaning request details does not clear statistics. KPIs, quotas, public usage, and other metrics already on small aggregate projections are unaffected by request_logs cleanup; trend or diagnostic views that still rely on detail rows only cover the retention window.";
+    const zhLeak = "清理明细不会清理统计";
+
+    await userEvent.hover(
+      screen.getByRole("button", {
+        name: /A safe baseline for a 2 vCPU \/ 2 GB host[\s\S]*Cleaning request details does not clear statistics/,
+      }),
+    );
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent(enHint);
+    expect(tooltip).not.toHaveTextContent(zhLeak);
+  });
+
   test("shows automatic update settings and exposes main/dev source branches", async () => {
     const onChange = renderEditor();
 
@@ -305,6 +332,98 @@ describe("VisualConfigEditor auto update config", () => {
       const nextYaml = result.current.applyVisualChangesToYaml("port: 8318\n");
       expect(nextYaml).toContain("payload: {}\n");
       expect(nextYaml).not.toContain("service_tier");
+    });
+  });
+  test("applies the low-resource production profile as one staged visual change", async () => {
+    const onChange = renderEditor();
+
+    await userEvent.click(screen.getByRole("button", { name: /apply recommended values/i }));
+
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        debug: false,
+        requestLog: false,
+        loggingToFile: false,
+        usageStatisticsEnabled: false,
+        logsMaxTotalSizeMb: "128",
+        errorLogsMaxFiles: "10",
+        systemStatsCacheSeconds: "60",
+        systemStatsWebSocketMaxAgeSeconds: "300",
+        requestLogStorage: expect.objectContaining({
+          storeContent: false,
+          retentionDays: "7",
+          contentRetentionDays: "3",
+          cleanupEnabled: true,
+          cleanupIntervalMinutes: "60",
+          maxRows: "100000",
+          maxMetadataSizeMb: "256",
+          maxTotalSizeMb: "128",
+          vacuumOnCleanup: false,
+        }),
+      }),
+    );
+  });
+
+  test("loads and writes request-log storage and monitoring cache settings", async () => {
+    const { result } = renderHook(() => useVisualConfig());
+
+    act(() => {
+      result.current.loadVisualValuesFromYaml(
+        [
+          "request-log: true",
+          "error-logs-max-files: 7",
+          "system-stats-cache-seconds: 90",
+          "system-stats-websocket-max-age-seconds: 600",
+          "request-log-storage:",
+          "  store-content: true",
+          "  content-retention-days: 14",
+          "  cleanup-interval-minutes: 720",
+          "  max-total-size-mb: 512",
+          "  vacuum-on-cleanup: false",
+        ].join("\n"),
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.visualValues).toMatchObject({
+        requestLog: true,
+        errorLogsMaxFiles: "7",
+        systemStatsCacheSeconds: "90",
+        systemStatsWebSocketMaxAgeSeconds: "600",
+        requestLogStorage: {
+          storeContent: true,
+          retentionDays: "7",
+          contentRetentionDays: "14",
+          cleanupEnabled: true,
+          cleanupIntervalMinutes: "720",
+          maxRows: "100000",
+          maxMetadataSizeMb: "256",
+          maxTotalSizeMb: "512",
+          vacuumOnCleanup: false,
+        },
+      });
+    });
+
+    act(() => {
+      result.current.setVisualValues({
+        requestLog: false,
+        systemStatsCacheSeconds: "60",
+        systemStatsWebSocketMaxAgeSeconds: "300",
+        requestLogStorage: {
+          ...result.current.visualValues.requestLogStorage,
+          storeContent: false,
+          maxTotalSizeMb: "256",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      const yaml = result.current.applyVisualChangesToYaml("");
+      expect(yaml).toContain("system-stats-cache-seconds: 60");
+      expect(yaml).toContain("system-stats-websocket-max-age-seconds: 300");
+      expect(yaml).toContain("max-total-size-mb: 256");
+      expect(yaml).toContain("vacuum-on-cleanup: false");
+      expect(yaml).not.toContain("request-log: true");
     });
   });
 });

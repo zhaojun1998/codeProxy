@@ -1,11 +1,25 @@
+export interface PublicChannelFilterOption {
+  value: string;
+  label: string;
+  provider?: string;
+  auth_type?: "oauth" | "api" | string;
+  auth_index?: string;
+}
+
 export interface PublicLogItem {
   id: number;
   session_id?: string;
   endpoint?: string;
   timestamp: string;
   api_key?: string;
+  api_key_id?: string;
+  api_key_masked?: string;
   api_key_name?: string;
+  api_key_own_name?: string;
+  end_user_display_name?: string;
   channel_name?: string;
+  provider?: string;
+  auth_type?: "oauth" | "api" | string;
   model: string;
   upstream_model?: string;
   vision_fallback_model?: string;
@@ -37,8 +51,12 @@ export interface PublicLogsResponse {
     total_cost: number;
   };
   filters: {
+    api_key_ids?: string[];
+    api_key_id_names?: Record<string, string>;
+    api_key_id_counts?: Record<string, number>;
     models: string[];
     channels: string[];
+    channel_options?: PublicChannelFilterOption[];
     statuses: string[];
   };
 }

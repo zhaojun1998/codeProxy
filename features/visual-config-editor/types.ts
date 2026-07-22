@@ -33,6 +33,19 @@ export type PayloadFilterRule = {
   params: string[];
 };
 
+export interface RequestLogStorageVisualConfig {
+  storeContent: boolean;
+  retentionDays: string;
+  contentRetentionDays: string;
+  cleanupEnabled: boolean;
+  cleanupIntervalMinutes: string;
+  maxRows: string;
+  maxMetadataSizeMb: string;
+  maxTotalSizeMb: string;
+  vacuumOnCleanup: boolean;
+  archive: RequestLogArchiveVisualConfig;
+}
+
 export interface StreamingConfig {
   keepaliveSeconds: string;
   bootstrapRetries: string;
@@ -49,15 +62,6 @@ export interface RequestLogArchiveVisualConfig {
   packMaxRows: string;
   excludedApiKeyIdsText: string;
   retryIntervalMinutes: string;
-}
-
-export interface RequestLogStorageVisualConfig {
-  storeContent: boolean;
-  contentRetentionDays: string;
-  cleanupIntervalMinutes: string;
-  maxTotalSizeMb: string;
-  vacuumOnCleanup: boolean;
-  archive: RequestLogArchiveVisualConfig;
 }
 
 export type RoutingStrategy = "round-robin" | "fill-first" | "session-sticky";
@@ -114,8 +118,12 @@ export type VisualConfigValues = {
   commercialMode: boolean;
   loggingToFile: boolean;
   logsMaxTotalSizeMb: string;
+  errorLogsMaxFiles: string;
   usageStatisticsEnabled: boolean;
+  requestLog: boolean;
   requestLogStorage: RequestLogStorageVisualConfig;
+  systemStatsCacheSeconds: string;
+  systemStatsWebSocketMaxAgeSeconds: string;
   autoUpdateEnabled: boolean;
   autoUpdateChannel: "main" | "dev";
   autoUpdateDockerImage: string;
@@ -170,13 +178,19 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
   commercialMode: false,
   loggingToFile: false,
   logsMaxTotalSizeMb: "",
+  errorLogsMaxFiles: "10",
   usageStatisticsEnabled: false,
+  requestLog: false,
   requestLogStorage: {
     storeContent: false,
-    contentRetentionDays: "30",
-    cleanupIntervalMinutes: "1440",
-    maxTotalSizeMb: "1024",
-    vacuumOnCleanup: true,
+    retentionDays: "7",
+    contentRetentionDays: "3",
+    cleanupEnabled: true,
+    cleanupIntervalMinutes: "60",
+    maxRows: "100000",
+    maxMetadataSizeMb: "256",
+    maxTotalSizeMb: "128",
+    vacuumOnCleanup: false,
     archive: {
       enabled: false,
       directory: "data/request-archives",
@@ -189,6 +203,8 @@ export const DEFAULT_VISUAL_VALUES: VisualConfigValues = {
       retryIntervalMinutes: "10",
     },
   },
+  systemStatsCacheSeconds: "60",
+  systemStatsWebSocketMaxAgeSeconds: "300",
   autoUpdateEnabled: true,
   autoUpdateChannel: "main",
   autoUpdateDockerImage: "ghcr.io/kittors/clirelay",

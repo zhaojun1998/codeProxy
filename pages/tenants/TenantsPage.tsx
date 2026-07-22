@@ -17,7 +17,12 @@ import {
   useToast,
 } from "@code-proxy/ui";
 import { PermissionGate } from "@app/guards/PermissionGate";
-import { toIsoDateTime, toLocalDateTimeInput } from "./tenantForm";
+import {
+  isTenantNameTooLong,
+  TENANT_NAME_MAX_LENGTH,
+  toIsoDateTime,
+  toLocalDateTimeInput,
+} from "./tenantForm";
 
 const emptyCreateForm = {
   name: "",
@@ -41,7 +46,13 @@ export function TenantsPage() {
   const [createErrors, setCreateErrors] = useState<CreateFormErrors>({});
   const [detailsTenant, setDetailsTenant] = useState<TenantIdentity | null>(null);
   const [editTenant, setEditTenant] = useState<TenantIdentity | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", description: "", status: "active" });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    description: "",
+    status: "active",
+    access_token_ttl_seconds: 43200,
+    refresh_token_ttl_seconds: 2592000,
+  });
   const [renewTenant, setRenewTenant] = useState<TenantIdentity | null>(null);
   const [renewAt, setRenewAt] = useState("");
   const [renewError, setRenewError] = useState("");
@@ -191,6 +202,8 @@ export function TenantsPage() {
                       name: item.name,
                       description: item.description ?? "",
                       status: item.status,
+                      access_token_ttl_seconds: item.access_token_ttl_seconds ?? 43200,
+                      refresh_token_ttl_seconds: item.refresh_token_ttl_seconds ?? 2592000,
                     });
                   }}
                   title={t("identity_admin.edit")}
@@ -229,21 +242,26 @@ export function TenantsPage() {
     [i18n.language, statusLabel, t, tenantName],
   );
 
-  const updateCreateField = useCallback(<K extends CreateFormKey>(key: K, value: (typeof emptyCreateForm)[K]) => {
-    setCreateForm((prev) => ({ ...prev, [key]: value }));
-    setCreateErrors((prev) => {
-      if (!prev[key]) return prev;
-      const next = { ...prev };
-      delete next[key];
-      return next;
-    });
-  }, []);
+  const updateCreateField = useCallback(
+    <K extends CreateFormKey>(key: K, value: (typeof emptyCreateForm)[K]) => {
+      setCreateForm((prev) => ({ ...prev, [key]: value }));
+      setCreateErrors((prev) => {
+        if (!prev[key]) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    },
+    [],
+  );
 
   const validateCreateForm = useCallback((): CreateFormErrors => {
     const errors: CreateFormErrors = {};
     const requiredMsg = t("identity_admin.field_required");
+    const nameTooLongMsg = t("identity_admin.name_too_long", { max: TENANT_NAME_MAX_LENGTH });
 
     if (!createForm.name.trim()) errors.name = requiredMsg;
+    else if (isTenantNameTooLong(createForm.name)) errors.name = nameTooLongMsg;
     if (!createForm.admin_username.trim()) errors.admin_username = requiredMsg;
     if (!createForm.admin_display_name.trim()) errors.admin_display_name = requiredMsg;
 
@@ -300,12 +318,25 @@ export function TenantsPage() {
   const saveTenant = async (event: FormEvent) => {
     event.preventDefault();
     if (!editTenant) return;
+    if (!editForm.name.trim()) {
+      notify({ type: "error", message: t("identity_admin.field_required") });
+      return;
+    }
+    if (isTenantNameTooLong(editForm.name)) {
+      notify({
+        type: "error",
+        message: t("identity_admin.name_too_long", { max: TENANT_NAME_MAX_LENGTH }),
+      });
+      return;
+    }
     const success = await run(
       () =>
         identityApi.updateTenant(editTenant.id, {
           name: editForm.name,
           description: editForm.description,
           status: editForm.status,
+          access_token_ttl_seconds: editForm.access_token_ttl_seconds,
+          refresh_token_ttl_seconds: editForm.refresh_token_ttl_seconds,
           version: editTenant.version,
         }),
       t("identity_admin.tenant_details_updated"),
@@ -406,14 +437,11 @@ export function TenantsPage() {
       >
         <Form id="create-tenant-form" onSubmit={createTenant} noValidate>
           <div className="grid gap-4 md:grid-cols-2">
-            <FormField
-              label={t("identity_admin.name")}
-              required
-              error={createErrors.name}
-            >
+            <FormField label={t("identity_admin.name")} required error={createErrors.name}>
               <TextInput
                 aria-label={t("identity_admin.name")}
                 value={createForm.name}
+                maxLength={TENANT_NAME_MAX_LENGTH}
                 onChange={(event) => updateCreateField("name", event.target.value)}
               />
             </FormField>
@@ -531,6 +559,7 @@ export function TenantsPage() {
           <FormField label={t("identity_admin.name")} required orientation="horizontal">
             <TextInput
               value={editForm.name}
+              maxLength={TENANT_NAME_MAX_LENGTH}
               onChange={(event) => setEditForm({ ...editForm, name: event.target.value })}
               required
             />
@@ -552,6 +581,40 @@ export function TenantsPage() {
               onChange={(event) => setEditForm({ ...editForm, description: event.target.value })}
             />
           </FormField>
+          <FormField
+            label={t("identity_admin.access_token_ttl", { defaultValue: "Access Token TTL (秒)" })}
+            orientation="horizontal"
+          >
+            <TextInput
+              type="number"
+              min={60}
+              value={String(editForm.access_token_ttl_seconds)}
+              onChange={(event) =>
+                setEditForm({
+                  ...editForm,
+                  access_token_ttl_seconds: Number(event.target.value) || 43200,
+                })
+              }
+            />
+          </FormField>
+          <FormField
+            label={t("identity_admin.refresh_token_ttl", {
+              defaultValue: "Refresh Token TTL (秒)",
+            })}
+            orientation="horizontal"
+          >
+            <TextInput
+              type="number"
+              min={300}
+              value={String(editForm.refresh_token_ttl_seconds)}
+              onChange={(event) =>
+                setEditForm({
+                  ...editForm,
+                  refresh_token_ttl_seconds: Number(event.target.value) || 2592000,
+                })
+              }
+            />
+          </FormField>
         </Form>
       </Modal>
 
@@ -570,11 +633,7 @@ export function TenantsPage() {
         }
       >
         <Form id="renew-tenant-form" onSubmit={renew} noValidate>
-          <FormField
-            label={t("identity_admin.expires_at")}
-            required
-            error={renewError}
-          >
+          <FormField label={t("identity_admin.expires_at")} required error={renewError}>
             <DateTimePicker
               value={renewAt}
               onChange={(value) => {

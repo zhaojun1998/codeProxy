@@ -470,7 +470,10 @@ export function DashboardPage() {
   // Host-level system monitor is gated by platform permission (and thus menus/roles).
   // Throughput: platform super-admins see all tenants; others stay tenant-scoped.
   const canViewSystemMonitor = can("system.status.read");
-  const { stats, connected } = useSystemStats(5, canViewSystemMonitor);
+  const [pageVisible, setPageVisible] = useState(() =>
+    typeof document === "undefined" ? true : !document.hidden,
+  );
+  const { stats, connected } = useSystemStats(15, canViewSystemMonitor && pageVisible);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const summaryRef = useRef<DashboardSummary | null>(null);
   const [range, setRange] = useState<DashboardRange>(7);
@@ -510,15 +513,24 @@ export function DashboardPage() {
   );
 
   useEffect(() => {
-    void refresh(range, customRange);
-  }, [refresh, range, customRange]);
+    const handleVisibilityChange = () => setPageVisible(!document.hidden);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
+  useEffect(() => {
+    if (pageVisible) void refresh(range, customRange);
+  }, [customRange, pageVisible, refresh, range]);
 
   // Backend caches dashboard-summary for ~15s; poll slightly above that so
   // multi-tab remounts do not re-stampede request_logs aggregation.
-  useInterval(() => {
-    if (customRange) return;
-    void refresh(range, null, true);
-  }, 20_000);
+  useInterval(
+    () => {
+      if (customRange) return;
+      void refresh(range, null, true);
+    },
+    pageVisible ? 20_000 : null,
+  );
 
   const kpi = summary?.kpi;
   const trends = summary?.trends;
