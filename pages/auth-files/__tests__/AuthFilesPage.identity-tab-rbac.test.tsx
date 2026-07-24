@@ -321,7 +321,7 @@ describe("AuthFilesPage identity tab RBAC", () => {
     );
 
     expect(await screen.findByText("Codex OAuth")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Auth config" }));
+    fireEvent.click(screen.getByRole("button", { name: "Account config" }));
 
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("tab", { name: "Identity Fingerprints" }));
@@ -370,7 +370,7 @@ describe("AuthFilesPage identity tab RBAC", () => {
     );
 
     expect(await screen.findByText("Codex OAuth")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Auth config" }));
+    fireEvent.click(screen.getByRole("button", { name: "Account config" }));
 
     const dialog = screen.getByRole("dialog");
     expect(
