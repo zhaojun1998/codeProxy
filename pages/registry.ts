@@ -3,6 +3,7 @@ import { loginRoute } from "./login/route";
 import { dashboardRoute } from "./dashboard/route";
 import { monitorRoute } from "./monitor/route";
 import { requestLogsRoute } from "./request-logs/route";
+import { contentModerationRoute } from "./content-moderation/route";
 import { providersRoute } from "./providers/route";
 import { accountSecurityRoute } from "./account-security/route";
 import { authFilesRoute } from "./auth-files/route";
@@ -21,6 +22,7 @@ import { identityFingerprintRoute } from "./identity-fingerprint/route";
 import { imageGenerationRoute } from "./image-generation/route";
 import { ccswitchImportSettingsRoute } from "./ccswitch-import-settings/route";
 import { apiKeyLookupRoute } from "./api-key-lookup/route";
+import { apiKeyUsageRoute } from "./api-key-usage/route";
 import { tenantsRoute } from "./tenants/route";
 import { usersRoute } from "./users/route";
 import { rolesRoute } from "./roles/route";
@@ -55,6 +57,7 @@ export const pageRoutes: PageRoute[] = [
   dashboardRoute,
   monitorRoute,
   requestLogsRoute,
+  contentModerationRoute,
   providersRoute,
   accountSecurityRoute,
   authFilesRoute,
@@ -73,6 +76,7 @@ export const pageRoutes: PageRoute[] = [
   imageGenerationRoute,
   ccswitchImportSettingsRoute,
   apiKeyLookupRoute,
+  apiKeyUsageRoute,
 ];
 
 const normalizePathname = (to: string) => to.split(/[?#]/, 1)[0] || "/";

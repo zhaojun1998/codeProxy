@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
@@ -15,11 +15,10 @@ import {
 import type { AuthFileItem } from "@code-proxy/api-client";
 import { formatLatency } from "@features/provider-latency";
 import { ProviderStatusBar } from "@features/provider-latency";
-import { Button } from "@code-proxy/ui";
 import { Tabs, TabsList, TabsTrigger } from "@code-proxy/ui";
 import { HoverTooltip } from "@code-proxy/ui";
 import { ToggleSwitch } from "@code-proxy/ui";
-import type { DataTableColumn } from "@code-proxy/ui";
+import { TABLE_ROW_ACTIONS_COLUMN, TableRowActions, type DataTableColumn } from "@code-proxy/ui";
 import {
   type FilesViewMode,
   type UsageIndex,
@@ -32,7 +31,6 @@ import {
   normalizeAuthIndexValue,
   parseAdditionalQuotaWindowLabel,
   resolveAuthFileDisplayName,
-  resolveAuthFileDisplayPlanType,
   resolveAuthFilePlanType,
   resolveAuthFileRestrictionBadges,
   resolveAuthFileWeeklyQuotaResetAtMs,
@@ -44,9 +42,12 @@ import {
   resolvePlanBadgeClass,
   shouldShowAuthFileDisplayTag,
   shouldShowAuthFilePlanBadge,
+  translateParameterizedQuotaLabel,
+  translateXaiQuotaLabel,
   type AuthFileCycleBudgetStats,
 } from "@code-proxy/domain";
 import { resolveQuotaProvider, type QuotaProvider } from "@features/quota-preview/quota-fetch";
+import { useStickyDisplayPlans } from "./useStickyDisplayPlans";
 import {
   clampPercent,
   filterAntigravityQuotaItems,
@@ -86,7 +87,7 @@ const RESTRICTION_TONE_CLASSES = {
   warning:
     "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/15 dark:text-amber-200",
   neutral:
-    "border-slate-200 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/[0.08] dark:text-white/70",
+    "border-slate-900/8 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/[0.08] dark:text-white/70",
 } as const;
 
 const CLAUDE_OAUTH_HEALTH_TONE_CLASSES = {
@@ -194,6 +195,8 @@ interface UseAuthFilesFilesPresentationOptions {
   ) => { id: string; label: string; item: QuotaItem | null }[];
   cycleCallsByAuthIndex: Record<string, number>;
   cycleBudgetByAuthIndex: Record<string, AuthFileCycleBudgetStats>;
+  statusUsageReady: boolean;
+  statusUsageLoading: boolean;
   refreshQuota: (file: AuthFileItem, provider: QuotaProvider) => Promise<void>;
   requestResetCredit: (file: AuthFileItem) => void;
   resettingCreditFileName: string | null;
@@ -221,6 +224,8 @@ export function useAuthFilesFilesPresentation({
   resolveQuotaCardSlots,
   cycleCallsByAuthIndex,
   cycleBudgetByAuthIndex,
+  statusUsageReady,
+  statusUsageLoading,
   refreshQuota,
   requestResetCredit,
   resettingCreditFileName,
@@ -231,36 +236,17 @@ export function useAuthFilesFilesPresentation({
   setFileEnabled,
   usageIndex,
 }: UseAuthFilesFilesPresentationOptions) {
-  // Sticky last-good plan tier so PRO / PRO 5X / PRO 20X do not flash on partial refresh.
-  const stickyDisplayPlanRef = useRef<Map<string, string>>(new Map());
-  const resolveStickyDisplayPlanType = useCallback(
-    (file: AuthFileItem, quotaState?: QuotaState | null, cycleStats?: AuthFileCycleBudgetStats | null) => {
-      const previous = stickyDisplayPlanRef.current.get(file.name) ?? null;
-      const next = resolveAuthFileDisplayPlanType(file, quotaState, cycleStats, previous);
-      if (next) stickyDisplayPlanRef.current.set(file.name, next);
-      return next;
-    },
-    [],
-  );
+  const resolveStickyDisplayPlanType = useStickyDisplayPlans();
   const { t } = useTranslation();
 
   const translateQuotaText = useCallback(
     (text: string) => {
       if (!text) return text;
-      if (text.startsWith("xai_quota.")) {
-        const separatorIndex = text.indexOf("::");
-        const key = separatorIndex >= 0 ? text.slice(0, separatorIndex) : text;
-        const value = separatorIndex >= 0 ? text.slice(separatorIndex + 2) : "";
-        if (key === "xai_quota.product_usage_named" && value) return t(key, { product: value });
-        if (key === "xai_quota.used_percent" && value) return t(key, { percent: value });
-        if (key === "xai_quota.remaining_percent" && value) return t(key, { percent: value });
-        if (key === "xai_quota.reset_at" && value) return t(key, { time: value });
-        return t(key);
-      }
+      if (text.startsWith("xai_quota.")) return translateXaiQuotaLabel(t, text);
       if (text.startsWith("m_quota.")) return t(text);
       if (text.startsWith("auth_files.")) return t(text);
       if (text.startsWith("common.")) return t(text);
-      if (text.startsWith("claude_quota.")) return t(text);
+      if (text.startsWith("claude_quota.")) return translateParameterizedQuotaLabel(t, text);
       if (text.startsWith("antigravity_quota.")) return t(text);
       if (KNOWN_QUOTA_TEXT_KEYS.has(text)) return t(`m_quota.${text}`);
       const additionalQuota = parseAdditionalQuotaWindowLabel(text);
@@ -549,8 +535,7 @@ export function useAuthFilesFilesPresentation({
           : reset;
       const rawMeta = item?.meta?.trim() ? translateQuotaText(item.meta) : null;
       // Drop raw ISO period ranges (e.g. "2026-07-16T06:45:51+00:00 - …").
-      const meta =
-        rawMeta && !/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(rawMeta) ? rawMeta : null;
+      const meta = rawMeta && !/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(rawMeta) ? rawMeta : null;
       if (resetLabel && meta) {
         // Keep money remaining ("$40 / $50") next to reset; skip other period labels.
         return meta.includes("$") ? `${meta} · ${resetLabel}` : resetLabel;
@@ -597,7 +582,7 @@ export function useAuthFilesFilesPresentation({
   const renderQuotaHoverContent = useCallback(
     (state: QuotaState, options?: { suppressItemMeta?: boolean }) => {
       const items = Array.isArray(state.items) ? (state.items as QuotaItem[]) : [];
-      const hasError = state.status === "error";
+      const hasError = state.status === "error" || Boolean(state.error);
 
       return (
         <div className="space-y-1">
@@ -615,8 +600,7 @@ export function useAuthFilesFilesPresentation({
                   (item.value ? translateQuotaText(item.value) : undefined) ??
                   (tone.normalized === null ? "--" : `${Math.round(tone.normalized)}%`);
                 const resetText = formatQuotaItemDetailText(item);
-                const itemMeta =
-                  options?.suppressItemMeta || resetText ? undefined : item.meta;
+                const itemMeta = options?.suppressItemMeta || resetText ? undefined : item.meta;
                 return (
                   <div key={item.label} className="contents">
                     <span className="min-w-0 truncate text-2xs font-semibold text-slate-600 dark:text-white/70">
@@ -705,8 +689,11 @@ export function useAuthFilesFilesPresentation({
         };
       })();
 
-      return (
-        <div key={label} className={compact ? "space-y-1" : "space-y-1.5"}>
+      const tooltipParts = [translatedLabel, percentText];
+      if (detailText) tooltipParts.push(detailText);
+      if (costText) tooltipParts.push(costText);
+      const bar = (
+        <div className={compact ? "space-y-1" : "space-y-1.5"}>
           <div className="flex items-center justify-between gap-2">
             <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-white/70">
               <Clock size={12} className="shrink-0 text-slate-400 dark:text-white/40" aria-hidden />
@@ -766,6 +753,19 @@ export function useAuthFilesFilesPresentation({
             </div>
           ) : null}
         </div>
+      );
+      if (!compact) {
+        return <div key={label}>{bar}</div>;
+      }
+      return (
+        <HoverTooltip
+          key={label}
+          content={tooltipParts.join(" · ")}
+          placement="top"
+          className="w-full max-w-full"
+        >
+          <div className="w-full min-w-0">{bar}</div>
+        </HoverTooltip>
       );
     },
     [
@@ -934,17 +934,17 @@ export function useAuthFilesFilesPresentation({
             <button
               type="button"
               disabled={state?.loading}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs tabular-nums text-slate-600 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-default disabled:opacity-40 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white/60 dark:hover:border-blue-600 dark:hover:bg-blue-950 dark:hover:text-blue-300"
+              className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-slate-900/8 bg-slate-50 px-2 py-1 text-xs tabular-nums text-slate-600 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-default disabled:opacity-40 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white/60 dark:hover:border-blue-600 dark:hover:bg-blue-950 dark:hover:text-blue-300"
               onClick={() => void checkAuthFileConnectivity(file.name)}
               title={t("auth_files.check_connectivity")}
               aria-label={t("auth_files.check_connectivity")}
             >
-              {state?.loading ? (
-                <Loader2 size={10} className="animate-spin" />
-              ) : state?.error ? (
+              {state?.error ? (
                 <span className="font-bold text-rose-500">✕</span>
               ) : state?.latencyMs != null ? (
                 <span className="font-medium">{formatLatency(state.latencyMs)}</span>
+              ) : state?.loading ? (
+                <Loader2 size={10} className="animate-spin" />
               ) : (
                 <Zap size={10} />
               )}
@@ -962,8 +962,14 @@ export function useAuthFilesFilesPresentation({
           const authIndex = normalizeAuthIndexValue(file.auth_index ?? file.authIndex);
           const calls = authIndex ? cycleCallsByAuthIndex[authIndex] : undefined;
           return (
-            <span className="text-xs font-semibold tabular-nums text-slate-700 dark:text-white/70">
-              {typeof calls === "number" ? calls : "--"}
+            <span className="inline-flex items-center justify-end gap-1 text-xs font-semibold tabular-nums text-slate-700 dark:text-white/70">
+              {typeof calls === "number" ? (
+                calls
+              ) : !statusUsageReady && statusUsageLoading ? (
+                <Loader2 size={12} className="animate-spin" aria-label={t("common.loading")} />
+              ) : (
+                "--"
+              )}
             </span>
           );
         },
@@ -976,9 +982,10 @@ export function useAuthFilesFilesPresentation({
         cellClassName: "text-right",
         render: (file) => {
           const stats = resolveAuthFileStats(file, usageIndex);
+          const hasUsage = stats.success + stats.failure > 0;
           return (
             <span className="text-xs font-semibold tabular-nums text-emerald-700 dark:text-emerald-200">
-              {stats.success}
+              {statusUsageReady || hasUsage ? stats.success : "--"}
             </span>
           );
         },
@@ -991,9 +998,10 @@ export function useAuthFilesFilesPresentation({
         cellClassName: "text-right",
         render: (file) => {
           const stats = resolveAuthFileStats(file, usageIndex);
+          const hasUsage = stats.success + stats.failure > 0;
           return (
             <span className="text-xs font-semibold tabular-nums text-rose-700 dark:text-rose-200">
-              {stats.failure}
+              {statusUsageReady || hasUsage ? stats.failure : "--"}
             </span>
           );
         },
@@ -1004,6 +1012,17 @@ export function useAuthFilesFilesPresentation({
         width: "w-44",
         render: (file) => {
           const statusData = resolveAuthFileStatusBar(file, usageIndex);
+          const hasUsage = statusData.totalSuccess + statusData.totalFailure > 0;
+          if (!statusUsageReady && !hasUsage) {
+            return statusUsageLoading ? (
+              <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-white/45">
+                <Loader2 size={12} className="animate-spin" />
+                {t("common.loading")}
+              </span>
+            ) : (
+              <span className="text-xs text-slate-400 dark:text-white/40">--</span>
+            );
+          }
           return <ProviderStatusBar data={statusData} compact />;
         },
       },
@@ -1034,7 +1053,7 @@ export function useAuthFilesFilesPresentation({
               detailText: quotaMetricDetails[index] ?? null,
             })),
           );
-          const hasError = state.status === "error";
+          const hasError = state.status === "error" || Boolean(state.error);
 
           if (hasError && slots.length === 0) {
             return renderQuotaErrorBadge(state.error ?? t("common.error"));
@@ -1065,9 +1084,7 @@ export function useAuthFilesFilesPresentation({
                       const tone = resolveQuotaVisualTone(slot.item?.percent);
                       const normalized = tone.normalized;
                       const percentText =
-                        (slot.item?.value
-                          ? translateQuotaText(slot.item.value)
-                          : undefined) ??
+                        (slot.item?.value ? translateQuotaText(slot.item.value) : undefined) ??
                         (normalized === null ? "--" : `${Math.round(normalized)}%`);
                       const detailText = quotaMetricDetails[index] ?? null;
                       const wide = quotaMetricWideFlags[index] ?? false;
@@ -1135,10 +1152,7 @@ export function useAuthFilesFilesPresentation({
       {
         key: "actions",
         label: t("common.action"),
-        width: "w-48 min-w-[12rem]",
-        minWidthPx: 192,
-        maxWidthPx: 192,
-        resizable: false,
+        ...TABLE_ROW_ACTIONS_COLUMN,
         lockOrder: "end",
         headerClassName: STICKY_ACTIONS_HEADER_CLASS,
         cellClassName: STICKY_ACTIONS_CELL_CLASS,
@@ -1172,76 +1186,51 @@ export function useAuthFilesFilesPresentation({
               : t("auth_files.reset_credit_no_credits");
 
           return (
-            <div className="inline-flex min-w-max items-center justify-center gap-1 whitespace-nowrap">
-              {quotaProvider ? (
-                <HoverTooltip content={t("common.refresh")}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => void refreshQuota(file, quotaProvider)}
-                    title={t("common.refresh")}
-                    aria-label={t("common.refresh")}
-                  >
-                    <RefreshCw size={16} className={quotaRefreshing ? "animate-spin" : ""} />
-                  </Button>
-                </HoverTooltip>
-              ) : null}
-
-              {quotaProvider === "codex" ? (
-                <HoverTooltip content={resetCreditTitle}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={resetCreditDisabled}
-                    onClick={() => requestResetCredit(file)}
-                    title={resetCreditTitle}
-                    aria-label={t("auth_files.reset_credit_consume")}
-                  >
-                    {resetCreditBusy ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      <Gauge size={16} />
-                    )}
-                  </Button>
-                </HoverTooltip>
-              ) : null}
-
-              <HoverTooltip content={t("auth_files.edit_tags")}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => openTagsEditor(file)}
-                  title={t("auth_files.edit_tags")}
-                  aria-label={t("auth_files.edit_tags")}
-                >
-                  <Tags size={16} />
-                </Button>
-              </HoverTooltip>
-
-              <HoverTooltip content={t("auth_files.detail")}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void openDetail(file)}
-                  title={t("auth_files.detail")}
-                  aria-label={t("auth_files.detail")}
-                >
-                  <Eye size={16} />
-                </Button>
-              </HoverTooltip>
-
-              <HoverTooltip content={t("auth_files.download")}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void downloadAuthFile(file)}
-                  title={t("auth_files.download")}
-                  aria-label={t("auth_files.download")}
-                >
-                  <Download size={16} />
-                </Button>
-              </HoverTooltip>
-            </div>
+            <TableRowActions
+              moreLabel={t("common.more_actions")}
+              actions={[
+                // Keep high-frequency open/edit actions inline; overflow rarer ops.
+                {
+                  key: "detail",
+                  label: t("auth_files.detail"),
+                  icon: <Eye size={16} />,
+                  onClick: () => void openDetail(file),
+                },
+                {
+                  key: "tags",
+                  label: t("auth_files.edit_tags"),
+                  icon: <Tags size={16} />,
+                  onClick: () => openTagsEditor(file),
+                },
+                {
+                  key: "refresh",
+                  label: t("common.refresh"),
+                  icon: <RefreshCw size={16} className={quotaRefreshing ? "animate-spin" : ""} />,
+                  visible: Boolean(quotaProvider),
+                  onClick: () => {
+                    if (quotaProvider) void refreshQuota(file, quotaProvider);
+                  },
+                },
+                {
+                  key: "reset-credit",
+                  label: resetCreditTitle,
+                  icon: resetCreditBusy ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Gauge size={16} />
+                  ),
+                  visible: quotaProvider === "codex",
+                  disabled: resetCreditDisabled,
+                  onClick: () => requestResetCredit(file),
+                },
+                {
+                  key: "download",
+                  label: t("auth_files.download"),
+                  icon: <Download size={16} />,
+                  onClick: () => void downloadAuthFile(file),
+                },
+              ]}
+            />
           );
         },
       },
@@ -1252,6 +1241,8 @@ export function useAuthFilesFilesPresentation({
     connectivityState,
     cycleBudgetByAuthIndex,
     cycleCallsByAuthIndex,
+    statusUsageLoading,
+    statusUsageReady,
     downloadAuthFile,
     formatQuotaItemDetailText,
     formatPlanTypeLabel,

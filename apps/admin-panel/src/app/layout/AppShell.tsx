@@ -17,7 +17,6 @@ import { useTranslation } from "react-i18next";
 import {
   Building2,
   ChevronDown,
-  LayoutDashboard,
   LogOut,
   PanelLeft,
   Settings,
@@ -33,7 +32,9 @@ import {
   SearchableSelect,
   type SearchableSelectOption,
   ThemeToggleButton,
+  resolveMenuIcon,
 } from "@code-proxy/ui";
+import { BRAND_NAME, LogoMark } from "@code-proxy/assets";
 import { preloadPageRoute } from "@pages/registry";
 import { recoverFromChunkLoadError } from "@pages/chunkLoadRecovery";
 import {
@@ -43,7 +44,7 @@ import {
   type TenantIdentity,
 } from "@code-proxy/api-client";
 import { useOptionalAuth } from "@app/providers/AuthProvider";
-import { resolveMenuIcon } from "@app/navigation/menuIconMap";
+
 
 interface ShellContextState {
   state: {
@@ -194,6 +195,12 @@ const getPageTitleKey = (pathname: string, menus?: MenuIdentity[] | null): strin
     if (hit) return menuLabelKey(hit);
   }
   if (pathname.startsWith("/dashboard")) return "shell.nav_dashboard";
+  if (
+    pathname.startsWith("/access/content-moderation") ||
+    pathname.startsWith("/runtime/content-moderation")
+  ) {
+    return "shell.nav_content_moderation";
+  }
   if (
     pathname.startsWith("/access/ai-accounts") ||
     pathname.startsWith("/system/account-security") ||
@@ -869,7 +876,7 @@ function ShellSidebar({
         className={[
           "group/sidebar shrink-0 overflow-visible bg-white/94 dark:bg-neutral-950/88",
           isMobile ? "fixed inset-y-0 left-0 z-40 w-60" : "relative z-30 h-[100dvh]",
-          "border-r border-slate-200 shadow-[12px_0_28px_rgba(15,23,42,0.04)] dark:border-neutral-800",
+          "border-r border-slate-900/8 shadow-[12px_0_28px_rgba(15,23,42,0.04)] dark:border-white/8",
           isMobile
             ? "will-change-transform motion-reduce:transition-none motion-safe:transition-transform motion-safe:duration-[320ms] motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]"
             : "motion-reduce:transition-none motion-safe:transition-[width,background-color,border-color,box-shadow] motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]",
@@ -896,11 +903,8 @@ function ShellSidebar({
                 (visualRailCollapsed ? "opacity-100 group-hover/sidebar:opacity-0" : "opacity-100")
               }
             >
-              <span
-                data-sidebar-logo="true"
-                className="grid h-8 w-8 place-items-center rounded-xl bg-blue-600 text-white"
-              >
-                <LayoutDashboard size={17} />
+              <span data-sidebar-logo="true" className="grid h-8 w-8 place-items-center">
+                <LogoMark size={26} />
               </span>
             </span>
             <span
@@ -914,7 +918,7 @@ function ShellSidebar({
               <span className="block truncate text-base font-semibold tracking-tight">
                 {t("shell.console")}
               </span>
-              <span className="block text-2xs font-medium text-slate-400">CLI Proxy</span>
+              <span className="block font-display text-2xs text-slate-400">{BRAND_NAME}</span>
             </span>
           </div>
           <ScrollArea
@@ -1179,7 +1183,7 @@ function ShellHeader({
   const sidebarLabel = sidebarCollapsed ? t("shell.expand_sidebar") : t("shell.collapse_sidebar");
 
   return (
-    <header className="z-20 shrink-0 border-b border-slate-200 bg-white/75 backdrop-blur-xl motion-reduce:transition-none motion-safe:transition-colors motion-safe:duration-200 motion-safe:ease-out dark:border-neutral-800 dark:bg-neutral-950/60">
+    <header className="z-20 shrink-0 border-b border-slate-900/8 bg-white/75 backdrop-blur-xl motion-reduce:transition-none motion-safe:transition-colors motion-safe:duration-200 motion-safe:ease-out dark:border-white/8 dark:bg-neutral-950/60">
       <h1 className="sr-only">{t(titleKey)}</h1>
       <div className="flex h-14 items-center justify-between gap-3 px-3 sm:px-6">
         <div className="flex h-9 w-9 items-center">
@@ -1355,7 +1359,7 @@ export function AppShell({ children, onLogout }: PropsWithChildren<{ onLogout?: 
       <ShellFrame>
         <a
           href="#main-content"
-          className="sr-only z-[200] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm focus:not-sr-only focus:fixed focus:left-4 focus:top-4 dark:border-neutral-800 dark:bg-neutral-950 dark:text-white"
+          className="sr-only z-[200] rounded-xl border border-slate-900/8 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm focus:not-sr-only focus:fixed focus:left-4 focus:top-4 dark:border-white/8 dark:bg-neutral-950 dark:text-white"
         >
           {t("shell.skip_to_content")}
         </a>

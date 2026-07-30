@@ -9,6 +9,9 @@ type DetailModalProps = ComponentProps<typeof AuthFileDetailModal>;
 const chartOptions = vi.hoisted(() => [] as any[]);
 const chartEvents = vi.hoisted(() => [] as any[]);
 const chartProps = vi.hoisted(() => [] as any[]);
+const moderationProfileProps = vi.hoisted(
+  () => [] as { channelType: string; channelId?: string }[],
+);
 
 vi.mock("@code-proxy/ui", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@code-proxy/ui")>()),
@@ -36,6 +39,13 @@ vi.mock("@code-proxy/ui", async (importOriginal) => ({
         chart
       </div>
     );
+  },
+}));
+
+vi.mock("@features/content-moderation", () => ({
+  ModerationProfileSelect: (props: { channelType: string; channelId?: string }) => {
+    moderationProfileProps.push(props);
+    return <div data-testid="moderation-profile-select" />;
   },
 }));
 
@@ -201,6 +211,7 @@ const renderDetailModal = (overrides: Partial<DetailModalProps> = {}) => {
       request_total: 3,
       cycle_request_total: 2,
       cycle_cost_total: 1.2345,
+      cycle_total_tokens: 1234567,
       weekly_quota_used_percent: 8,
       cycle_start: "2026-04-27T16:01:21Z",
       daily_usage: [
@@ -290,6 +301,27 @@ describe("AuthFileDetailModal", () => {
     chartOptions.length = 0;
     chartEvents.length = 0;
     chartProps.length = 0;
+    moderationProfileProps.length = 0;
+  });
+
+  test("uses the stable auth file id for content moderation bindings", () => {
+    renderDetailModal({
+      detailTab: "fields",
+      detailFile: {
+        id: "auth-stable-id",
+        auth_index: "auth-hash-index",
+        authIndex: "auth-camel-hash-index",
+        name: "codex.json",
+        type: "codex",
+        size: 256,
+      },
+    });
+
+    expect(screen.getByTestId("moderation-profile-select")).toBeInTheDocument();
+    expect(moderationProfileProps.at(-1)).toMatchObject({
+      channelType: "auth_file",
+      channelId: "auth-stable-id",
+    });
   });
 
   test("uses usage trend as the primary view for Codex files", () => {
@@ -305,6 +337,7 @@ describe("AuthFileDetailModal", () => {
     expect(screen.queryByText("Last 7 days requests")).not.toBeInTheDocument();
     expectSummaryCard("Current weekly cycle", "2");
     expectSummaryCard("Current cycle cost", "$1.2345");
+    expectSummaryCard("Current cycle tokens", "1,234,567");
     expectSummaryCard("Predicted 5-hour window quota", "$0.0500");
     expectSummaryCard("Predicted weekly window quota", "$15.4312");
     expectSummaryCard("Weekly quota used", "8%");
@@ -317,7 +350,7 @@ describe("AuthFileDetailModal", () => {
     expect(chartOptions.at(-1)?.series?.every((item: any) => item.animation === true)).toBe(true);
   });
 
-  test("renders zero predicted quota values when Codex trend data is incomplete", () => {
+  test("hides zero and empty summary cards when Codex trend data is incomplete", () => {
     renderDetailModal({
       detailTrend: {
         auth_index: "auth-1",
@@ -334,8 +367,13 @@ describe("AuthFileDetailModal", () => {
       },
     });
 
-    expectSummaryCard("Predicted 5-hour window quota", "$0.0000");
-    expectSummaryCard("Predicted weekly window quota", "$0.0000");
+    expectSummaryCard("Current weekly cycle", "2");
+    expectSummaryCard("Current cycle tokens", "--");
+    expect(screen.queryByText("Current cycle cost")).not.toBeInTheDocument();
+    expect(screen.queryByText("Predicted 5-hour window quota")).not.toBeInTheDocument();
+    expect(screen.queryByText("Predicted weekly window quota")).not.toBeInTheDocument();
+    expect(screen.queryByText("Weekly quota used")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cycle start")).not.toBeInTheDocument();
   });
 
   test("disables trend chart animation after the first render completes", () => {
@@ -361,7 +399,7 @@ describe("AuthFileDetailModal", () => {
 
     expect(screen.getByRole("tab", { name: "Usage" })).toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "pcamtu927@gmail.com" })).toBeInTheDocument();
-    expect(screen.getByText("Plus")).toBeInTheDocument();
+    expect(screen.getByText("PLUS")).toBeInTheDocument();
     expect(screen.getByText("Current cycle cost")).toBeInTheDocument();
     expect(screen.getByText("$1.2345")).toBeInTheDocument();
   });
@@ -391,7 +429,7 @@ describe("AuthFileDetailModal", () => {
     renderDetailModal({ detailTrend: null, detailTrendLoading: true });
 
     const loading = screen.getByTestId("auth-file-trend-loading");
-    expect(loading.querySelectorAll(".animate-pulse")).toHaveLength(9);
+    expect(loading.querySelectorAll(".animate-pulse")).toHaveLength(10);
     expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
     expect(screen.queryByTestId("auth-file-trend-chart")).not.toBeInTheDocument();
     expect(chartOptions).toHaveLength(0);
@@ -403,6 +441,46 @@ describe("AuthFileDetailModal", () => {
     expect(screen.queryByTestId("auth-file-quota-series-list")).not.toBeInTheDocument();
     expect(screen.queryByText(/samples/)).not.toBeInTheDocument();
     expect(screen.queryByText(/resets/)).not.toBeInTheDocument();
+  });
+
+  test("title membership chip matches card style and codex pro multiplier", () => {
+    renderDetailModal({
+      detailFile: {
+        name: "codex-pro.json",
+        label: "Codex Pro",
+        type: "codex",
+        provider: "codex",
+        plan_type: "pro",
+        size: 256,
+      },
+      modelsFileType: "codex",
+      quotaState: {
+        status: "success",
+        planType: "pro",
+        items: [],
+        updatedAt: Date.now(),
+      },
+      detailTrend: {
+        auth_index: "auth-pro",
+        days: 7,
+        hours: 5,
+        request_total: 100,
+        cycle_request_total: 100,
+        cycle_cost_total: 333.9,
+        weekly_quota_used_percent: 13,
+        cycle_known: true,
+        cycle_start: "2026-07-22T00:00:00Z",
+        daily_usage: [],
+        hourly_usage: [],
+        quota_series: [],
+      },
+    });
+
+    // $333.9 / 13% ≈ $2568 budget → PRO 20X solid chip, not soft "Pro".
+    const badge = screen.getByTestId("auth-file-plan-badge");
+    expect(badge).toHaveTextContent("PRO 20X");
+    expect(badge.className).toContain("from-yellow-300");
+    expect(badge.className).not.toContain("bg-amber-50");
   });
 
   test("shows SuperGrok plan badge and falls back cycle totals for xAI when cycle is unknown", () => {
@@ -444,14 +522,15 @@ describe("AuthFileDetailModal", () => {
       },
     });
 
-    expect(screen.getByText("SuperGrok")).toBeInTheDocument();
+    expect(screen.getByText("SUPERGROK")).toBeInTheDocument();
+    expect(screen.getByTestId("auth-file-plan-badge")).toHaveClass("from-neutral-900");
     expectSummaryCard("Last 7 days requests", "116");
     // When cycle_known is false, fall back to request_total instead of showing 0.
     expectSummaryCard("Current weekly cycle", "116");
     // Remaining snapshot percent 75% => used 25%.
     expectSummaryCard("Weekly quota used", "25%");
-    // xAI shows weekly prediction (zero when cycle cost is missing), never the Codex 5h card.
-    expectSummaryCard("Predicted weekly window quota", "$0.0000");
+    // xAI predicted weekly is 0 without cycle cost — hide the card; never show Codex 5h.
+    expect(screen.queryByText("Predicted weekly window quota")).not.toBeInTheDocument();
     expect(screen.queryByText("Predicted 5-hour window quota")).not.toBeInTheDocument();
   });
 
@@ -492,6 +571,55 @@ describe("AuthFileDetailModal", () => {
     // $7.352 / 6% ≈ $122.5333 full weekly window budget.
     expectSummaryCard("Predicted weekly window quota", "$122.5333");
     expect(screen.queryByText("Predicted 5-hour window quota")).not.toBeInTheDocument();
+  });
+
+  test("enables usage trend with 5h and weekly predictions for Claude files", () => {
+    renderDetailModal({
+      detailFile: {
+        name: "claude-user.json",
+        label: "Claude Max",
+        type: "claude",
+        provider: "claude",
+        size: 256,
+      },
+      modelsFileType: "claude",
+      quotaState: {
+        status: "success",
+        planType: "max_20x",
+        items: [],
+        updatedAt: Date.now(),
+      },
+      detailTrend: {
+        auth_index: "claude-auth",
+        days: 7,
+        hours: 5,
+        request_total: 90,
+        cycle_request_total: 42,
+        cycle_cost_total: 1.2,
+        weekly_quota_used_percent: 8,
+        cycle_known: true,
+        cycle_start: "2026-07-21T00:00:00Z",
+        daily_usage: [{ date: "2026-07-24", requests: 42, cost: 1.2 }],
+        hourly_usage: [{ hour: "2026-07-26 10:00", requests: 5, cost: 0.05 }],
+        quota_series: [
+          {
+            quota_key: "five_hour",
+            quota_label: "claude_quota.five_hour",
+            window_seconds: 18000,
+            points: [{ timestamp: "2026-07-26T10:00:00Z", percent: 80 }],
+          },
+        ],
+      },
+    });
+
+    expect(screen.getByRole("tab", { name: "Usage" })).toBeInTheDocument();
+    expect(screen.getByText("MAX 20X")).toBeInTheDocument();
+    expectSummaryCard("Last 7 days requests", "90");
+    expectSummaryCard("Current weekly cycle", "42");
+    expectSummaryCard("Weekly quota used", "8%");
+    // $1.2 / 8% = $15.0000 weekly budget; 5h remaining 80% => used 20%, $0.05 / 20% = $0.2500.
+    expectSummaryCard("Predicted weekly window quota", "$15.0000");
+    expectSummaryCard("Predicted 5-hour window quota", "$0.2500");
   });
 
   test("hides empty identity fingerprint field rows", () => {

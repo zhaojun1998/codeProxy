@@ -4,13 +4,40 @@ import { describe, expect, test } from "vitest";
 import {
   buildRequestLogsColumns,
   buildRequestLogKeyOptions,
+  ChannelIdentityLabel,
   isSystemRequestLogKey,
   sortRequestLogKeyOptionsByCount,
   SYSTEM_REQUEST_LOG_FILTER_VALUE,
+  toFilterParam,
   toRequestLogsRow,
 } from "@features/request-log-viewer";
 
 describe("requestLogsShared", () => {
+  test("builds request filters from the committed selection", () => {
+    expect(toFilterParam(null)).toEqual({ values: undefined, matchesNone: false });
+    expect(toFilterParam([])).toEqual({ values: undefined, matchesNone: true });
+    expect(toFilterParam(["auth-codex"])).toEqual({
+      values: ["auth-codex"],
+      matchesNone: false,
+    });
+  });
+
+  test("exposes the full channel name on the truncated identity label", () => {
+    const name = "ryskt8qjfg@privaterelay.appleid.com";
+
+    render(
+      createElement(ChannelIdentityLabel, {
+        name,
+        provider: "codex",
+        authType: "oauth",
+        apiLabel: "API",
+        oauthLabel: "OAuth",
+      }),
+    );
+
+    expect(screen.getByText(name)).toHaveAttribute("title", name);
+  });
+
   test("recognizes management-triggered system request logs", () => {
     expect(isSystemRequestLogKey("POST /image-generation/test", "")).toBe(true);
     expect(isSystemRequestLogKey("", "")).toBe(true);
@@ -178,5 +205,12 @@ describe("requestLogsShared", () => {
       hideChannel: true,
     }).map((column) => column.key);
     expect(keys).not.toContain("channelName");
+  });
+
+  test("can omit the identity column for public api key lookup logs", () => {
+    const keys = buildRequestLogsColumns((key) => key, undefined, undefined, {
+      identityColumn: "none",
+    }).map((column) => column.key);
+    expect(keys).not.toContain("apiKeyName");
   });
 });

@@ -15,7 +15,7 @@ import {
   maskApiKey,
   stripDisableAllModelsRule,
 } from "./providers-helpers";
-import { formatLatency } from "./hooks/useProviderLatency";
+import { formatLatency } from "@features/provider-latency";
 import { ProviderConnectionRows } from "./components/ProviderConnectionRows";
 import { ProviderMetricChip } from "./components/ProviderMetricChip";
 import { ProviderModelChips } from "./components/ProviderModelChips";
@@ -242,6 +242,11 @@ export function ProviderKeyListCard({
                 }
                 footer={<ProviderStatusBar data={statusData} />}
               >
+                {item.id ? (
+                  <p className="mt-1 truncate font-mono text-xs text-slate-500 dark:text-white/50" title={item.id}>
+                    ID: {item.id}
+                  </p>
+                ) : null}
                 {showConnectionRows ? (
                   <ProviderConnectionRows
                     apiKey={item.apiKey}
@@ -299,7 +304,7 @@ export function ProviderKeyListCard({
                     {headerEntries.map(([k, v]) => (
                       <span
                         key={k}
-                        className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-700 dark:border-neutral-800 dark:bg-neutral-950/60 dark:text-white/75"
+                        className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-full border border-slate-900/8 bg-white px-2 py-0.5 text-xs text-slate-700 dark:border-white/8 dark:bg-neutral-950/60 dark:text-white/75"
                         title={`${k}: ${String(v)}`}
                       >
                         <span className="shrink-0 font-semibold">{k}:</span>

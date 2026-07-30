@@ -3,12 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import i18n from "@code-proxy/i18n";
-import { authFilesApi, imageGenerationApi } from "@code-proxy/api-client";
+import { imageGenerationApi } from "@code-proxy/api-client";
 import { ImageGenerationPage } from "../ImageGenerationPage";
 import { ThemeProvider } from "@code-proxy/ui";
 import { ToastProvider } from "@code-proxy/ui";
 
-const authFilesListMock = () => authFilesApi.list as unknown as ReturnType<typeof vi.fn>;
+const imageGenerationGetChannelsMock = () =>
+  imageGenerationApi.getChannels as unknown as ReturnType<typeof vi.fn>;
 const imageGenerationStartTaskMock = () =>
   imageGenerationApi.startTestTask as unknown as ReturnType<typeof vi.fn>;
 const imageGenerationGetTaskMock = () =>
@@ -43,32 +44,14 @@ function renderPage() {
 describe("ImageGenerationPage", () => {
   beforeEach(async () => {
     await i18n.changeLanguage("zh-CN");
-    vi.spyOn(authFilesApi, "list");
+    vi.spyOn(imageGenerationApi, "getChannels");
     vi.spyOn(imageGenerationApi, "getSizePresets");
     vi.spyOn(imageGenerationApi, "updateSizePresets");
     vi.spyOn(imageGenerationApi, "startTestTask");
     vi.spyOn(imageGenerationApi, "getTestTask");
-    authFilesListMock().mockResolvedValue({
-      files: [
-        {
-          name: "codex-a.json",
-          type: "codex",
-          account_type: "oauth",
-          label: "设计号 A",
-        },
-        {
-          name: "codex-b.json",
-          provider: "codex",
-          account_type: "oauth",
-          label: "设计号 B",
-        },
-        {
-          name: "gemini.json",
-          type: "gemini-cli",
-          account_type: "oauth",
-          label: "Gemini 账号",
-        },
-      ],
+    imageGenerationGetChannelsMock().mockResolvedValue({
+      model: "gpt-image-2",
+      channels: ["设计号 A", "设计号 B"],
     });
     imageGenerationGetSizePresetsMock().mockResolvedValue({
       sizes: ["1024x1024", "1792x1024", "1024x1792", "2560x1440", "2160x3840"],
@@ -86,7 +69,7 @@ describe("ImageGenerationPage", () => {
   test("renders text-to-image call docs with structured endpoint tables", async () => {
     renderPage();
 
-    expect(await screen.findByRole("tab", { name: "gpt-image-2" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "图片生成" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "生图模型" })).toBeInTheDocument();
     const callCard = screen.getByText("调用方式").closest("section");
     expect(callCard).not.toBeNull();
@@ -149,7 +132,7 @@ describe("ImageGenerationPage", () => {
 
     renderPage();
 
-    await screen.findByRole("tab", { name: "gpt-image-2" });
+    await screen.findByRole("tab", { name: "图片生成" });
     await user.click(screen.getByRole("button", { name: "测试生成" }));
 
     const dialog = await screen.findByRole("dialog", { name: "测试生成" });
@@ -324,7 +307,7 @@ describe("ImageGenerationPage", () => {
 
     renderPage();
 
-    await screen.findByRole("tab", { name: "gpt-image-2" });
+    await screen.findByRole("tab", { name: "图片生成" });
     await user.click(screen.getByRole("button", { name: "测试生成" }));
 
     const dialog = await screen.findByRole("dialog", { name: "测试生成" });
@@ -368,7 +351,7 @@ describe("ImageGenerationPage", () => {
 
     renderPage();
 
-    await screen.findByRole("tab", { name: "gpt-image-2" });
+    await screen.findByRole("tab", { name: "图片生成" });
     await user.click(screen.getByRole("button", { name: "测试生成" }));
 
     const dialog = await screen.findByRole("dialog", { name: "测试生成" });
@@ -402,7 +385,7 @@ describe("ImageGenerationPage", () => {
 
     renderPage();
 
-    await screen.findByRole("tab", { name: "gpt-image-2" });
+    await screen.findByRole("tab", { name: "图片生成" });
     await user.click(screen.getByRole("button", { name: "测试生成" }));
 
     const dialog = await screen.findByRole("dialog", { name: "测试生成" });
@@ -437,7 +420,7 @@ describe("ImageGenerationPage", () => {
 
     renderPage();
 
-    await screen.findByRole("tab", { name: "gpt-image-2" });
+    await screen.findByRole("tab", { name: "图片生成" });
     await user.click(screen.getByRole("button", { name: "测试生成" }));
 
     const dialog = await screen.findByRole("dialog", { name: "测试生成" });
@@ -466,7 +449,7 @@ describe("ImageGenerationPage", () => {
     });
   });
 
-  test("greys the preview area and shows the error message inside the modal when generation fails", async () => {
+  test("collapses the preview area into an alert when generation fails", async () => {
     const deferred = createDeferred<{
       task_id: string;
       status: "failed";
@@ -486,7 +469,7 @@ describe("ImageGenerationPage", () => {
 
     renderPage();
 
-    await screen.findByRole("tab", { name: "gpt-image-2" });
+    await screen.findByRole("tab", { name: "图片生成" });
     await userEvent.click(screen.getByRole("button", { name: "测试生成" }));
 
     const dialog = await screen.findByRole("dialog", { name: "测试生成" });
@@ -517,19 +500,19 @@ describe("ImageGenerationPage", () => {
 
     expect(await within(dialog).findByText("上游图片生成失败")).toBeInTheDocument();
     expect(within(dialog).getByText("00:02")).toBeInTheDocument();
-    expect(within(dialog).getByTestId("image-generation-preview")).toHaveClass("bg-slate-100");
+    // The failure now uses the panel's alert treatment and collapses the stage: a
+    // full-height grey canvas for one line of text is what forced the dialog to
+    // scroll. Asserting the tone on the stage keeps the intent without pinning the
+    // exact palette.
+    const stage = dialog.querySelector('[data-state="error"]');
+    expect(stage?.className).toContain("bg-rose-50");
+    expect(stage?.className).toContain("h-auto");
   });
 
-  test("greys related actions and shows the empty hint when no codex oauth channel is configured", async () => {
-    authFilesListMock().mockResolvedValue({
-      files: [
-        {
-          name: "gemini.json",
-          type: "gemini-cli",
-          account_type: "oauth",
-          label: "Gemini 账号",
-        },
-      ],
+  test("greys related actions and shows the empty hint when no channel is configured", async () => {
+    imageGenerationGetChannelsMock().mockResolvedValue({
+      model: "gpt-image-2",
+      channels: [],
     });
 
     renderPage();
@@ -540,5 +523,31 @@ describe("ImageGenerationPage", () => {
       within(callCard as HTMLElement).getByRole("button", { name: "测试生成" }),
     ).toBeDisabled();
     expect(screen.getByTestId("image-generation-disabled-state")).toHaveClass("opacity-60");
+  });
+
+  // Regression for issue #491: the page used to derive availability from the auth-files
+  // list, which requires auth_files.read while the page itself only needs
+  // image_generation.read. A role holding just the latter got a 403 that was swallowed
+  // and rendered as "no channels configured", hiding a working setup.
+  test("reads availability from the image-generation endpoint, not the auth-files list", async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(imageGenerationGetChannelsMock()).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId("image-generation-disabled-state")).not.toBeInTheDocument();
+  });
+
+  test("distinguishes a failed availability lookup from an empty channel list", async () => {
+    imageGenerationGetChannelsMock().mockRejectedValue(new Error("403 forbidden"));
+
+    renderPage();
+
+    expect(
+      await screen.findByText(
+        "无法获取 gpt-image-2 的渠道可用性。请确认账号具有生图管理权限后重试。",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("当前没有可用于 gpt-image-2 的渠道。")).not.toBeInTheDocument();
   });
 });

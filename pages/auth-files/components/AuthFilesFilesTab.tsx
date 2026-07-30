@@ -8,7 +8,7 @@ import {
   type RefObject,
   type ReactNode,
 } from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import {
   BarChart3,
   CircleOff,
@@ -42,7 +42,7 @@ import { ScrollArea } from "@code-proxy/ui";
 import { Select } from "@code-proxy/ui";
 import { SearchableSelect, type SearchableSelectOption } from "@code-proxy/ui";
 import { DataTable, type DataTableColumn } from "@code-proxy/ui";
-import { ToggleSwitch, useLocalStorage } from "@code-proxy/ui";
+import { ToggleSwitch } from "@code-proxy/ui";
 import type { AuthFilesUploadProgress } from "@pages/auth-files/hooks/useAuthFilesFileActions";
 import type {
   AuthFileModelOwnerGroup,
@@ -54,12 +54,12 @@ import type {
   UsageIndex,
 } from "@code-proxy/domain";
 import {
+  alignAuthFilesPageSizeToColumns,
   AUTH_FILES_CARD_COLUMN_OPTIONS,
-  AUTH_FILES_CARD_COLUMNS_KEY,
-  AUTH_FILES_PAGE_SIZE,
+  AUTH_FILES_PAGE_SIZE_OPTIONS,
   AUTH_FILE_STATUS_FILTERS,
-  DEFAULT_AUTH_FILES_CARD_COLUMNS,
   TYPE_BADGE_CLASSES,
+  formatCompactNumber,
   formatPlanBadgeLabel,
   isRuntimeOnlyAuthFile,
   normalizeAuthFilesCardColumns,
@@ -656,11 +656,17 @@ interface AuthFilesFilesTabProps {
   pageItems: AuthFileItem[];
   fileColumns: DataTableColumn<AuthFileItem>[];
   filesViewMode: FilesViewMode;
+  cardColumns: AuthFilesCardColumns;
+  setCardColumns: (value: AuthFilesCardColumns) => void;
+  pageSize: number;
+  setPageSize: (value: number) => void;
   selectedFileNameSet: Set<string>;
   quotaByFileName: Record<string, QuotaState>;
   windowCostByFileName?: Record<string, Record<string, number>>;
   cycleCallsByAuthIndex: Record<string, number>;
+  cycleTotalTokensByAuthIndex: Record<string, number | null>;
   cycleBudgetByAuthIndex: Record<string, AuthFileCycleBudgetStats>;
+  statusUsageLoading: boolean;
   resolveQuotaProvider: (file: AuthFileItem) => QuotaProvider | null;
   resolveQuotaCardSlots: (
     provider: QuotaProvider,
@@ -758,11 +764,17 @@ export function AuthFilesFilesTab({
   pageItems,
   fileColumns,
   filesViewMode,
+  cardColumns,
+  setCardColumns,
+  pageSize,
+  setPageSize,
   selectedFileNameSet,
   quotaByFileName,
   windowCostByFileName,
   cycleCallsByAuthIndex,
+  cycleTotalTokensByAuthIndex,
   cycleBudgetByAuthIndex,
+  statusUsageLoading,
   resolveQuotaProvider,
   resolveQuotaCardSlots,
   refreshQuota,
@@ -791,20 +803,12 @@ export function AuthFilesFilesTab({
   setPage,
   usageData,
 }: AuthFilesFilesTabProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [modelOwnerDialogOpen, setModelOwnerDialogOpen] = useState(false);
   const [draftModelOwner, setDraftModelOwner] = useState(selectedModelOwner);
-  const [cardColumnsRaw, setCardColumnsRaw] = useLocalStorage<AuthFilesCardColumns>(
-    AUTH_FILES_CARD_COLUMNS_KEY,
-    DEFAULT_AUTH_FILES_CARD_COLUMNS,
-  );
-  const cardColumns = normalizeAuthFilesCardColumns(cardColumnsRaw);
   const cardGridHostRef = useRef<HTMLDivElement>(null);
   const cardColumnFirstRectsRef = useRef<DOMRect[] | null>(null);
   const cardColumnAnimationsRef = useRef<Animation[]>([]);
-  useEffect(() => {
-    if (cardColumnsRaw !== cardColumns) setCardColumnsRaw(cardColumns);
-  }, [cardColumns, cardColumnsRaw, setCardColumnsRaw]);
   const cancelCardColumnAnimations = useCallback(() => {
     cardColumnAnimationsRef.current.forEach((animation) => animation.cancel());
     cardColumnAnimationsRef.current = [];
@@ -828,9 +832,11 @@ export function AuthFilesFilesTab({
               .filter((element): element is HTMLElement => element instanceof HTMLElement)
               .map((element) => element.getBoundingClientRect())
           : null;
-      setCardColumnsRaw(nextColumns);
+      setCardColumns(nextColumns);
+      setPageSize(alignAuthFilesPageSizeToColumns(pageSize, nextColumns));
+      setPage(1);
     },
-    [cancelCardColumnAnimations, cardColumns, setCardColumnsRaw],
+    [cancelCardColumnAnimations, cardColumns, pageSize, setCardColumns, setPage, setPageSize],
   );
 
   useLayoutEffect(() => {
@@ -907,6 +913,20 @@ export function AuthFilesFilesTab({
         };
       }),
     [t],
+  );
+  const pageSizeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            pageSize,
+            ...AUTH_FILES_PAGE_SIZE_OPTIONS.map((size) =>
+              alignAuthFilesPageSizeToColumns(size, cardColumns),
+            ),
+          ].sort((a, b) => a - b),
+        ),
+      ),
+    [cardColumns, pageSize],
   );
   const [draftModelOwnerEnabled, setDraftModelOwnerEnabled] = useState(
     selectedModelOwner.trim() !== "",
@@ -1274,15 +1294,20 @@ export function AuthFilesFilesTab({
       currentPage={safePage}
       totalPages={totalPages}
       totalCount={filteredFiles.length}
-      pageSize={AUTH_FILES_PAGE_SIZE}
+      pageSize={pageSize}
       onPageChange={setPage}
-      showPageSize={false}
-      className="border-t border-slate-100 px-4 pb-4 pt-3 sm:px-5 sm:pb-5 dark:border-neutral-800/60"
+      onPageSizeChange={(size) => {
+        setPageSize(alignAuthFilesPageSizeToColumns(size, cardColumns));
+        setPage(1);
+      }}
+      pageSizeOptions={pageSizeOptions}
+      className="border-t border-slate-100 px-4 pb-4 pt-3 sm:px-5 sm:pb-5 dark:border-white/8"
       labels={{
         firstPage: t("request_logs.first_page"),
         previousPage: t("auth_files.prev"),
         nextPage: t("auth_files.next"),
         lastPage: t("request_logs.last_page"),
+        rowsPerPage: t("auth_files.rows_per_page"),
         pageInfo: ({ total, currentPage, totalPages: pages }) =>
           t("auth_files.total_page", {
             total,
@@ -1308,7 +1333,7 @@ export function AuthFilesFilesTab({
         onChange={(e) => void handleUpload(e.currentTarget.files)}
       />
 
-      <div className="shrink-0 border-b border-slate-100 p-3.5 dark:border-neutral-800/60">
+      <div className="shrink-0 border-b border-slate-100 p-3.5 dark:border-white/8">
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-2 md:hidden">
             <Button
@@ -1504,7 +1529,7 @@ export function AuthFilesFilesTab({
                       <RefreshCw
                         size={15}
                         className={
-                          loading || usageLoading || refreshingAll
+                          loading || usageLoading || refreshingAll || statusUsageLoading
                             ? "animate-spin"
                             : ""
                         }
@@ -1759,6 +1784,9 @@ export function AuthFilesFilesTab({
                   const cycleCalls = authIndex
                     ? cycleCallsByAuthIndex[authIndex]
                     : undefined;
+                  const cycleTotalTokens = authIndex
+                    ? cycleTotalTokensByAuthIndex[authIndex]
+                    : null;
                   const successRate =
                     usageTotalCalls > 0
                       ? (stats.success / usageTotalCalls) * 100
@@ -1817,14 +1845,30 @@ export function AuthFilesFilesTab({
                   const showSelectionControl = fileSelected;
                   const actionSize = denseCards ? "xs" : "sm";
                   const actionIconSize = denseCards ? 14 : 16;
-                  const cycleCallsLabel =
-                    typeof cycleCalls === "number"
-                      ? t("auth_files.cycle_calls_count", { count: cycleCalls })
-                      : t("auth_files.cycle_calls_unknown");
-                  const successRateLabel =
-                    successRate === null
-                      ? "--"
-                      : `${successRate.toFixed(1)}%`;
+                  // Chips render only with known data, so no unknown fallbacks here.
+                  const cycleCallsLabel = t("auth_files.cycle_calls_count", {
+                    value: (cycleCalls ?? 0).toLocaleString(i18n.language),
+                  });
+                  const cycleTokensKnown =
+                    typeof cycleTotalTokens === "number" && Number.isFinite(cycleTotalTokens);
+                  const cycleTokensCompact = cycleTokensKnown
+                    ? formatCompactNumber(cycleTotalTokens, { locale: i18n.language })
+                    : "";
+                  const cycleTokensLabel = (
+                    <Trans
+                      i18nKey="auth_files.cycle_tokens_count"
+                      values={{ value: cycleTokensCompact }}
+                    />
+                  );
+                  const cycleTokensTooltip = (
+                    <Trans
+                      i18nKey="auth_files.cycle_tokens_count"
+                      values={{
+                        value: Math.round(cycleTotalTokens ?? 0).toLocaleString(i18n.language),
+                      }}
+                    />
+                  );
+                  const successRateLabel = `${(successRate ?? 0).toFixed(1)}%`;
                   const visibleTags = denseCards
                     ? displayTags.slice(0, 1)
                     : displayTags;
@@ -1838,7 +1882,7 @@ export function AuthFilesFilesTab({
                       padding={denseCards ? "compact" : "default"}
                       bodyClassName="mt-0 flex min-h-0 flex-1 flex-col"
                       className={[
-                        "group/card flex h-full w-full max-w-[34rem] flex-col border-slate-200/80 shadow-[0_8px_24px_rgb(15_23_42_/_0.04)] transition-colors duration-200 ease-out hover:border-slate-300 hover:bg-white md:max-w-none dark:border-white/[0.08] dark:shadow-[0_8px_24px_rgb(0_0_0_/_0.28)] dark:hover:border-neutral-700 dark:hover:bg-neutral-950/70",
+                        "group/card flex h-full w-full max-w-[34rem] flex-col border-slate-900/8 shadow-[0_8px_24px_rgb(15_23_42_/_0.04)] transition-colors duration-200 ease-out hover:border-slate-300 hover:bg-white md:max-w-none dark:border-white/[0.08] dark:shadow-[0_8px_24px_rgb(0_0_0_/_0.28)] dark:hover:border-neutral-700 dark:hover:bg-neutral-950/70",
                         denseCards ? "rounded-2xl" : "rounded-3xl",
                         fileSelected
                           ? "border-slate-900 ring-1 ring-slate-300 dark:border-white dark:ring-white/20"
@@ -2010,43 +2054,55 @@ export function AuthFilesFilesTab({
                               </button>
                             </HoverTooltip>
                           ) : null}
-                          <HoverTooltip
-                            content={cycleCallsLabel}
-                            className="shrink-0"
-                          >
-                            <span
-                              className={[
-                                "inline-flex shrink-0 items-center rounded-md bg-slate-100 text-2xs font-semibold tabular-nums text-slate-700 dark:bg-white/10 dark:text-white/70",
-                                denseCards ? "h-5 px-1.5" : "px-2 py-0.5",
-                              ].join(" ")}
+                          {typeof cycleCalls === "number" ? (
+                            <HoverTooltip
+                              content={cycleCallsLabel}
+                              className="shrink-0"
                             >
-                              {denseCards
-                                ? typeof cycleCalls === "number"
-                                  ? cycleCalls
-                                  : "--"
-                                : cycleCallsLabel}
-                            </span>
-                          </HoverTooltip>
-                          <HoverTooltip
-                            content={`${t("common.success_rate")} ${successRateLabel}`}
-                            className="shrink-0"
-                          >
-                            <span
-                              className={[
-                                "inline-flex shrink-0 items-center rounded-md bg-slate-100 text-2xs font-semibold text-slate-700 dark:bg-white/10 dark:text-white/70",
-                                denseCards ? "h-5 gap-0 px-1.5" : "gap-1 px-2 py-0.5",
-                              ].join(" ")}
-                            >
-                              {denseCards ? null : (
-                                <span>{t("common.success_rate")}</span>
-                              )}
                               <span
-                                className={`tabular-nums ${successRateClass}`}
+                                className={[
+                                  "inline-flex shrink-0 items-center rounded-md bg-slate-100 text-2xs font-semibold tabular-nums text-slate-700 dark:bg-white/10 dark:text-white/70",
+                                  denseCards ? "h-5 px-1.5" : "px-2 py-0.5",
+                                ].join(" ")}
                               >
-                                {successRateLabel}
+                                {denseCards ? cycleCalls : cycleCallsLabel}
                               </span>
-                            </span>
-                          </HoverTooltip>
+                            </HoverTooltip>
+                          ) : null}
+                          {cycleTokensKnown ? (
+                            <HoverTooltip content={cycleTokensTooltip} className="shrink-0">
+                              <span
+                                className={[
+                                  "inline-flex shrink-0 items-center rounded-md bg-slate-100 text-2xs font-semibold tabular-nums text-slate-700 dark:bg-white/10 dark:text-white/70",
+                                  denseCards ? "h-5 px-1.5" : "px-2 py-0.5",
+                                ].join(" ")}
+                              >
+                                {denseCards ? cycleTokensCompact : cycleTokensLabel}
+                              </span>
+                            </HoverTooltip>
+                          ) : null}
+                          {successRate !== null ? (
+                            <HoverTooltip
+                              content={`${t("common.success_rate")} ${successRateLabel}`}
+                              className="shrink-0"
+                            >
+                              <span
+                                className={[
+                                  "inline-flex shrink-0 items-center rounded-md bg-slate-100 text-2xs font-semibold text-slate-700 dark:bg-white/10 dark:text-white/70",
+                                  denseCards ? "h-5 gap-0 px-1.5" : "gap-1 px-2 py-0.5",
+                                ].join(" ")}
+                              >
+                                {denseCards ? null : (
+                                  <span>{t("common.success_rate")}</span>
+                                )}
+                                <span
+                                  className={`tabular-nums ${successRateClass}`}
+                                >
+                                  {successRateLabel}
+                                </span>
+                              </span>
+                            </HoverTooltip>
+                          ) : null}
                           {subscriptionBadge}
                           {runtimeOnly ? (
                             <span className="inline-flex shrink-0 items-center rounded-md bg-slate-900 px-2 py-0.5 text-2xs font-semibold text-white dark:bg-white dark:text-neutral-950">
@@ -2312,7 +2368,7 @@ export function AuthFilesFilesTab({
           data-testid="auth-files-upload-progress"
           aria-live="polite"
         >
-          <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.95),_rgba(241,245,249,0.95))] p-4 shadow-[0_20px_50px_rgb(15_23_42_/_0.08)] dark:border-white/10 dark:bg-[radial-gradient(circle_at_top_left,_rgba(39,39,42,0.98),_rgba(9,9,11,0.98))] dark:shadow-[0_24px_60px_rgb(0_0_0_/_0.28)]">
+          <div className="overflow-hidden rounded-3xl border border-slate-900/8 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.95),_rgba(241,245,249,0.95))] p-4 shadow-[0_20px_50px_rgb(15_23_42_/_0.08)] dark:border-white/10 dark:bg-[radial-gradient(circle_at_top_left,_rgba(39,39,42,0.98),_rgba(9,9,11,0.98))] dark:shadow-[0_24px_60px_rgb(0_0_0_/_0.28)]">
             <div className="flex items-start gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg shadow-slate-900/15 dark:bg-white dark:text-neutral-950 dark:shadow-black/25">
                 <Loader2 size={18} className="animate-spin" />
@@ -2364,7 +2420,7 @@ export function AuthFilesFilesTab({
             ].map((label) => (
               <div
                 key={label}
-                className="rounded-2xl border border-slate-200 bg-slate-50/90 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65"
+                className="rounded-2xl border border-slate-900/8 bg-slate-50/90 px-3 py-2 text-xs font-semibold text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/65"
               >
                 {label}
               </div>
@@ -2372,7 +2428,7 @@ export function AuthFilesFilesTab({
           </div>
 
           {uploadProgress.activeFileNames.length > 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-3 py-3 dark:border-white/10 dark:bg-white/[0.02]">
+            <div className="rounded-2xl border border-dashed border-slate-900/8 bg-white/80 px-3 py-3 dark:border-white/10 dark:bg-white/[0.02]">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 dark:text-white/35">
                 {t("auth_files.upload")}
               </p>
@@ -2509,7 +2565,7 @@ export function AuthFilesFilesTab({
         }
       >
         <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-neutral-800 dark:bg-white/[0.04]">
+          <div className="rounded-2xl border border-slate-900/8 bg-slate-50/70 p-4 dark:border-white/8 dark:bg-white/[0.04]">
             <ToggleSwitch
               checked={draftModelOwnerEnabled}
               onCheckedChange={setDraftModelOwnerEnabled}
@@ -2537,7 +2593,7 @@ export function AuthFilesFilesTab({
               />
             </div>
 
-            <div className="flex min-w-0 items-center rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3 dark:border-neutral-800 dark:bg-white/[0.04]">
+            <div className="flex min-w-0 items-center rounded-2xl border border-slate-900/8 bg-slate-50/70 px-4 py-3 dark:border-white/8 dark:bg-white/[0.04]">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase text-slate-400 dark:text-white/35">
                   {t("auth_files.type_filter")}
@@ -2549,7 +2605,7 @@ export function AuthFilesFilesTab({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-950/60">
+          <div className="rounded-2xl border border-slate-900/8 bg-white/70 p-4 shadow-sm dark:border-white/8 dark:bg-neutral-950/60">
             <div className="mb-3 flex items-center justify-between gap-3">
               <p className="text-sm font-semibold text-slate-900 dark:text-white">
                 {t("auth_files.detail_tab_models")}
@@ -2585,7 +2641,7 @@ export function AuthFilesFilesTab({
                     return (
                       <div
                         key={model.id}
-                        className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-2 dark:border-neutral-800 dark:bg-white/[0.03]"
+                        className="rounded-xl border border-slate-900/8 bg-slate-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/[0.03]"
                       >
                         <p className="truncate font-mono text-xs font-semibold text-slate-900 dark:text-white">
                           {model.id}

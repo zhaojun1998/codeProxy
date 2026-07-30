@@ -7,9 +7,11 @@ import { KeyValueInputList } from "../KeyValueInputList";
 import type { ProxyPoolEntry } from "@code-proxy/api-client/endpoints/proxies";
 import { ProxyPoolSelect } from "@features/proxy-pool";
 import type { OpenAIDraft } from "../providers-helpers";
+import { ModerationProfileSelect } from "@features/content-moderation";
+import { useModerationPermissions } from "@app/providers/useModerationPermissions";
 
 const SectionCard = ({ children }: { children: React.ReactNode }) => (
-  <div className="rounded-xl border border-slate-200 bg-white/70 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-950/60">
+  <div className="rounded-xl border border-slate-900/8 bg-white/70 p-4 shadow-sm dark:border-white/8 dark:bg-neutral-950/60">
     {children}
   </div>
 );
@@ -30,6 +32,7 @@ export function OpenAIKeyEntriesEditor({
   maskApiKey,
 }: OpenAIKeyEntriesEditorProps) {
   const { t } = useTranslation();
+  const moderationPerms = useModerationPermissions();
 
   return (
     <section className="space-y-2">
@@ -70,6 +73,11 @@ export function OpenAIKeyEntriesEditor({
                 <p className="text-sm font-semibold text-slate-900 dark:text-white">
                   {t("providers.key_number", { num: idx + 1 })}
                 </p>
+                {entry.channelId ? (
+                  <span className="max-w-full truncate font-mono text-xs text-slate-500 dark:text-white/50" title={entry.channelId}>
+                    {entry.channelId}
+                  </span>
+                ) : null}
                 <ToggleSwitch
                   checked={!entry.disabled}
                   ariaLabel={`${t("providers.enable_key_entry")} ${idx + 1}`}
@@ -100,6 +108,18 @@ export function OpenAIKeyEntriesEditor({
                 <Trash2 size={14} />
                 {t("providers.delete")}
               </Button>
+            </div>
+
+            <div className="mt-3 rounded-lg bg-slate-50/80 p-3 dark:bg-white/[0.04]">
+              <ModerationProfileSelect
+        canRead={moderationPerms.canRead}
+        canWrite={moderationPerms.canWrite}
+                channelType="provider_key"
+                channelId={entry.channelId ?? ""}
+                label={t("content_moderation.provider_key_override_profile_label")}
+                hint={t("content_moderation.provider_key_override_profile_hint")}
+                unpersistedHint={t("content_moderation.provider_key_profile_save_first")}
+              />
             </div>
 
             <div className="mt-3 grid gap-3 md:grid-cols-3">

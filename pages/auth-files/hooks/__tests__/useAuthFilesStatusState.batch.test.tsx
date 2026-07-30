@@ -7,6 +7,7 @@ import {
   setActiveCacheTenantId,
   DEFAULT_CACHE_TENANT_ID,
   setCacheTenantResolver,
+  writeAuthFilesDataCache,
 } from "@code-proxy/domain";
 import { useAuthFilesStatusState } from "../useAuthFilesStatusState";
 
@@ -183,6 +184,32 @@ describe("useAuthFilesStatusState batch refresh", () => {
     );
   });
 
+  test("visibility refresh uses GET status without starting a provider probe", async () => {
+    const setFiles = vi.fn();
+    const setDetailFile = vi.fn();
+    const { result } = renderHook(() =>
+      useAuthFilesStatusState({
+        tab: "files",
+        pageItems: files,
+        loading: false,
+        setFiles,
+        setDetailFile,
+      }),
+    );
+
+    await waitFor(() => expect(mocks.startStatusRefresh).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.refreshingPage).toBe(false));
+    await waitFor(() => expect(mocks.getStatus).toHaveBeenCalledTimes(2));
+    mocks.getStatus.mockClear();
+    mocks.startStatusRefresh.mockClear();
+
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await waitFor(() => expect(mocks.getStatus).toHaveBeenCalledTimes(1));
+    expect(mocks.startStatusRefresh).not.toHaveBeenCalled();
+  });
+
   test("forceRefreshPage posts one batch job then polls once and reloads snapshot", async () => {
     const setFiles = vi.fn();
     const setDetailFile = vi.fn();
@@ -261,6 +288,7 @@ describe("useAuthFilesStatusState batch refresh", () => {
             success_total_30d: 40,
             failure_total_30d: 10,
             cycle_cost_total: 1.5,
+            cycle_total_tokens: 123456,
             weekly_quota_used_percent: 20,
           },
         },
@@ -285,6 +313,7 @@ describe("useAuthFilesStatusState batch refresh", () => {
       // cycle/budget must fan to every real auth_index of the subject, not only canonical.
       expect(result.current.callsByAuthIndex["idx-1"]).toBe(5);
       expect(result.current.callsByAuthIndex["idx-2"]).toBe(5);
+      expect(result.current.cycleTotalTokensByAuthIndex["idx-2"]).toBe(123456);
       expect(result.current.cycleBudgetByAuthIndex["idx-2"]?.cycleCostTotal).toBe(1.5);
     });
     await waitFor(() => {
@@ -312,6 +341,82 @@ describe("useAuthFilesStatusState batch refresh", () => {
         expect(file.usage_projected_since).toBe("2026-06-15T00:00:00Z");
         expect(file.shared_subscription_expires_at).toBe("2026-08-01T00:00:00Z");
       }
+    });
+  });
+
+  test("partial cycle refresh keeps the last known token total", async () => {
+    mocks.getStatus
+      .mockResolvedValueOnce({
+        items: [
+          {
+            auth_index: "a1",
+            auth_subject_id: "sub-a",
+            quotas: [],
+            usage: {
+              cycle_request_total: 5,
+              cycle_cost_total: 1.5,
+              cycle_total_tokens: 123456,
+              cycle_known: true,
+            },
+          },
+        ],
+      })
+      .mockResolvedValue({
+        items: [
+          {
+            auth_index: "a1",
+            auth_subject_id: "sub-a",
+            quotas: [],
+            usage: {
+              cycle_request_total: 6,
+              cycle_known: true,
+            },
+          },
+        ],
+      });
+    mocks.startStatusRefresh.mockResolvedValue({
+      job_id: "job-partial-cycle",
+      accepted: 1,
+      deduplicated: 0,
+    });
+    mocks.getStatusRefreshJob.mockResolvedValue({
+      job_id: "job-partial-cycle",
+      state: "completed",
+      total: 1,
+      completed: 1,
+      failed: 0,
+      results: [
+        {
+          auth_index: "a1",
+          auth_subject_id: "sub-a",
+          state: "success",
+          result: {
+            auth_index: "a1",
+            auth_subject_id: "sub-a",
+            quotas: [],
+            usage: {
+              cycle_request_total: 6,
+              cycle_known: true,
+            },
+          },
+        },
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useAuthFilesStatusState({
+        tab: "files",
+        pageItems: [files[0]!],
+        loading: false,
+        setFiles: vi.fn(),
+        setDetailFile: vi.fn(),
+      }),
+    );
+
+    await waitFor(() => expect(mocks.getStatusRefreshJob).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(result.current.callsByAuthIndex.a1).toBe(6);
+      expect(result.current.cycleTotalTokensByAuthIndex.a1).toBe(123456);
     });
   });
 
@@ -364,6 +469,108 @@ describe("useAuthFilesStatusState batch refresh", () => {
     expect(patched[0]?.shared_subscription_started_at).toBe("2026-07-01T00:00:00Z");
     expect(patched[0]?.shared_subscription_expires_at).toBe("2026-08-01T00:00:00Z");
     expect(patched[0]?.shared_subscription_source).toBe("signed_claims");
+  });
+
+  test("cached provider metrics survive partial quota/status payloads on mount", async () => {
+    const mixedFiles: AuthFileItem[] = [
+      files[0]!,
+      {
+        name: "claude.json",
+        type: "anthropic",
+        auth_index: "claude-1",
+        size: 1,
+        modified: Date.now(),
+        disabled: false,
+      },
+    ];
+    writeAuthFilesDataCache({
+      tenantId: DEFAULT_CACHE_TENANT_ID,
+      savedAtMs: Date.now(),
+      files: mixedFiles,
+      quotaByFileName: {
+        "a.json": {
+          status: "success",
+          planType: "pro",
+          resetCreditCount: 3,
+          resetCreditExpirations: ["2026-08-01T00:00:00Z"],
+          items: [
+            {
+              key: "code_5h",
+              label: "m_quota.code_5h",
+              percent: 42,
+              value: "42%",
+              resetAtMs: 1234,
+              windowSeconds: 18_000,
+            },
+          ],
+        },
+        "claude.json": {
+          status: "success",
+          items: [
+            {
+              key: "five_hour",
+              label: "claude_quota.five_hour",
+              percent: 72,
+              resetAtMs: 5678,
+            },
+          ],
+        },
+      },
+      connectivityByFileName: {
+        "a.json": { latencyMs: 88, error: false },
+        "claude.json": { latencyMs: null, error: true },
+      },
+    });
+    mocks.getStatus.mockResolvedValue({
+      items: [
+        {
+          auth_index: "a1",
+          auth_subject_id: "sub-a",
+          plan_type: null,
+          reset_credit_count: null,
+          // Empty quotas model a partial payload that omitted provider metrics.
+          // An explicit percent: null intentionally clears stale cached values.
+          quotas: [],
+          usage: { request_total: 200 },
+        },
+        {
+          auth_index: "claude-1",
+          quotas: [],
+          usage: null,
+        },
+      ],
+    });
+    mocks.startStatusRefresh.mockImplementation(() => new Promise(() => {}));
+
+    const { result } = renderHook(() =>
+      useAuthFilesStatusState({
+        tab: "files",
+        pageItems: mixedFiles,
+        loading: false,
+        setFiles: vi.fn(),
+        setDetailFile: vi.fn(),
+      }),
+    );
+
+    expect(result.current.connectivityState.get("a.json")).toEqual({
+      loading: false,
+      latencyMs: 88,
+      error: false,
+    });
+    expect(result.current.connectivityState.get("claude.json")?.error).toBe(true);
+    await waitFor(() => expect(mocks.getStatus).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(result.current.quotaByFileName["a.json"]?.items[0]).toMatchObject({
+        label: "m_quota.code_5h",
+        percent: 42,
+        value: "42%",
+        resetAtMs: 1234,
+        windowSeconds: 18_000,
+      });
+      expect(result.current.quotaByFileName["a.json"]?.planType).toBe("pro");
+      expect(result.current.quotaByFileName["a.json"]?.resetCreditCount).toBe(3);
+      expect(result.current.quotaByFileName["claude.json"]?.items[0]?.percent).toBe(72);
+    });
   });
 
   test("job poll 404 does not mark status API unsupported", async () => {

@@ -22,15 +22,17 @@ import {
   DataTable,
   Drawer,
   SearchableSelect,
+  TABLE_ROW_ACTIONS_COLUMN,
   Tabs,
   TabsList,
   TabsTrigger,
   TextInput,
   type DataTableColumn,
   useToast,
+  resolveMenuIcon,
 } from "@code-proxy/ui";
 import { useAuth } from "@app/providers/AuthProvider";
-import { resolveMenuIcon } from "@app/navigation/menuIconMap";
+
 
 const MenuIconPicker = lazy(() =>
   import("./MenuIconPicker").then((module) => ({ default: module.MenuIconPicker })),
@@ -286,7 +288,10 @@ export function MenuManagementPage() {
           const label = t(menu.label_key, { defaultValue: menu.title || menu.code });
           const Icon = resolveMenuIcon(menu.icon);
           return (
-            <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: menu.depth * 22 }}>
+            <div
+              className="flex min-w-0 items-center gap-2"
+              style={{ paddingLeft: menu.depth * 22 }}
+            >
               {menu.hasChildren ? (
                 <Button
                   size="xs"
@@ -306,7 +311,9 @@ export function MenuManagementPage() {
                 >
                   <ChevronRight
                     size={15}
-                    className={isExpanded ? "rotate-90 transition-transform" : "transition-transform"}
+                    className={
+                      isExpanded ? "rotate-90 transition-transform" : "transition-transform"
+                    }
                   />
                 </Button>
               ) : (
@@ -315,7 +322,9 @@ export function MenuManagementPage() {
               <Icon size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
               <span className="min-w-0">
                 <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate font-medium text-slate-900 dark:text-white">{label}</span>
+                  <span className="truncate font-medium text-slate-900 dark:text-white">
+                    {label}
+                  </span>
                   {menu.badge_content ? (
                     <span className="shrink-0 rounded-full bg-blue-500 px-1.5 py-0.5 text-2xs font-medium text-white">
                       {menu.badge_content}
@@ -359,9 +368,7 @@ export function MenuManagementPage() {
             <div className="truncate text-slate-700 dark:text-slate-200">
               {displayCell(menu.path)}
             </div>
-            {menu.link_url ? (
-              <div className="truncate text-slate-400">{menu.link_url}</div>
-            ) : null}
+            {menu.link_url ? <div className="truncate text-slate-400">{menu.link_url}</div> : null}
           </div>
         ),
       },
@@ -398,7 +405,7 @@ export function MenuManagementPage() {
       {
         key: "actions",
         label: t("identity_admin.actions"),
-        width: "w-28",
+        ...TABLE_ROW_ACTIONS_COLUMN,
         render: (menu) => (
           <div className="flex items-center gap-1">
             <Button
@@ -436,7 +443,10 @@ export function MenuManagementPage() {
   );
 
   const showPath =
-    form.type === "directory" || form.type === "menu" || form.type === "embed" || form.type === "link";
+    form.type === "directory" ||
+    form.type === "menu" ||
+    form.type === "embed" ||
+    form.type === "link";
   const showComponent = form.type === "directory" || form.type === "menu";
   const showLink = form.type === "embed" || form.type === "link";
   const showPermission = form.type !== "directory";
@@ -449,7 +459,9 @@ export function MenuManagementPage() {
             <h2 className="text-base font-semibold text-slate-950 dark:text-white">
               {t("identity_admin.menu_management_title")}
             </h2>
-            <p className="text-sm text-slate-500">{t("identity_admin.menu_management_description")}</p>
+            <p className="text-sm text-slate-500">
+              {t("identity_admin.menu_management_description")}
+            </p>
           </div>
           {canUpdate ? (
             <Button variant="primary" size="sm" onClick={() => openCreate("")}>
@@ -480,9 +492,7 @@ export function MenuManagementPage() {
       <Drawer
         open={drawerOpen}
         title={
-          drawerMode === "create"
-            ? t("identity_admin.menu_create")
-            : t("identity_admin.menu_edit")
+          drawerMode === "create" ? t("identity_admin.menu_create") : t("identity_admin.menu_edit")
         }
         onClose={() => setDrawerOpen(false)}
         footer={
@@ -722,7 +732,7 @@ export function MenuManagementPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-slate-200 pt-4 dark:border-neutral-800">
+          <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-slate-900/8 pt-4 dark:border-white/8">
             <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"

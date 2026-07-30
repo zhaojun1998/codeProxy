@@ -31,17 +31,26 @@ import { ToggleSwitch } from "@code-proxy/ui";
 import { EChart } from "@code-proxy/ui";
 import { ProxyPoolSelect } from "@features/proxy-pool";
 import { useProxyPoolChecks } from "@features/proxy-pool";
+import { ModerationProfileSelect } from "@features/content-moderation";
+import { useModerationPermissions } from "@app/providers/useModerationPermissions";
 import {
   canRenameAuthFileChannel,
   downloadTextAsFile,
+  formatPlanBadgeLabel,
+  getActiveCacheTenantId,
   matchesModelPattern,
   normalizeProviderKey,
   parseAdditionalQuotaWindowLabel,
   readAuthFileChannelName,
+  readAuthFilesDataCache,
   resolveClaudeOAuthHealth,
   resolveAuthFileDisplayName,
+  resolveAuthFileDisplayPlanType,
   resolveAuthFilePlanType,
   resolveFileType,
+  resolvePlanBadgeClass,
+  shouldShowAuthFilePlanBadge,
+  translateParameterizedQuotaLabel,
   type AuthFileModelItem,
   type AuthFileModelOwnerGroup,
   type ChannelEditorState,
@@ -52,6 +61,12 @@ import {
   type PrefixProxyEditorState,
 } from "@code-proxy/domain";
 import type { QuotaState } from "@features/quota-preview/quota-helpers";
+import {
+  formatLocalDateKey,
+  formatLocalHourKey,
+  parseBucketKeyMs,
+  resolveNearestBucketKey,
+} from "./trendBuckets";
 
 type DetailTab = "usage" | "identity" | "fields" | "models";
 type DetailTrendWindow = "5h" | "week";
@@ -71,10 +86,11 @@ const FIVE_HOUR_WINDOW_SECONDS = 18000;
 const WEEK_WINDOW_SECONDS = 604800;
 const TREND_CHART_ANIMATION_MS = 680;
 const TREND_CHART_ANIMATION_GUARD_MS = TREND_CHART_ANIMATION_MS + 120;
-const SUMMARY_CARD_CLASS_NAME = "min-w-0 rounded-lg bg-slate-50/80 px-3 py-3 dark:bg-white/[0.04]";
+const SUMMARY_CARD_CLASS_NAME =
+  "h-full min-w-0 rounded-lg bg-slate-50/80 px-3 py-3 dark:bg-white/[0.04]";
 const SUMMARY_LABEL_CLASS_NAME = "text-xs font-semibold text-slate-500 dark:text-white/55";
 const SUMMARY_VALUE_CLASS_NAME =
-  "mt-2 min-w-0 break-words text-2xl font-semibold leading-tight text-slate-950 dark:text-white";
+  "mt-2 min-w-0 whitespace-nowrap text-lg font-semibold leading-tight tracking-tight tabular-nums text-slate-950 dark:text-white";
 const IDENTITY_FINGERPRINT_SOURCE_ORDER: IdentityFingerprintFieldSource[] = [
   "learned",
   "preset",
@@ -98,20 +114,6 @@ const useIdentityDesktopLayout = () => {
   }, []);
 
   return matches;
-};
-
-const padTwo = (value: number) => String(value).padStart(2, "0");
-
-const formatLocalDateKey = (timestamp: string) => {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "";
-  return `${date.getFullYear()}-${padTwo(date.getMonth() + 1)}-${padTwo(date.getDate())}`;
-};
-
-const formatLocalHourKey = (timestamp: string) => {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "";
-  return `${formatLocalDateKey(timestamp)} ${padTwo(date.getHours())}:00`;
 };
 
 const formatCurrency = (value: number) => `$${(Number.isFinite(value) ? value : 0).toFixed(4)}`;
@@ -278,6 +280,7 @@ export function AuthFileDetailModal({
   saveXAIEndpoint,
 }: AuthFileDetailModalProps) {
   const { t, i18n } = useTranslation();
+  const moderationPerms = useModerationPermissions();
   const isIdentityDesktopLayout = useIdentityDesktopLayout();
   const [viewedIdentityProfileKey, setViewedIdentityProfileKey] = useState("");
   const proxyCheckState = useProxyPoolChecks(proxyPoolEntries, open && detailTab === "fields");
@@ -289,8 +292,9 @@ export function AuthFileDetailModal({
   const visibleModelsError = usesMappedModelOwner ? null : modelsError;
   const providerKey = normalizeProviderKey(modelsFileType);
   const detailProviderKey = detailFile ? normalizeProviderKey(resolveFileType(detailFile)) : "";
-  const supportsUsageTrend =
-    detailProviderKey === "kimi" || detailProviderKey === "codex" || detailProviderKey === "xai";
+  const supportsUsageTrend = ["kimi", "codex", "xai", "claude", "anthropic"].includes(
+    detailProviderKey,
+  );
   const hasIdentityFingerprint = Boolean(detailFile?.identity_fingerprint_summary);
   useEffect(() => {
     const profiles = identityFingerprintDetail?.profiles ?? [];
@@ -315,24 +319,33 @@ export function AuthFileDetailModal({
     ? resolveAuthFileDisplayName(detailFile) || String(detailFile.name || "")
     : t("auth_files.view_auth_file");
   const claudeOAuthHealth = detailFile ? resolveClaudeOAuthHealth(detailFile) : null;
-  const detailPlanType = detailFile ? resolveAuthFilePlanType(detailFile, quotaState) : null;
-  const detailPlanLabel = useMemo(() => {
-    if (!detailPlanType) return "";
-    const normalized = detailPlanType.trim().toLowerCase();
-    if (!normalized) return "";
-    if (normalized === "plus" || normalized === "team" || normalized === "free") {
-      return t(`codex_quota.plan_${normalized}`);
-    }
-    if (normalized === "supergrok") return t("xai_quota.plan_supergrok");
-    if (
-      normalized === "supergrok-heavy" ||
-      normalized === "supergrok_heavy" ||
-      normalized === "supergrokheavy"
-    ) {
-      return t("xai_quota.plan_supergrok_heavy");
-    }
-    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
-  }, [detailPlanType, t]);
+  // Same membership chip as cards/table: display tier + solid gradient, not soft amber title pill.
+  const detailBasePlanType = detailFile ? resolveAuthFilePlanType(detailFile, quotaState) : null;
+  const detailPlanType = useMemo(() => {
+    if (!detailFile) return null;
+    const cachedPlan =
+      readAuthFilesDataCache(getActiveCacheTenantId())?.displayPlanByFileName?.[detailFile.name] ??
+      null;
+    return resolveAuthFileDisplayPlanType(
+      detailFile,
+      quotaState,
+      {
+        cycleCostTotal: detailTrend?.cycle_cost_total ?? null,
+        weeklyQuotaUsedPercent: detailTrend?.weekly_quota_used_percent ?? null,
+      },
+      cachedPlan ?? detailBasePlanType,
+    );
+  }, [
+    detailBasePlanType,
+    detailFile,
+    detailTrend?.cycle_cost_total,
+    detailTrend?.weekly_quota_used_percent,
+    quotaState,
+  ]);
+  const detailPlanLabel = detailPlanType ? formatPlanBadgeLabel(detailPlanType) : "";
+  const showDetailPlanBadge = detailFile
+    ? shouldShowAuthFilePlanBadge(detailFile, detailBasePlanType)
+    : false;
   const excludedModels = excluded[providerKey] ?? [];
   const canRenameChannel = detailFile ? canRenameAuthFileChannel(detailFile) : false;
   const channelBaseline = detailFile ? readAuthFileChannelName(detailFile) : "";
@@ -361,11 +374,10 @@ export function AuthFileDetailModal({
     () => (label: string) => {
       if (!label) return label;
       if (label.startsWith("m_quota.")) return t(label);
+      if (label.startsWith("claude_quota.")) return translateParameterizedQuotaLabel(t, label);
       const additionalQuota = parseAdditionalQuotaWindowLabel(label);
       if (additionalQuota) {
-        return t(`m_quota.additional_${additionalQuota.window}`, {
-          name: additionalQuota.name,
-        });
+        return t(`m_quota.additional_${additionalQuota.window}`, { name: additionalQuota.name });
       }
       return label;
     },
@@ -424,15 +436,22 @@ export function AuthFileDetailModal({
       costByKey.set(key, point.cost ?? 0);
     });
 
+    const bucketKeys = Array.from(xKeys);
+    const bucketMsByKey = new Map(bucketKeys.map((key) => [key, parseBucketKeyMs(key)]));
+    const bucketToleranceMs = detailTrendWindow === "5h" ? 3_600_000 : 86_400_000;
     const quotaBySeries = activeQuotaSeries.map((series) => {
       const values = new Map<string, number | null>();
       series.points.forEach((point) => {
         if (!point.timestamp) return;
-        const key =
+        const localKey =
           detailTrendWindow === "5h"
             ? formatLocalHourKey(point.timestamp)
             : formatLocalDateKey(point.timestamp);
-        if (!key || !xKeys.has(key)) return;
+        const key =
+          localKey && xKeys.has(localKey)
+            ? localKey
+            : resolveNearestBucketKey(point.timestamp, bucketKeys, bucketMsByKey, bucketToleranceMs);
+        if (!key) return;
         values.set(key, toQuotaUsedPercent(point.percent));
       });
       return { series, values };
@@ -998,7 +1017,7 @@ export function AuthFileDetailModal({
 
             <div
               className={
-                hasCodexProfiles ? "mt-5 border-t border-slate-200 pt-4 dark:border-white/10" : ""
+                hasCodexProfiles ? "mt-5 border-t border-slate-900/8 pt-4 dark:border-white/10" : ""
               }
             >
               <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
@@ -1138,12 +1157,16 @@ export function AuthFileDetailModal({
 
   const renderUsageTrend = () => {
     const isCodexDetail = detailProviderKey === "codex";
-    // xAI only has a weekly window (no Codex 5h slot); still show predicted weekly quota like Codex.
-    const showPredictedWeeklyQuota = isCodexDetail || detailProviderKey === "xai";
-    const summaryGridClassName = showPredictedWeeklyQuota
-      ? "grid gap-3 sm:grid-cols-2 xl:grid-cols-6"
-      : "grid gap-3 sm:grid-cols-2 xl:grid-cols-5";
-    const summarySkeletonCount = showPredictedWeeklyQuota ? 6 : 5;
+    const isClaudeDetail = detailProviderKey === "claude" || detailProviderKey === "anthropic";
+    // Codex/claude expose a 5h window; xAI only weekly. All three show predicted weekly quota.
+    const fiveHourQuotaKey = isCodexDetail ? "code_5h" : isClaudeDetail ? "five_hour" : null;
+    const weeklyQuotaKey =
+      isCodexDetail ? "code_week" : isClaudeDetail ? "seven_day" : "weekly_limit";
+    const showPredictedWeeklyQuota =
+      isCodexDetail || isClaudeDetail || detailProviderKey === "xai";
+    const summaryGridClassName =
+      "grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[repeat(auto-fit,minmax(9rem,1fr))]";
+    const summarySkeletonCount = showPredictedWeeklyQuota ? 7 : 6;
 
     if (detailTrendLoading && !detailTrend) {
       const skeletonClass = "animate-pulse rounded-lg bg-slate-100/80 dark:bg-white/[0.06]";
@@ -1193,31 +1216,30 @@ export function AuthFileDetailModal({
       detailTrend.cycle_known === true
         ? detailTrend.cycle_cost_total
         : detailTrend.cycle_cost_total;
+    const displayCycleTotalTokens =
+      typeof detailTrend.cycle_total_tokens === "number" &&
+      Number.isFinite(detailTrend.cycle_total_tokens)
+        ? Math.max(0, Math.round(detailTrend.cycle_total_tokens))
+        : null;
     const cycleStart = detailTrend.cycle_start
       ? new Date(detailTrend.cycle_start).toLocaleString()
       : "--";
-    const fiveHourQuotaUsedPercent = isCodexDetail
+    const fiveHourQuotaUsedPercent = fiveHourQuotaKey
       ? latestQuotaUsedPercent(
           detailTrend.quota_series,
-          "code_5h",
+          fiveHourQuotaKey,
           (windowSeconds) => windowSeconds === FIVE_HOUR_WINDOW_SECONDS,
         )
       : null;
     const weeklyQuotaUsedPercent =
       detailTrend.weekly_quota_used_percent ??
-      (isCodexDetail
+      (showPredictedWeeklyQuota
         ? latestQuotaUsedPercent(
             detailTrend.quota_series,
-            "code_week",
+            weeklyQuotaKey,
             (windowSeconds) => windowSeconds >= WEEK_WINDOW_SECONDS,
           )
-        : detailProviderKey === "xai"
-          ? latestQuotaUsedPercent(
-              detailTrend.quota_series,
-              "weekly_limit",
-              (windowSeconds) => windowSeconds >= WEEK_WINDOW_SECONDS,
-            )
-          : null);
+        : null);
     // Prefer the backend weekly used percent; fall back to the latest weekly_limit snapshot for xAI.
     const weeklyQuotaUsed = formatPercent(weeklyQuotaUsedPercent);
     const estimatedFiveHourQuota = estimateQuotaBudget(
@@ -1225,11 +1247,22 @@ export function AuthFileDetailModal({
       fiveHourQuotaUsedPercent,
     );
     const estimatedWeeklyQuota = estimateQuotaBudget(displayCycleCostTotal, weeklyQuotaUsedPercent);
+    // ponytail: hide zero noise; null/"--" is already non-zero display path
+    const showLast7DaysRequests = !isCodexDetail && detailTrend.request_total > 0;
+    const showCycleRequests = displayCycleRequestTotal > 0;
+    const showCycleCost = displayCycleCostTotal > 0;
+    const showFiveHourQuota = fiveHourQuotaKey !== null && estimatedFiveHourQuota > 0;
+    const showWeeklyQuota = showPredictedWeeklyQuota && estimatedWeeklyQuota > 0;
+    const showWeeklyUsed =
+      typeof weeklyQuotaUsedPercent === "number" &&
+      Number.isFinite(weeklyQuotaUsedPercent) &&
+      weeklyQuotaUsedPercent > 0;
+    const showCycleStart = Boolean(detailTrend.cycle_start);
 
     return (
       <div className="space-y-4">
         <div className={summaryGridClassName}>
-          {!isCodexDetail ? (
+          {showLast7DaysRequests ? (
             <div className={SUMMARY_CARD_CLASS_NAME}>
               <p className={SUMMARY_LABEL_CLASS_NAME}>
                 {t("auth_files.trend_last_7_days_requests")}
@@ -1237,15 +1270,29 @@ export function AuthFileDetailModal({
               <p className={SUMMARY_VALUE_CLASS_NAME}>{formatCount(detailTrend.request_total)}</p>
             </div>
           ) : null}
+          {showCycleRequests ? (
+            <div className={SUMMARY_CARD_CLASS_NAME}>
+              <p className={SUMMARY_LABEL_CLASS_NAME}>{t("auth_files.trend_current_weekly_cycle")}</p>
+              <p className={SUMMARY_VALUE_CLASS_NAME}>{formatCount(displayCycleRequestTotal)}</p>
+            </div>
+          ) : null}
+          {showCycleCost ? (
+            <div className={SUMMARY_CARD_CLASS_NAME}>
+              <p className={SUMMARY_LABEL_CLASS_NAME}>{t("auth_files.trend_current_cycle_cost")}</p>
+              <p className={SUMMARY_VALUE_CLASS_NAME}>{formatCurrency(displayCycleCostTotal)}</p>
+            </div>
+          ) : null}
           <div className={SUMMARY_CARD_CLASS_NAME}>
-            <p className={SUMMARY_LABEL_CLASS_NAME}>{t("auth_files.trend_current_weekly_cycle")}</p>
-            <p className={SUMMARY_VALUE_CLASS_NAME}>{formatCount(displayCycleRequestTotal)}</p>
+            <p className={SUMMARY_LABEL_CLASS_NAME}>
+              {t("auth_files.trend_current_cycle_tokens")}
+            </p>
+            <p className={SUMMARY_VALUE_CLASS_NAME}>
+              {displayCycleTotalTokens === null
+                ? "--"
+                : displayCycleTotalTokens.toLocaleString(i18n.language)}
+            </p>
           </div>
-          <div className={SUMMARY_CARD_CLASS_NAME}>
-            <p className={SUMMARY_LABEL_CLASS_NAME}>{t("auth_files.trend_current_cycle_cost")}</p>
-            <p className={SUMMARY_VALUE_CLASS_NAME}>{formatCurrency(displayCycleCostTotal)}</p>
-          </div>
-          {isCodexDetail ? (
+          {showFiveHourQuota ? (
             <div className={SUMMARY_CARD_CLASS_NAME}>
               <p className={SUMMARY_LABEL_CLASS_NAME}>
                 {t("auth_files.trend_predicted_5h_window_quota")}
@@ -1253,7 +1300,7 @@ export function AuthFileDetailModal({
               <p className={SUMMARY_VALUE_CLASS_NAME}>{formatCurrency(estimatedFiveHourQuota)}</p>
             </div>
           ) : null}
-          {showPredictedWeeklyQuota ? (
+          {showWeeklyQuota ? (
             <div className={SUMMARY_CARD_CLASS_NAME}>
               <p className={SUMMARY_LABEL_CLASS_NAME}>
                 {t("auth_files.trend_predicted_week_window_quota")}
@@ -1261,16 +1308,20 @@ export function AuthFileDetailModal({
               <p className={SUMMARY_VALUE_CLASS_NAME}>{formatCurrency(estimatedWeeklyQuota)}</p>
             </div>
           ) : null}
-          <div className={SUMMARY_CARD_CLASS_NAME}>
-            <p className={SUMMARY_LABEL_CLASS_NAME}>{t("auth_files.trend_weekly_quota_used")}</p>
-            <p className={SUMMARY_VALUE_CLASS_NAME}>{weeklyQuotaUsed}</p>
-          </div>
-          <div className={SUMMARY_CARD_CLASS_NAME}>
-            <p className={SUMMARY_LABEL_CLASS_NAME}>{t("auth_files.trend_cycle_start")}</p>
-            <p className="mt-2 truncate text-sm font-semibold text-slate-800 dark:text-white/85">
-              {cycleStart}
-            </p>
-          </div>
+          {showWeeklyUsed ? (
+            <div className={SUMMARY_CARD_CLASS_NAME}>
+              <p className={SUMMARY_LABEL_CLASS_NAME}>{t("auth_files.trend_weekly_quota_used")}</p>
+              <p className={SUMMARY_VALUE_CLASS_NAME}>{weeklyQuotaUsed}</p>
+            </div>
+          ) : null}
+          {showCycleStart ? (
+            <div className={SUMMARY_CARD_CLASS_NAME}>
+              <p className={SUMMARY_LABEL_CLASS_NAME}>{t("auth_files.trend_cycle_start")}</p>
+              <p className="mt-2 whitespace-normal break-words text-sm font-semibold leading-tight text-slate-800 dark:text-white/85">
+                {cycleStart}
+              </p>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1314,8 +1365,14 @@ export function AuthFileDetailModal({
       open={open}
       title={detailTitle}
       titleAccessory={
-        detailPlanLabel ? (
-          <span className="inline-flex shrink-0 items-center rounded-full bg-amber-50 px-2 py-0.5 text-2xs font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">
+        showDetailPlanBadge && detailPlanLabel ? (
+          <span
+            data-testid="auth-file-plan-badge"
+            className={[
+              "inline-flex shrink-0 items-center rounded-md px-2 py-0.5 text-2xs font-bold tracking-wide",
+              resolvePlanBadgeClass(detailPlanType),
+            ].join(" ")}
+          >
             {detailPlanLabel}
           </span>
         ) : undefined
@@ -1432,6 +1489,16 @@ export function AuthFileDetailModal({
                     className="grid max-w-none items-start gap-x-10 gap-y-5 lg:grid-cols-2"
                     data-testid="auth-file-fields-grid"
                   >
+                    <div className="min-w-0 rounded-lg bg-slate-50/80 px-4 py-4 lg:col-span-2 dark:bg-white/[0.04]">
+                      <ModerationProfileSelect
+        canRead={moderationPerms.canRead}
+        canWrite={moderationPerms.canWrite}
+                        channelType="auth_file"
+                        channelId={String(detailFile?.id ?? "")}
+                        label={t("content_moderation.auth_file_profile_label")}
+                        hint={t("content_moderation.auth_file_profile_hint")}
+                      />
+                    </div>
                     {claudeOAuthHealth ? (
                       <div
                         className="min-w-0 space-y-4 rounded-lg bg-slate-50/80 px-4 py-4 lg:col-span-2 dark:bg-white/[0.04]"

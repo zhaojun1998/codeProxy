@@ -39,7 +39,7 @@ import {
   type OpenCodeGoUsageStore,
 } from "./OpenCodeGoUsageCardSection";
 import { useProviderKeyEditor } from "../hooks/useProviderKeyEditor";
-import { useProviderLatency } from "../hooks/useProviderLatency";
+import { useProviderLatency } from "@features/provider-latency";
 import { useProviderUsageSummary } from "../hooks/useProviderUsageSummary";
 import { normalizeUsageSourceId, type KeyStatBucket } from "@code-proxy/domain";
 import { getCachedData, setCachedData } from "../provider-cache";
@@ -1759,7 +1759,7 @@ export function ProvidersPage() {
         {importPreview ? (
           <div className="space-y-4 text-sm text-slate-700 dark:text-white/75">
             <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="rounded-2xl border border-slate-900/8 bg-slate-50 px-4 py-3 dark:border-white/8 dark:bg-neutral-900">
                 <div>
                   {t("providers.diff_added", {
                     count: importPreview.diff.added,
@@ -1771,7 +1771,7 @@ export function ProvidersPage() {
                   })}
                 </div>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="rounded-2xl border border-slate-900/8 bg-slate-50 px-4 py-3 dark:border-white/8 dark:bg-neutral-900">
                 <div>
                   {t("providers.diff_removed", {
                     count: importPreview.diff.removed,

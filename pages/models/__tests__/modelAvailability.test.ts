@@ -20,6 +20,30 @@ const baseModel = (id: string, ownedBy = "xai"): ModelItem => ({
   supportsVision: false,
 });
 
+const pricedModel = (
+  id: string,
+  inputPricePerMillion: number,
+  outputPricePerMillion: number,
+): ModelItem => ({
+  ...baseModel(id),
+  pricing: {
+    ...emptyModelPricing(),
+    inputPricePerMillion,
+    outputPricePerMillion,
+  },
+});
+
+const capabilityModel = (
+  id: string,
+  inputModalities: string[],
+  outputModalities: string[],
+): ModelItem => ({
+  ...baseModel(id),
+  inputModalities,
+  outputModalities,
+  supportsVision: inputModalities.includes("image"),
+});
+
 const pathItem = (id: string, ownedBy: string): ModelPathAvailabilityItem => ({
   id,
   owned_by: ownedBy,
@@ -115,5 +139,52 @@ describe("mergeConfiguredModelAvailability path enrichment", () => {
     );
 
     expect(merged.map((m) => m.id).sort()).toEqual(["gpt-5", "path-only-model"]);
+  });
+
+  test("inherits base pricing for path-only provider-prefixed models", () => {
+    const merged = mergeConfiguredModelAvailability(
+      [pricedModel("deepseek-v4-flash", 0.098, 0.196)],
+      null,
+      [pathItem("ollama/deepseek-v4-flash", "ollama")],
+    );
+
+    expect(merged.find((model) => model.id === "ollama/deepseek-v4-flash")?.pricing).toMatchObject({
+      inputPricePerMillion: 0.098,
+      outputPricePerMillion: 0.196,
+    });
+  });
+
+  test("inherits base capabilities for path-only provider-prefixed models", () => {
+    const merged = mergeConfiguredModelAvailability(
+      [capabilityModel("kimi-k2.5", ["text", "image"], ["text"])],
+      null,
+      [pathItem("ollama/kimi-k2.5", "ollama")],
+    );
+
+    expect(merged.find((model) => model.id === "ollama/kimi-k2.5")).toMatchObject({
+      inputModalities: ["text", "image"],
+      outputModalities: ["text"],
+      supportsVision: true,
+    });
+  });
+
+  test("inherits base pricing for unpriced variants without overriding exact custom pricing", () => {
+    const merged = mergeConfiguredModelAvailability(
+      [
+        pricedModel("deepseek-v4-flash", 0.098, 0.196),
+        baseModel("deepseek-v4-flash:free"),
+        pricedModel("deepseek-v4-flash:custom", 3, 12),
+      ],
+      null,
+    );
+
+    expect(merged.find((model) => model.id === "deepseek-v4-flash:free")?.pricing).toMatchObject({
+      inputPricePerMillion: 0.098,
+      outputPricePerMillion: 0.196,
+    });
+    expect(merged.find((model) => model.id === "deepseek-v4-flash:custom")?.pricing).toMatchObject({
+      inputPricePerMillion: 3,
+      outputPricePerMillion: 12,
+    });
   });
 });

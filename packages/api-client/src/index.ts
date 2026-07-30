@@ -75,6 +75,14 @@ export { modelsApi } from "./endpoints/models";
 export type * from "./endpoints/models";
 export { versionApi } from "./endpoints/version";
 export { quotaApi } from "./endpoints/quota";
+export type * from "./endpoints/period-spending";
+export {
+  EMPTY_PERIOD_SPENDING_LIMITS,
+  PERIOD_SPENDING_PERIODS,
+  extractQuotaValidationError,
+  hasPeriodSpendingLimits,
+  normalizePeriodSpendingLimits,
+} from "./endpoints/period-spending";
 export { aiAccountsStatusApi } from "./endpoints/ai-accounts-status";
 export type * from "./endpoints/ai-accounts-status";
 export { identityFingerprintApi } from "./endpoints/identity-fingerprint";
@@ -84,8 +92,11 @@ export type * from "./endpoints/prompt-filter";
 export { updateApi } from "./endpoints/update";
 export type * from "./endpoints/update";
 export { imageGenerationApi } from "./endpoints/image-generation";
+export type * from "./endpoints/image-generation";
 export { proxiesApi } from "./endpoints/proxies";
 export type * from "./endpoints/proxies";
+export { contentModerationApi } from "./endpoints/content-moderation";
+export type * from "./endpoints/content-moderation";
 export {
   ccSwitchImportConfigsApi,
   normalizeCcSwitchImportConfigs,

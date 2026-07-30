@@ -1,3 +1,5 @@
+import type { PeriodSpendingItem } from "@code-proxy/api-client";
+
 export interface PublicChannelFilterOption {
   value: string;
   label: string;
@@ -81,6 +83,12 @@ export interface ChartDataResponse {
     requests: number;
     tokens: number;
   }>;
+  api_key_distribution?: Array<{
+    api_key_id: string;
+    name: string;
+    requests: number;
+    tokens: number;
+  }>;
   api_key_name?: string;
   stats: {
     total: number;
@@ -103,6 +111,13 @@ export interface PublicUsageLimits {
   "daily-spending-used"?: number;
 }
 
+export interface PublicQuotaScope {
+  scope: "account" | "key";
+  "period-spending": PeriodSpendingItem[];
+  "daily-spending-used": number;
+  "lifetime-spending-used": number;
+}
+
 export interface PublicUsageSummaryResponse {
   found: boolean;
   range: string;
@@ -111,6 +126,7 @@ export interface PublicUsageSummaryResponse {
     quota_cost: number;
   };
   limits?: PublicUsageLimits | null;
+  "quota-scopes"?: PublicQuotaScope[];
 }
 
 export interface TableColumn<T> {

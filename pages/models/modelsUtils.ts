@@ -19,6 +19,7 @@ import {
   formatModelPrice,
   hasModelPricing,
   invalidateConfiguredModelAvailability,
+  modelConfigLookupIds,
   modelHasTextCapability as modelHasTextCapabilityFromMeta,
   normalizeModelConfigMetadataRows,
 } from "@features/model-availability";
@@ -163,6 +164,63 @@ export function mergeConfiguredModelAvailability(
     (availability?.items ?? []).map((item) => [item.id.toLowerCase(), item] as const),
   );
 
+  const pricingById = new Map<string, ModelItem["pricing"]>();
+  const indexPricing = (id: string, pricing: ModelItem["pricing"] | undefined) => {
+    if (!pricing || !hasModelPricing(pricing)) return;
+    pricingById.set(id.trim().toLowerCase(), pricing);
+  };
+  (availability?.items ?? []).forEach((item) => indexPricing(item.id, item.pricing));
+  data.forEach((model) => indexPricing(model.id, model.pricing));
+
+  const attachPricing = (model: ModelItem): ModelItem => {
+    if (hasModelPricing(model.pricing)) return model;
+    for (const candidate of modelConfigLookupIds(model.id)) {
+      const pricing = pricingById.get(candidate);
+      if (pricing) return { ...model, pricing: { ...pricing } };
+    }
+    return model;
+  };
+
+  const capabilitiesById = new Map<
+    string,
+    Pick<ModelItem, "inputModalities" | "outputModalities" | "supportsVision">
+  >();
+  const indexCapabilities = (model: ModelItem) => {
+    if (
+      model.inputModalities.length === 0 &&
+      model.outputModalities.length === 0 &&
+      !model.supportsVision
+    ) {
+      return;
+    }
+    capabilitiesById.set(model.id.trim().toLowerCase(), model);
+  };
+  (availability?.items ?? []).forEach((item) =>
+    indexCapabilities(availabilityItemToModel(item)),
+  );
+  data.forEach(indexCapabilities);
+
+  const attachCapabilities = (model: ModelItem): ModelItem => {
+    if (
+      model.inputModalities.length > 0 ||
+      model.outputModalities.length > 0 ||
+      model.supportsVision
+    ) {
+      return model;
+    }
+    for (const candidate of modelConfigLookupIds(model.id)) {
+      const capabilities = capabilitiesById.get(candidate);
+      if (!capabilities) continue;
+      return {
+        ...model,
+        inputModalities: [...capabilities.inputModalities],
+        outputModalities: [...capabilities.outputModalities],
+        supportsVision: capabilities.supportsVision,
+      };
+    }
+    return model;
+  };
+
   // Prefer config-row fields, but keep runtime channel sources from availability.
   const attachSources = (model: ModelItem): ModelItem => {
     const fromAvailability = availabilityById.get(model.id.toLowerCase());
@@ -174,13 +232,16 @@ export function mergeConfiguredModelAvailability(
     availability?.scoped
       ? filterByConfiguredModelAvailability(data, availability)
       : [...data]
-  ).map(attachSources);
+  )
+    .map(attachSources)
+    .map(attachCapabilities)
+    .map(attachPricing);
 
   const seen = new Set(visible.map((m) => m.id.toLowerCase()));
   for (const item of availability?.items ?? []) {
     const key = item.id.toLowerCase();
     if (seen.has(key)) continue;
-    visible.push(availabilityItemToModel(item));
+    visible.push(attachPricing(attachCapabilities(availabilityItemToModel(item))));
     seen.add(key);
   }
   // Path-only rows enrich discovery when there is no scoped allow-list.
@@ -191,11 +252,15 @@ export function mergeConfiguredModelAvailability(
     if (seen.has(key)) continue;
     if (availability?.scoped && !availabilityById.has(key)) continue;
     visible.push(
-      availabilityItemToModel({
-        id: item.id,
-        owned_by: item.owned_by,
-        source: item.kind || "path",
-      }),
+      attachPricing(
+        attachCapabilities(
+          availabilityItemToModel({
+            id: item.id,
+            owned_by: item.owned_by,
+            source: item.kind || "path",
+          }),
+        ),
+      ),
     );
     seen.add(key);
   }

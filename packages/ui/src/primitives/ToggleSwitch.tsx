@@ -1,5 +1,17 @@
 import { useId, type ReactNode } from "react";
 
+export interface ToggleSwitchProps {
+  checked: boolean;
+  onCheckedChange: (next: boolean) => void;
+  label?: ReactNode;
+  description?: ReactNode;
+  disabled?: boolean;
+  ariaLabel?: string;
+  id?: string;
+  "aria-describedby"?: string;
+  "aria-invalid"?: boolean | "true" | "false";
+}
+
 export function ToggleSwitch({
   checked,
   onCheckedChange,
@@ -7,24 +19,23 @@ export function ToggleSwitch({
   description,
   disabled = false,
   ariaLabel,
-}: {
-  checked: boolean;
-  onCheckedChange: (next: boolean) => void;
-  label?: ReactNode;
-  description?: ReactNode;
-  disabled?: boolean;
-  ariaLabel?: string;
-}) {
-  const id = useId();
+  id,
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
+}: ToggleSwitchProps) {
+  const generatedId = useId();
+  const resolvedId = id ?? generatedId;
   const hasText = Boolean(label || description);
 
   const button = (
     <button
-      id={id}
+      id={resolvedId}
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={ariaLabel ?? (typeof label === "string" ? label : undefined)}
+      aria-describedby={ariaDescribedBy}
+      aria-invalid={ariaInvalid}
       disabled={disabled}
       onClick={() => onCheckedChange(!checked)}
       className={[
@@ -33,7 +44,7 @@ export function ToggleSwitch({
         disabled ? "opacity-60" : null,
         checked
           ? "border-slate-900 bg-slate-900 dark:border-white dark:bg-white"
-          : "border-slate-200 bg-slate-100 dark:border-neutral-800 dark:bg-neutral-900",
+          : "border-slate-900/8 bg-slate-100 dark:border-white/8 dark:bg-neutral-900",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -62,7 +73,7 @@ export function ToggleSwitch({
       <div className="min-w-0">
         {label ? (
           <label
-            htmlFor={id}
+            htmlFor={resolvedId}
             className="block text-sm font-semibold text-slate-900 dark:text-white"
           >
             {label}

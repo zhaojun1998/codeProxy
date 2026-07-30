@@ -14,7 +14,7 @@ import { TextInput } from "@code-proxy/ui";
 import { Modal } from "@code-proxy/ui";
 import { ToggleSwitch } from "@code-proxy/ui";
 import { useToast } from "@code-proxy/ui";
-import { DataTable, type DataTableColumn } from "@code-proxy/ui";
+import { DataTable, TABLE_ROW_ACTIONS_COLUMN, type DataTableColumn } from "@code-proxy/ui";
 import {
   emptyProxyDraft,
   proxyEndpoint,
@@ -273,7 +273,7 @@ export function ProxiesPage() {
         width: "w-[180px]",
         render: (entry) => (
           <div className="flex min-w-0 items-center gap-2">
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-slate-300">
+            <span className="rounded-full border border-slate-900/8 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600 dark:border-white/8 dark:bg-neutral-900 dark:text-slate-300">
               {proxyProtocol(entry.url)}
             </span>
             <span className="truncate font-mono text-xs text-slate-700 dark:text-white/70">
@@ -331,7 +331,7 @@ export function ProxiesPage() {
       {
         key: "actions",
         label: t("proxies.actions"),
-        width: "w-28",
+        ...TABLE_ROW_ACTIONS_COLUMN,
         headerClassName: "text-right",
         cellClassName: "text-right",
         render: (entry) => {

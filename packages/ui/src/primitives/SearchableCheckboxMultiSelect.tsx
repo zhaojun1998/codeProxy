@@ -33,6 +33,8 @@ export interface SearchableCheckboxMultiSelectOption {
   value: string;
   label: ReactNode;
   searchText?: string;
+  /** Full text shown by the native tooltip when the rendered label is truncated. */
+  title?: string;
   /** Optional fixed trailing content, such as a request count. */
   trailing?: ReactNode;
 }
@@ -551,7 +553,7 @@ export function SearchableCheckboxMultiSelect({
                 />
               </div>
               {selectAllLabel || neutralAllSelection || showFilteredToggle || selectionHint ? (
-                <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 dark:border-neutral-800">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2 dark:border-white/8">
                   <span className="min-w-0">
                     <span
                       className={cn(
@@ -650,7 +652,10 @@ export function SearchableCheckboxMultiSelect({
                         </span>
                         <span
                           className="min-w-0 flex-1 truncate text-left"
-                          title={typeof option.label === "string" ? option.label : undefined}
+                          title={
+                            option.title ??
+                            (typeof option.label === "string" ? option.label : undefined)
+                          }
                         >
                           {option.label}
                         </span>
@@ -668,7 +673,7 @@ export function SearchableCheckboxMultiSelect({
                 )}
               </ScrollArea>
               {manualApply ? (
-                <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-3 py-2 dark:border-neutral-800">
+                <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-3 py-2 dark:border-white/8">
                   <button
                     type="button"
                     onClick={() => closeDropdown(true)}

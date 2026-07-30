@@ -1,6 +1,7 @@
 export { AnimatedNumber } from "./feedback/AnimatedNumber";
 export { EmptyState } from "./feedback/EmptyState";
 export { PageLoader } from "./feedback/PageLoader";
+export { Skeleton, SkeletonLines } from "./feedback/Skeleton";
 export type { PageLoaderVariant } from "./feedback/PageLoader";
 export { Reveal } from "./feedback/Reveal";
 export { ToastProvider, useToast } from "./feedback/ToastProvider";
@@ -10,6 +11,12 @@ export {
   DataTableColumnVisibilityMenu,
   useDataTableColumnVisibility,
 } from "./data-table/DataTableColumnVisibility";
+export {
+  TableRowActions,
+  TABLE_ROW_ACTIONS_COLUMN,
+  TABLE_ROW_ACTIONS_STICKY_END_COLUMN,
+} from "./data-table/TableRowActions";
+export type { TableRowAction } from "./data-table/TableRowActions";
 export type {
   DataTableColumn,
   DataTableColumnSort,
@@ -33,6 +40,7 @@ export type { EChartProps, EChartEvents as EChartRendererEvents } from "./charts
 export { PageBackground } from "./layout/PageBackground";
 
 export { PaginationBar, getPaginationItems } from "./navigation/PaginationBar";
+export { resolveMenuIcon } from "./navigation/menuIconMap";
 export type {
   PaginationBarLabels,
   PaginationBarProps,
@@ -64,7 +72,14 @@ export {
 export { DropdownMenu } from "./primitives/DropdownMenu";
 export type { DropdownMenuRootProps } from "./primitives/DropdownMenu";
 export { Fieldset } from "./primitives/Fieldset";
-export { Form, FormField, FormLabel, FormControl, FormDescription, FormError } from "./primitives/Form";
+export {
+  Form,
+  FormField,
+  FormLabel,
+  FormControl,
+  FormDescription,
+  FormError,
+} from "./primitives/Form";
 export type {
   FormProps,
   FormFieldProps,
@@ -87,10 +102,11 @@ export { SearchableSelect } from "./primitives/SearchableSelect";
 export type { SearchableSelectOption, SearchableSelectProps } from "./primitives/SearchableSelect";
 export { Select } from "./primitives/Select";
 export type { SelectOption, SelectProps } from "./primitives/Select";
-export { Tabs, TabsList, TabsTrigger, TabsContent } from "./primitives/Tabs";
+export { Tabs, TabsList, TabsTrigger, TabsContent, type TabsTone } from "./primitives/Tabs";
 export { Textarea } from "./primitives/Textarea";
 export type { TextareaProps } from "./primitives/Textarea";
 export { ToggleSwitch } from "./primitives/ToggleSwitch";
+export type { ToggleSwitchProps } from "./primitives/ToggleSwitch";
 
 export { ThemeProvider, useTheme, ThemeToggleButton } from "./theme/ThemeProvider";
 export { LanguageSelector } from "./theme/LanguageSelector";

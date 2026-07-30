@@ -33,6 +33,7 @@ describe("mapAccountStatusToUi", () => {
           failure_total_30d: 8,
           cycle_request_total: 4,
           cycle_cost_total: 0.5,
+          cycle_total_tokens: 123456,
           weekly_quota_used_percent: 12,
           cycle_known: true,
         },
@@ -48,6 +49,7 @@ describe("mapAccountStatusToUi", () => {
     expect(patch.quotaByKey["77"]?.items[0]?.value).toBe("55%");
     expect(patch.quotaByKey["77"]?.resetCreditCount).toBe(3);
     expect(patch.cycleByKey["77"]?.calls).toBe(4);
+    expect(patch.cycleByKey["77"]?.cycleTotalTokens).toBe(123456);
     expect(patch.entityStats.auth_index[0]).toMatchObject({
       entity_name: "77",
       requests: 100,
@@ -84,6 +86,23 @@ describe("mapAccountStatusToUi", () => {
     expect(patch.cycleByKey["sub-77"]).toBeUndefined();
   });
 
+  test("partial usage totals do not emit a zero-filled success-rate shell", () => {
+    const patch = applyAccountStatuses([
+      {
+        auth_index: "77",
+        quotas: [],
+        usage: {
+          request_total: 200,
+          cycle_known: true,
+          cycle_request_total: 98,
+        },
+      },
+    ]);
+
+    expect(patch.cycleByKey["77"]?.calls).toBe(98);
+    expect(patch.entityStats.auth_index).toEqual([]);
+  });
+
   test("isAccountStatusFresher prefers version then time", () => {
     expect(
       isAccountStatusFresher({ version: 2, timeMs: 1 }, { version: 1, timeMs: 99 }),
@@ -113,6 +132,43 @@ describe("mapAccountStatusToUi", () => {
     expect(isAccountStatusFresher({ version: 1, timeMs: null }, null)).toBe(true);
   });
 
+  test("allows usage updates when the status version does not change", () => {
+    const current = readAccountStatusFreshness({
+      version: 7,
+      updated_at: "2026-07-16T12:00:00.000Z",
+      usage: {
+        updated_at: "2026-07-16T11:00:00.000Z",
+        cycle_request_total: 10,
+      },
+    });
+    const newerUsage = readAccountStatusFreshness({
+      version: 7,
+      updated_at: "2026-07-16T10:00:00.000Z",
+      usage: {
+        updated_at: "2026-07-16T13:00:00.000Z",
+        cycle_request_total: 10,
+      },
+    });
+    const changedCycle = readAccountStatusFreshness({
+      version: 7,
+      updated_at: "2026-07-16T10:00:00.000Z",
+      usage: { cycle_request_total: 11 },
+    });
+
+    expect(isAccountStatusFresher(newerUsage, current)).toBe(true);
+    expect(isAccountStatusFresher(changedCycle, current)).toBe(true);
+    expect(
+      applyAccountStatuses([
+        {
+          auth_index: "77",
+          version: 7,
+          quotas: [],
+          usage: { cycle_known: true, cycle_request_total: 11 },
+        },
+      ]).cycleByKey["77"]?.calls,
+    ).toBe(11);
+  });
+
   test("readAccountStatusFreshness uses server fields only", () => {
     expect(
       readAccountStatusFreshness({
@@ -123,6 +179,8 @@ describe("mapAccountStatusToUi", () => {
     ).toEqual({
       version: 7,
       timeMs: Date.parse("2026-07-16T12:00:00.000Z"),
+      usageTimeMs: null,
+      cycleRequestTotal: null,
     });
   });
 });

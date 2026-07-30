@@ -58,7 +58,44 @@ export interface ImageGenerationSizePresetsResponse {
   sizes: string[];
 }
 
+/** A credential provider that can serve at least one image model. */
+export interface ImageGenerationProviderChannels {
+  provider: string;
+  channels: string[];
+  models: string[];
+}
+
+/** A selectable image model, as reported by the server. */
+export interface ImageGenerationModel {
+  id: string;
+  provider: string;
+  display_name?: string;
+  description?: string;
+  /** True when the model accepts reference images through the edits endpoint. */
+  supports_edit: boolean;
+  price_per_call?: number;
+}
+
+export interface ImageGenerationChannelsResponse {
+  /**
+   * The legacy single-model field. Retained because the server still sends it and
+   * older panels read it; new code should use `models`.
+   */
+  model: string;
+  /** Every usable channel across providers, flattened. Also legacy. */
+  channels: string[];
+  providers?: ImageGenerationProviderChannels[];
+  models?: ImageGenerationModel[];
+}
+
 export const imageGenerationApi = {
+  // Channel availability comes from this dedicated endpoint rather than from the
+  // auth-files list: it is guarded by image_generation.read, the same permission that
+  // grants the page itself, and the server already filters out disabled channels.
+  getChannels: (): Promise<ImageGenerationChannelsResponse> => {
+    return apiClient.get<ImageGenerationChannelsResponse>("/image-generation/channels");
+  },
+
   getSizePresets: (): Promise<ImageGenerationSizePresetsResponse> => {
     return apiClient.get<ImageGenerationSizePresetsResponse>("/image-generation/size-presets");
   },

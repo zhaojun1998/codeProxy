@@ -19,16 +19,16 @@ import {
   type EntityStatsResponse,
 } from "@code-proxy/api-client";
 import {
-  AUTH_FILES_FILES_VIEW_MODE_KEY,
   AUTH_FILES_QUOTA_AUTO_REFRESH_KEY,
   getActiveCacheTenantId,
   normalizeAuthIndexValue,
   parseAdditionalQuotaWindowLabel,
   readAndMigrateQuotaAutoRefreshMs,
   readAuthFilesDataCache,
+  translateParameterizedQuotaLabel,
+  translateXaiQuotaLabel,
   writeAuthFilesDataCache,
   type AuthFileCycleBudgetStats,
-  type FilesViewMode,
 } from "@code-proxy/domain";
 import { useInterval, useLocalStorage, useToast } from "@code-proxy/ui";
 import {
@@ -37,19 +37,21 @@ import {
   type QuotaState,
 } from "@features/quota-preview/quota-helpers";
 import {
-  resolveQuotaProvider,
   type QuotaProvider,
 } from "@features/quota-preview/quota-fetch";
+import { mergeQuotaState } from "./mergeQuotaState";
 import {
   applyAccountStatuses,
   isAccountStatusFresher,
   readAccountStatusFreshness,
   type AccountStatusFreshness,
+  type AuthFileCycleUsageSnapshot,
 } from "./mapAccountStatusToUi";
-import type { AuthFileCycleUsageSnapshot } from "./useAuthFilesCycleUsageState";
 
 const STATUS_POLL_INTERVAL_MS = 1_500;
 const STATUS_REFRESH_TIMEOUT_MS = 120_000;
+/** Lightweight shared-status GET cadence; separate from 1.5s refresh-job polling. */
+const STATUS_SNAPSHOT_REFRESH_INTERVAL_MS = 60_000;
 
 export function isFatalQuotaRefreshError(error: unknown): boolean {
   if (!isApiClientError(error)) return false;
@@ -143,6 +145,22 @@ type ActiveBatch = {
   files: AuthFileItem[];
 };
 
+type ConnectivityEntry = {
+  loading: boolean;
+  latencyMs: number | null;
+  error: boolean;
+};
+
+const seedConnectivityState = (
+  cached: ReturnType<typeof readAuthFilesDataCache>,
+): Map<string, ConnectivityEntry> =>
+  new Map(
+    Object.entries(cached?.connectivityByFileName ?? {}).map(([fileName, snapshot]) => [
+      fileName,
+      { loading: false, latencyMs: snapshot.latencyMs, error: snapshot.error },
+    ]),
+  );
+
 export function useAuthFilesStatusState({
   tab,
   pageItems,
@@ -162,9 +180,9 @@ export function useAuthFilesStatusState({
   );
   const initialAutoRefresh = useMemo(() => readAndMigrateQuotaAutoRefreshMs(), []);
 
-  const [connectivityState, setConnectivityState] = useState<
-    Map<string, { loading: boolean; latencyMs: number | null; error: boolean }>
-  >(new Map());
+  const [connectivityState, setConnectivityState] = useState<Map<string, ConnectivityEntry>>(
+    () => seedConnectivityState(initialDataCache),
+  );
   const [quotaByFileName, setQuotaByFileName] = useState<Record<string, QuotaState>>(
     () => initialDataCache?.quotaByFileName ?? {},
   );
@@ -182,6 +200,11 @@ export function useAuthFilesStatusState({
           typeof snapshot.cycleCostTotal === "number" && Number.isFinite(snapshot.cycleCostTotal)
             ? snapshot.cycleCostTotal
             : null,
+        cycleTotalTokens:
+          typeof snapshot.cycleTotalTokens === "number" &&
+          Number.isFinite(snapshot.cycleTotalTokens)
+            ? snapshot.cycleTotalTokens
+            : null,
         weeklyQuotaUsedPercent:
           typeof snapshot.weeklyQuotaUsedPercent === "number" &&
           Number.isFinite(snapshot.weeklyQuotaUsedPercent)
@@ -194,8 +217,13 @@ export function useAuthFilesStatusState({
   const [statusApiSupported, setStatusApiSupported] = useState(true);
   const [statusLoading, setStatusLoading] = useState(false);
   const [refreshingPage, setRefreshingPage] = useState(false);
+  const [readyVisibleScopeKey, setReadyVisibleScopeKey] = useState<string | null>(null);
+  const [settledVisibleScopeKey, setSettledVisibleScopeKey] = useState<string | null>(null);
   const [quotaRefreshHalted, setQuotaRefreshHalted] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === "undefined" || !document.hidden,
+  );
 
   const quotaInFlightRef = useRef<Set<string>>(new Set());
   const quotaAutoRefreshingRef = useRef<Set<string>>(new Set());
@@ -214,16 +242,12 @@ export function useAuthFilesStatusState({
   const mountedRef = useRef(true);
   const tenantIdRef = useRef(cacheTenantId);
   const pageItemsRef = useRef(pageItems);
+  const visibleStatusScopeKey = `${cacheTenantId}::${buildVisibleScopeKey(pageItems)}`;
 
   const [quotaAutoRefreshMsRaw, setQuotaAutoRefreshMsRaw] = useLocalStorage<number>(
     AUTH_FILES_QUOTA_AUTO_REFRESH_KEY,
     initialAutoRefresh,
   );
-  const [filesViewMode, setFilesViewMode] = useLocalStorage<FilesViewMode>(
-    AUTH_FILES_FILES_VIEW_MODE_KEY,
-    "cards",
-  );
-
   // Always persist normalized bucket.
   const quotaAutoRefreshMs = useMemo(() => {
     const normalized = readAndMigrateQuotaAutoRefreshMs();
@@ -255,8 +279,11 @@ export function useAuthFilesStatusState({
     singleBatchRef.current = null;
     statusLoadSeqRef.current += 1;
     loadedVisibleScopeRef.current = null;
+    setReadyVisibleScopeKey(null);
+    setSettledVisibleScopeKey(null);
     appliedFreshnessRef.current.clear();
     const tenantCache = readAuthFilesDataCache(cacheTenantId);
+    setConnectivityState(seedConnectivityState(tenantCache));
     setQuotaByFileName(tenantCache?.quotaByFileName ?? {});
     const seeded: Record<string, AuthFileCycleUsageSnapshot> = {};
     for (const [authIndex, snapshot] of Object.entries(tenantCache?.cycleByAuthIndex ?? {})) {
@@ -267,6 +294,11 @@ export function useAuthFilesStatusState({
           typeof snapshot.cycleCostTotal === "number" && Number.isFinite(snapshot.cycleCostTotal)
             ? snapshot.cycleCostTotal
             : null,
+        cycleTotalTokens:
+          typeof snapshot.cycleTotalTokens === "number" &&
+          Number.isFinite(snapshot.cycleTotalTokens)
+            ? snapshot.cycleTotalTokens
+            : null,
         weeklyQuotaUsedPercent:
           typeof snapshot.weeklyQuotaUsedPercent === "number" &&
           Number.isFinite(snapshot.weeklyQuotaUsedPercent)
@@ -275,12 +307,13 @@ export function useAuthFilesStatusState({
       };
     }
     setCycleByAuthIndex(seeded);
+    setUsageDataFromStatus?.(tenantCache?.usageData ?? { source: [], auth_index: [] });
     setRefreshingPage(false);
     setStatusLoading(false);
     setStatusApiSupported(true);
     quotaInFlightRef.current.clear();
     quotaAutoRefreshingRef.current.clear();
-  }, [cacheTenantId]);
+  }, [cacheTenantId, setUsageDataFromStatus]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -316,15 +349,32 @@ export function useAuthFilesStatusState({
       const tenantId = getActiveCacheTenantId();
       const current = readAuthFilesDataCache(tenantId);
       if (!current || !Array.isArray(current.files)) return;
-      const cycleCache: Record<string, { calls: number; cycleCostTotal: number | null; weeklyQuotaUsedPercent: number | null }> = {};
+      const cycleCache: Record<
+        string,
+        {
+          calls: number;
+          cycleCostTotal: number | null;
+          cycleTotalTokens: number | null;
+          weeklyQuotaUsedPercent: number | null;
+        }
+      > = {};
       for (const [authIndex, snapshot] of Object.entries(cycleByAuthIndex)) {
         if (typeof snapshot.calls !== "number" || !Number.isFinite(snapshot.calls)) continue;
         cycleCache[authIndex] = {
           calls: snapshot.calls,
           cycleCostTotal: snapshot.cycleCostTotal,
+          cycleTotalTokens: snapshot.cycleTotalTokens,
           weeklyQuotaUsedPercent: snapshot.weeklyQuotaUsedPercent,
         };
       }
+      const connectivityCache = Object.fromEntries(
+        Array.from(connectivityState.entries())
+          .filter(([, snapshot]) => snapshot.latencyMs != null || snapshot.error)
+          .map(([fileName, snapshot]) => [
+            fileName,
+            { latencyMs: snapshot.latencyMs, error: snapshot.error },
+          ]),
+      );
       writeAuthFilesDataCache({
         ...current,
         tenantId,
@@ -333,10 +383,14 @@ export function useAuthFilesStatusState({
         // Keep last known cycle when state is still empty (first paint / tenant seed).
         cycleByAuthIndex:
           Object.keys(cycleCache).length > 0 ? cycleCache : current.cycleByAuthIndex,
+        connectivityByFileName:
+          Object.keys(connectivityCache).length > 0
+            ? connectivityCache
+            : current.connectivityByFileName,
       });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [quotaByFileName, cycleByAuthIndex]);
+  }, [connectivityState, quotaByFileName, cycleByAuthIndex]);
 
   const patchAuthFileByName = useCallback(
     (name: string, patch: Partial<AuthFileItem>) => {
@@ -425,19 +479,7 @@ export function useAuthFilesStatusState({
           const quota = patch.quotaByKey[group.quotaKey] ?? patch.quotaByKey[group.authIndexes[0] ?? ""];
           if (!quota) continue;
           for (const name of group.names) {
-            const existing = next[name];
-            if (
-              quota.status === "success" &&
-              (!quota.items || quota.items.length === 0) &&
-              existing?.status === "success" &&
-              (existing.items?.length ?? 0) > 0 &&
-              !quota.error
-            ) {
-              quotaInFlightRef.current.delete(name);
-              quotaAutoRefreshingRef.current.delete(name);
-              continue;
-            }
-            next[name] = quota;
+            next[name] = mergeQuotaState(next[name], quota);
             quotaInFlightRef.current.delete(name);
             quotaAutoRefreshingRef.current.delete(name);
           }
@@ -471,6 +513,11 @@ export function useAuthFilesStatusState({
                 typeof cycle.cycleCostTotal === "number" && Number.isFinite(cycle.cycleCostTotal)
                   ? cycle.cycleCostTotal
                   : (previous?.cycleCostTotal ?? null),
+              cycleTotalTokens:
+                typeof cycle.cycleTotalTokens === "number" &&
+                Number.isFinite(cycle.cycleTotalTokens)
+                  ? cycle.cycleTotalTokens
+                  : (previous?.cycleTotalTokens ?? null),
               weeklyQuotaUsedPercent:
                 typeof cycle.weeklyQuotaUsedPercent === "number" &&
                 Number.isFinite(cycle.weeklyQuotaUsedPercent)
@@ -635,6 +682,8 @@ export function useAuthFilesStatusState({
           next[file.name] = {
             ...current,
             status: current.items?.length ? "success" : "idle",
+            // A finished refresh clears the sticky error carried through loading.
+            error: undefined,
           };
           changed = true;
         }
@@ -724,6 +773,64 @@ export function useAuthFilesStatusState({
       }
     },
     [applyStatusesToUi, haltQuotaAutoRefresh, notify, t],
+  );
+
+  const loadVisibleStatusSnapshot = useCallback(async (): Promise<boolean> => {
+    if (tab !== "files" || loading || !statusApiSupported) return false;
+    const visibleFiles = pageItemsRef.current;
+    const tenantId = tenantIdRef.current;
+    const scopeKey = `${tenantId}::${buildVisibleScopeKey(visibleFiles)}`;
+    const authIndexes = Array.from(
+      new Set(
+        visibleFiles
+          .map((file) => resolveFileAuthIndex(file))
+          .filter((value): value is string => Boolean(value)),
+      ),
+    );
+    if (authIndexes.length === 0) return false;
+    const ok = await loadStatusSnapshot({
+      filesForMerge: visibleFiles,
+      authIndexes,
+      quiet: true,
+      markUnsupportedOn404: true,
+    });
+    if (
+      mountedRef.current &&
+      tenantIdRef.current === tenantId &&
+      `${tenantIdRef.current}::${buildVisibleScopeKey(pageItemsRef.current)}` === scopeKey
+    ) {
+      setSettledVisibleScopeKey(scopeKey);
+      if (ok) setReadyVisibleScopeKey(scopeKey);
+    }
+    return ok;
+  }, [loadStatusSnapshot, loading, statusApiSupported, tab]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    const handleVisibilityChange = () => {
+      const visible = !document.hidden;
+      setPageVisible(visible);
+      if (
+        visible &&
+        !statusLoading &&
+        !pageBatchRef.current &&
+        !singleBatchRef.current
+      ) {
+        void loadVisibleStatusSnapshot();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [loadVisibleStatusSnapshot, statusLoading]);
+
+  useInterval(
+    () => {
+      if (statusLoading || pageBatchRef.current || singleBatchRef.current) return;
+      void loadVisibleStatusSnapshot();
+    },
+    pageVisible && tab === "files" && !loading && statusApiSupported
+      ? STATUS_SNAPSHOT_REFRESH_INTERVAL_MS
+      : null,
   );
 
   const pollJobUntilDone = useCallback(
@@ -895,7 +1002,15 @@ export function useAuthFilesStatusState({
             // page + single may finish together; both finals must be allowed to apply.
             allowConcurrentApply: true,
           });
-          if (!applied && !controller.signal.aborted && tenantIdRef.current === tenantId) {
+          if (applied && kind === "page") {
+            const scopeKey = `${tenantId}::${buildVisibleScopeKey(files)}`;
+            if (
+              `${tenantIdRef.current}::${buildVisibleScopeKey(pageItemsRef.current)}` === scopeKey
+            ) {
+              setReadyVisibleScopeKey(scopeKey);
+              setSettledVisibleScopeKey(scopeKey);
+            }
+          } else if (!applied && !controller.signal.aborted && tenantIdRef.current === tenantId) {
             // Keep previous snapshot values; only drop stuck loading spinners.
             clearFilesLoading(files);
           }
@@ -951,7 +1066,7 @@ export function useAuthFilesStatusState({
   useEffect(() => {
     if (tab !== "files" || loading) return;
     if (!statusApiSupported) return;
-    const scopeKey = `${tenantIdRef.current}::${buildVisibleScopeKey(pageItems)}`;
+    const scopeKey = visibleStatusScopeKey;
     if (loadedVisibleScopeRef.current === scopeKey) return;
 
     const authIndexes = Array.from(
@@ -963,6 +1078,8 @@ export function useAuthFilesStatusState({
     );
     if (authIndexes.length === 0) {
       loadedVisibleScopeRef.current = scopeKey;
+      setReadyVisibleScopeKey(scopeKey);
+      setSettledVisibleScopeKey(scopeKey);
       return;
     }
 
@@ -976,8 +1093,11 @@ export function useAuthFilesStatusState({
         quiet: true,
         markUnsupportedOn404: true,
       });
-      if (!ok || controller.signal.aborted) return;
+      if (controller.signal.aborted) return;
+      setSettledVisibleScopeKey(scopeKey);
+      if (!ok) return;
       loadedVisibleScopeRef.current = scopeKey;
+      setReadyVisibleScopeKey(scopeKey);
       // Probe after snapshot so re-entering /access/ai-accounts always refreshes visible cards,
       // even when quota auto-refresh interval is 0.
       if (pageBatchRef.current) return;
@@ -998,6 +1118,7 @@ export function useAuthFilesStatusState({
     statusApiSupported,
     loadStatusSnapshot,
     cacheTenantId,
+    visibleStatusScopeKey,
     runBatchStatusRefresh,
   ]);
 
@@ -1021,9 +1142,8 @@ export function useAuthFilesStatusState({
     async (
       file: AuthFileItem,
       _provider: QuotaProvider,
-      options?: { showLoading?: boolean; refreshUsage?: boolean },
+      options?: { showLoading?: boolean },
     ) => {
-      void options?.refreshUsage;
       if (!resolveFileAuthIndex(file)) return;
       await runBatchStatusRefresh([file], {
         force: true,
@@ -1034,22 +1154,11 @@ export function useAuthFilesStatusState({
     [runBatchStatusRefresh],
   );
 
-  const resolveQuotaTargets = useCallback((targetFiles: AuthFileItem[]) => {
-    const targets: { file: AuthFileItem; provider: QuotaProvider }[] = [];
-    for (const file of targetFiles) {
-      const provider = resolveQuotaProvider(file);
-      if (provider) targets.push({ file, provider });
-    }
-    return targets;
-  }, []);
-
   const runQuotaRefreshBatch = useCallback(
     async (
       targets: { file: AuthFileItem; provider: QuotaProvider }[],
-      options?: { markAsAutoRefreshing?: boolean; showLoading?: boolean; refreshUsage?: boolean },
+      options?: { showLoading?: boolean },
     ) => {
-      void options?.markAsAutoRefreshing;
-      void options?.refreshUsage;
       await runBatchStatusRefresh(
         targets.map((target) => target.file),
         {
@@ -1077,25 +1186,6 @@ export function useAuthFilesStatusState({
 
   const resolveQuotaCardSlots = useCallback(
     (provider: QuotaProvider, items: QuotaItem[]) => {
-      const translateXaiQuotaText = (text: string) => {
-        const separatorIndex = text.indexOf("::");
-        const key = separatorIndex >= 0 ? text.slice(0, separatorIndex) : text;
-        const value = separatorIndex >= 0 ? text.slice(separatorIndex + 2) : "";
-        if (key === "xai_quota.product_usage_named" && value) {
-          return t(key, { product: value });
-        }
-        if (key === "xai_quota.used_percent" && value) {
-          return t(key, { percent: value });
-        }
-        if (key === "xai_quota.remaining_percent" && value) {
-          return t(key, { percent: value });
-        }
-        if (key === "xai_quota.reset_at" && value) {
-          return t(key, { time: value });
-        }
-        return t(text);
-      };
-
       const translateQuotaLabel = (text: string) => {
         if (!text) return text;
         if (text.startsWith("m_quota.")) return t(text);
@@ -1105,9 +1195,9 @@ export function useAuthFilesStatusState({
             name: additionalQuota.name,
           });
         }
-        if (text.startsWith("claude_quota.")) return t(text);
+        if (text.startsWith("claude_quota.")) return translateParameterizedQuotaLabel(t, text);
         if (text.startsWith("antigravity_quota.")) return t(text);
-        if (text.startsWith("xai_quota.")) return translateXaiQuotaText(text);
+        if (text.startsWith("xai_quota.")) return translateXaiQuotaLabel(t, text);
         return text;
       };
 
@@ -1135,8 +1225,14 @@ export function useAuthFilesStatusState({
 
       const supportsStableCodingSlots = provider === "codex" || provider === "kimi";
       if (!supportsStableCodingSlots) {
-        return items.slice(0, 3).map((item) => ({
-          id: item.label,
+        // Rank data-bearing windows first so placeholder rows (e.g. kiro's
+        // subscription entry with percent: null) never crowd out real quotas.
+        const ranked = [
+          ...items.filter((item) => typeof item.percent === "number" || Boolean(item.value)),
+          ...items.filter((item) => typeof item.percent !== "number" && !item.value),
+        ];
+        return ranked.slice(0, 3).map((item) => ({
+          id: item.key ?? item.label,
           label: translateQuotaLabel(item.label),
           item,
         }));
@@ -1201,7 +1297,15 @@ export function useAuthFilesStatusState({
           item: codeWeek,
         });
       }
-      if (provider === "kimi") return codingSlots;
+      if (provider === "kimi") {
+        // Unmatched kimi payloads fall back to raw items instead of an empty state.
+        if (codingSlots.length > 0) return codingSlots;
+        return items.slice(0, 3).map((item) => ({
+          id: item.key ?? item.label,
+          label: translateQuotaLabel(item.label),
+          item,
+        }));
+      }
 
       const codexSlots = [...codingSlots];
       if (reviewFiveHour) {
@@ -1240,7 +1344,12 @@ export function useAuthFilesStatusState({
     setConnectivityState((prev) => {
       if (prev.get(fileName)?.loading) return prev;
       const next = new Map(prev);
-      next.set(fileName, { loading: true, latencyMs: null, error: false });
+      const current = prev.get(fileName);
+      next.set(fileName, {
+        loading: true,
+        latencyMs: current?.latencyMs ?? null,
+        error: current?.error ?? false,
+      });
       return next;
     });
 
@@ -1254,14 +1363,13 @@ export function useAuthFilesStatusState({
         return next;
       });
     } catch {
-      const elapsed = performance.now() - start;
+      // The endpoint falls back to the registry when the live probe fails, so it
+      // answers 200 even for an unreachable provider. Any thrown error is a real
+      // failure (auth rejected, 5xx, network, timeout) and must not be painted
+      // as a healthy latency just because it came back quickly.
       setConnectivityState((prev) => {
         const next = new Map(prev);
-        if (elapsed < 20000) {
-          next.set(fileName, { loading: false, latencyMs: elapsed, error: false });
-        } else {
-          next.set(fileName, { loading: false, latencyMs: null, error: true });
-        }
+        next.set(fileName, { loading: false, latencyMs: null, error: true });
         return next;
       });
     }
@@ -1276,6 +1384,26 @@ export function useAuthFilesStatusState({
     }
     return result;
   }, [cycleByAuthIndex]);
+
+  const cycleTotalTokensByAuthIndex: Record<string, number | null> = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(cycleByAuthIndex).map(([authIndex, snapshot]) => [
+          authIndex,
+          snapshot.cycleTotalTokens,
+        ]),
+      ),
+    [cycleByAuthIndex],
+  );
+
+  const hasVisibleStatusTargets = pageItems.some((file) => resolveFileAuthIndex(file));
+  const statusUsageReady =
+    !hasVisibleStatusTargets ||
+    (readyVisibleScopeKey === visibleStatusScopeKey && !statusLoading);
+  const statusUsageLoading =
+    tab === "files" &&
+    hasVisibleStatusTargets &&
+    (settledVisibleScopeKey !== visibleStatusScopeKey || statusLoading || refreshingPage);
 
   const cycleBudgetByAuthIndex: Record<string, AuthFileCycleBudgetStats> = useMemo(
     () =>
@@ -1302,29 +1430,25 @@ export function useAuthFilesStatusState({
         quotaRefreshHaltedRef.current = false;
         setQuotaRefreshHalted(false);
       }
-      const normalized = readAndMigrateQuotaAutoRefreshMs();
-      void normalized;
-      // Persist only allowed buckets.
-      const next =
-        value <= 0 ? 0 : value >= 300_000 ? 300_000 : value >= 60_000 ? 60_000 : 60_000;
+      // Persist only allowed buckets (sub-minute inputs clamp up to 60s).
+      const next = value <= 0 ? 0 : value >= 300_000 ? 300_000 : 60_000;
       setQuotaAutoRefreshMsRaw(next);
       if (typeof window !== "undefined") {
         window.localStorage.setItem(AUTH_FILES_QUOTA_AUTO_REFRESH_KEY, JSON.stringify(next));
       }
     },
-    filesViewMode,
-    setFilesViewMode,
     resolveQuotaCardSlots,
     refreshQuota,
     checkAuthFileConnectivity,
     forceRefreshPage,
     runQuotaRefreshBatch,
-    resolveQuotaTargets,
     statusApiSupported,
     statusLoading,
+    statusUsageReady,
+    statusUsageLoading,
     refreshingPage,
     callsByAuthIndex,
+    cycleTotalTokensByAuthIndex,
     cycleBudgetByAuthIndex,
-    collectQuotaFetchTargets: (): { file: AuthFileItem; provider: QuotaProvider }[] => [],
   };
 }
