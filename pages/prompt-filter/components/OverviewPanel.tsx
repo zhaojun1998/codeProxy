@@ -42,6 +42,7 @@ interface OverviewForm {
   maxTextLength: string;
   sensitiveWords: string;
   reviewEnabled: boolean;
+  reviewFailClosed: boolean;
   reviewProviders: ReviewProviderForm[];
   reviewTimeout: string;
   reviewAuditPrompt: string;
@@ -93,6 +94,7 @@ const toForm = (config: PromptFilterConfig): OverviewForm => {
     maxTextLength: String(config.max_text_length),
     sensitiveWords: config.sensitive_words,
     reviewEnabled: config.review.enabled,
+    reviewFailClosed: config.review.fail_closed,
     reviewProviders: providers,
     reviewTimeout: String(config.review.timeout_seconds),
     reviewAuditPrompt: config.review.audit_prompt,
@@ -240,7 +242,7 @@ export function OverviewPanel({ config, onSaved }: OverviewPanelProps) {
       confidence_threshold: reviewConfidenceThreshold,
       providers,
       timeout_seconds: reviewTimeout,
-      fail_closed: false,
+      fail_closed: form.reviewFailClosed,
     };
   }, [config.review, form, notify, t]);
 
@@ -433,6 +435,12 @@ export function OverviewPanel({ config, onSaved }: OverviewPanelProps) {
               description={t("prompt_filter.review_enabled_desc")}
               checked={form.reviewEnabled}
               onCheckedChange={(next) => update("reviewEnabled", next)}
+            />
+            <ToggleSwitch
+              label={t("prompt_filter.review_fail_closed")}
+              description={t("prompt_filter.review_fail_closed_desc")}
+              checked={form.reviewFailClosed}
+              onCheckedChange={(next) => update("reviewFailClosed", next)}
             />
             <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-neutral-800 dark:bg-neutral-900/50">
               <div className="flex flex-wrap items-center justify-between gap-3">
