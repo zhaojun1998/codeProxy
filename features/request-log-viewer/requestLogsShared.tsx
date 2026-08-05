@@ -63,6 +63,9 @@ export type RequestLogsRow = {
   hasContent: boolean;
   promptFilterAction: string;
   promptFilterScore: number;
+  promptFilterReviewed: boolean;
+  promptFilterReviewConfidence: number | null;
+  promptFilterReviewReason: string;
 };
 
 export function normalizeChannelAuthType(authType?: string | null): "oauth" | "api" | "" {
@@ -531,6 +534,9 @@ export const formatOptionalRequestLogLatencyMs = (value: number): string => {
   return formatRequestLogLatencyMs(value);
 };
 
+const formatPromptFilterReviewConfidence = (value: number): string =>
+  `${Math.round(Math.min(1, Math.max(0, value)) * 100)}%`;
+
 export const toRequestLogsRow = (item: UsageLogItem): RequestLogsRow => {
   const isSystemCall = isSystemRequestLogKey(item.api_key, item.api_key_name);
   const channelAuthType = normalizeChannelAuthType(item.auth_type);
@@ -568,6 +574,12 @@ export const toRequestLogsRow = (item: UsageLogItem): RequestLogsRow => {
     hasContent: item.has_content ?? false,
     promptFilterAction: String(item.prompt_filter_action ?? "").trim(),
     promptFilterScore: item.prompt_filter_score ?? 0,
+    promptFilterReviewed: item.prompt_filter_reviewed === true,
+    promptFilterReviewConfidence:
+      typeof item.prompt_filter_review_confidence === "number"
+        ? item.prompt_filter_review_confidence
+        : null,
+    promptFilterReviewReason: String(item.prompt_filter_review_reason ?? "").trim(),
   };
 };
 export const isSystemRequestLogKey = (apiKey: string, apiKeyName?: string): boolean => {
@@ -867,6 +879,36 @@ export function buildRequestLogsColumns(
         ) : (
           <span className="text-slate-400 dark:text-white/30">--</span>
         ),
+    },
+    {
+      key: "promptFilterReviewConfidence",
+      label: t("request_logs.col_review_confidence"),
+      width: "w-28",
+      headerClassName: CENTERED_REQUEST_LOG_HEADER_CLASS,
+      cellClassName: "text-center font-mono text-xs tabular-nums text-slate-700 dark:text-white/70",
+      render: (row) => {
+        if (!row.promptFilterReviewed || row.promptFilterReviewConfidence === null) {
+          return <span className="text-slate-400 dark:text-white/30">--</span>;
+        }
+        const confidence = formatPromptFilterReviewConfidence(row.promptFilterReviewConfidence);
+        return (
+          <HoverTooltip
+            content={row.promptFilterReviewReason}
+            disabled={!row.promptFilterReviewReason}
+            placement="bottom"
+          >
+            <span
+              className={
+                row.promptFilterReviewReason
+                  ? "inline-flex border-b border-dotted border-slate-400/70"
+                  : "inline-flex"
+              }
+            >
+              {confidence}
+            </span>
+          </HoverTooltip>
+        );
+      },
     },
     {
       key: "inputTokens",

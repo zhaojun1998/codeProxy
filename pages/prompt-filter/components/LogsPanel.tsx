@@ -12,6 +12,7 @@ import {
   ConfirmModal,
   DataTable,
   DataTableColumnVisibilityMenu,
+  HoverTooltip,
   Modal,
   PaginationBar,
   Select,
@@ -57,6 +58,10 @@ const EMPTY_FILTERS: LogFilters = {
 function formatReviewLatency(value?: number): string {
   if (!Number.isFinite(value ?? Number.NaN) || !value || value <= 0) return "-";
   return `${Math.round(value)}ms`;
+}
+
+function formatReviewConfidence(value: number): string {
+  return `${Math.round(Math.min(1, Math.max(0, value)) * 100)}%`;
 }
 
 export function LogsPanel() {
@@ -242,6 +247,30 @@ export function LogsPanel() {
         width: "w-[88px] min-w-[88px]",
         cellClassName: "font-mono tabular-nums text-slate-700 dark:text-white/70",
         render: (row) => row.score,
+      },
+      {
+        key: "review_confidence",
+        label: t("prompt_filter.col_review_confidence"),
+        width: "w-[120px] min-w-[120px]",
+        cellClassName:
+          "text-center font-mono text-xs tabular-nums text-slate-700 dark:text-white/70",
+        render: (row) => {
+          if (!row.reviewed) {
+            return <span className="text-slate-400 dark:text-white/30">-</span>;
+          }
+          const reason = String(row.reason || "").trim();
+          return (
+            <HoverTooltip content={reason} disabled={!reason} placement="bottom">
+              <span
+                className={
+                  reason ? "inline-flex border-b border-dotted border-slate-400/70" : "inline-flex"
+                }
+              >
+                {formatReviewConfidence(row.review_confidence)}
+              </span>
+            </HoverTooltip>
+          );
+        },
       },
       {
         key: "source",
@@ -484,7 +513,7 @@ export function LogsPanel() {
           rowKey={(row) => String(row.id)}
           loading={loading}
           virtualize={false}
-          minWidth="min-w-[1420px]"
+          minWidth="min-w-[1540px]"
           height="h-full"
           minHeight="min-h-full"
           caption={t("prompt_filter.logs_title")}

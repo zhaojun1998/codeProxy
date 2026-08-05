@@ -291,6 +291,12 @@ function toLogRow(item: PublicLogItem): RequestLogsRow {
     hasContent: item.has_content,
     promptFilterAction: String(item.prompt_filter_action ?? "").trim(),
     promptFilterScore: item.prompt_filter_score ?? 0,
+    promptFilterReviewed: item.prompt_filter_reviewed === true,
+    promptFilterReviewConfidence:
+      typeof item.prompt_filter_review_confidence === "number"
+        ? item.prompt_filter_review_confidence
+        : null,
+    promptFilterReviewReason: String(item.prompt_filter_review_reason ?? "").trim(),
   };
 }
 

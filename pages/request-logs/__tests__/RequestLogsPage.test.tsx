@@ -310,6 +310,37 @@ describe("RequestLogsPage", () => {
     expect(within(table).getByText("API")).toBeInTheDocument();
   });
 
+  test("renders AI review confidence and shows the review reason on hover", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const user = userEvent.setup();
+
+    mocks.getUsageLogs.mockResolvedValue(
+      responseWithRows([
+        buildUsageLogItem({
+          prompt_filter_action: "warn",
+          prompt_filter_score: 42,
+          prompt_filter_reviewed: true,
+          prompt_filter_review_confidence: 0.87,
+          prompt_filter_review_reason: "针对他人系统攻击",
+        }),
+      ]),
+    );
+
+    render(
+      <ThemeProvider>
+        <ToastProvider>
+          <RequestLogsPage />
+        </ToastProvider>
+      </ThemeProvider>,
+    );
+
+    const table = await screen.findByRole("table", { name: "请求日志表" });
+    expect(within(table).getByRole("columnheader", { name: "AI 复审置信度" })).toBeInTheDocument();
+    const confidence = within(table).getByText("87%");
+    await user.hover(confidence);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("针对他人系统攻击");
+  });
+
   test("labels non-streaming logs without rendering a first token placeholder", async () => {
     await i18n.changeLanguage("en");
 

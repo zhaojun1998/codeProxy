@@ -2887,6 +2887,7 @@
     "col_matched": "Совпадения",
     "col_review_provider": "Провайдер проверки",
     "col_review_latency": "Время проверки",
+    "col_review_confidence": "Уверенность ИИ-проверки",
     "col_detail": "Детали",
     "col_error_code": "Код ошибки",
     "filter_all_actions": "Все действия",

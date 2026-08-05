@@ -38,6 +38,9 @@ export interface PublicLogItem {
   has_content: boolean;
   prompt_filter_action?: string;
   prompt_filter_score?: number;
+  prompt_filter_reviewed?: boolean;
+  prompt_filter_review_confidence?: number;
+  prompt_filter_review_reason?: string;
 }
 
 export interface PublicLogsResponse {
