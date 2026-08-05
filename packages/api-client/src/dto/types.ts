@@ -273,6 +273,7 @@ export interface ChartDataResponse {
 export interface UsageLogPerformanceStats {
   model: string;
   reasoning_effort: string;
+  fast: boolean;
   request_count: number;
   ttfb_sample_count: number;
   avg_ttfb_ms: number;

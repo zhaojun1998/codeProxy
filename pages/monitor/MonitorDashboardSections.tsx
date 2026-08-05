@@ -1,6 +1,8 @@
 import { Activity, ChartSpline, Clock, Coins, ShieldCheck, Sigma, Zap } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import type { HourWindow } from "@features/monitor-widgets/monitor-constants";
+import { CHART_COLOR_CLASSES, CHART_COLORS } from "@features/monitor-widgets/monitor-constants";
 import { formatNumber, formatRate } from "@features/monitor-widgets/monitor-utils";
 import { formatFixedNumber } from "@code-proxy/domain";
 import type { UsageLogPerformanceStats } from "@code-proxy/api-client/endpoints/usage";
@@ -10,7 +12,7 @@ import { EChart } from "@code-proxy/ui";
 import { ChartLegend } from "@code-proxy/ui";
 import { Tabs, TabsList, TabsTrigger } from "@code-proxy/ui";
 import { HourWindowSelector, KpiCard, MonitorCard as Card } from "@features/monitor-widgets";
-import { ModelTag } from "@features/model-tags";
+import { createPerformanceChartOption } from "./performance-chart-options";
 
 const formatTtfb = (value: number) => `${formatFixedNumber(value, { fractionDigits: 0 })} ms`;
 const formatTps = (value: number) => formatFixedNumber(value, { fractionDigits: 1 });
@@ -139,12 +141,95 @@ export function MonitorPerformanceSection({
   t,
   stats,
   isRefreshing,
+  isDark,
 }: {
   t: (key: string, options?: Record<string, unknown>) => string;
   stats: UsageLogPerformanceStats[];
   isRefreshing: boolean;
+  isDark: boolean;
 }) {
+  const [modelSelected, setModelSelected] = useState<Record<string, boolean>>({});
+  const [effortSelected, setEffortSelected] = useState<Record<string, boolean>>({});
+  const [modeSelected, setModeSelected] = useState<Record<string, boolean>>({});
+
+  const models = useMemo(
+    () =>
+      [...new Set(stats.map((item) => item.model))].sort((left, right) =>
+        left.localeCompare(right),
+      ),
+    [stats],
+  );
+  const efforts = useMemo(
+    () =>
+      [...new Set(stats.map((item) => item.reasoning_effort))].sort((left, right) =>
+        (left || t("monitor.reasoning_default")).localeCompare(
+          right || t("monitor.reasoning_default"),
+        ),
+      ),
+    [stats, t],
+  );
+  const modes = useMemo(
+    () => [...new Set(stats.map((item) => (item.fast ? "fast" : "standard")))],
+    [stats],
+  );
+  const colorsByModel = useMemo(
+    () =>
+      Object.fromEntries(
+        models.map((model, index) => [model, CHART_COLORS[index % CHART_COLORS.length]]),
+      ),
+    [models],
+  );
+  const filteredStats = useMemo(
+    () =>
+      stats.filter((item) => {
+        const mode = item.fast ? "fast" : "standard";
+        return (
+          (modelSelected[item.model] ?? true) &&
+          (effortSelected[item.reasoning_effort] ?? true) &&
+          (modeSelected[mode] ?? true)
+        );
+      }),
+    [effortSelected, modeSelected, modelSelected, stats],
+  );
+  const chartableCount = filteredStats.filter(
+    (item) => item.ttfb_sample_count > 0 && item.throughput_sample_count > 0,
+  ).length;
+  const chartOption = useMemo(
+    () =>
+      createPerformanceChartOption({
+        stats: filteredStats,
+        models,
+        efforts,
+        colorsByModel,
+        isDark,
+        labels: {
+          avgTtfb: t("monitor.avg_ttfb"),
+          tokensPerSecond: t("monitor.tokens_per_second"),
+          defaultEffort: t("monitor.reasoning_default"),
+          fast: t("monitor.fast_mode"),
+          standard: t("monitor.standard_mode"),
+          requests: (count) => t("monitor.performance_requests", { count }),
+          ttfbRange: (item) =>
+            t("monitor.performance_ttfb_range", {
+              avg: formatFixedNumber(item.avg_ttfb_ms, { fractionDigits: 0 }),
+              min: formatFixedNumber(item.min_ttfb_ms, { fractionDigits: 0 }),
+              max: formatFixedNumber(item.max_ttfb_ms, { fractionDigits: 0 }),
+            }),
+          tpsRange: (item) =>
+            t("monitor.performance_tps_range", {
+              avg: formatFixedNumber(item.tokens_per_second, { fractionDigits: 1 }),
+              min: formatFixedNumber(item.min_tokens_per_second, { fractionDigits: 1 }),
+              max: formatFixedNumber(item.max_tokens_per_second, { fractionDigits: 1 }),
+            }),
+        },
+      }),
+    [colorsByModel, efforts, filteredStats, isDark, models, t],
+  );
+
   if (stats.length === 0 && !isRefreshing) return null;
+
+  const toggleSelected = (setter: Dispatch<SetStateAction<Record<string, boolean>>>, key: string) =>
+    setter((current) => ({ ...current, [key]: !(current[key] ?? true) }));
 
   return (
     <Reveal>
@@ -153,55 +238,62 @@ export function MonitorPerformanceSection({
         description={t("monitor.performance_by_model_effort_desc")}
         loading={isRefreshing}
       >
-        <div className="max-h-72 overflow-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="sticky top-0 bg-white/95 text-xs text-slate-500 backdrop-blur dark:bg-neutral-950/95 dark:text-white/45">
-              <tr>
-                <th className="px-3 py-2 font-medium">{t("monitor.performance_model")}</th>
-                <th className="px-3 py-2 font-medium">{t("monitor.reasoning_effort")}</th>
-                <th className="px-3 py-2 text-right font-medium">{t("monitor.requests")}</th>
-                <th className="px-3 py-2 text-right font-medium">{t("monitor.avg_ttfb")}</th>
-                <th className="px-3 py-2 text-right font-medium">{t("monitor.tokens_per_second")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200/70 dark:divide-white/[0.06]">
-              {stats.map((item) => (
-                <tr key={`${item.model}::${item.reasoning_effort}`}>
-                  <td className="px-3 py-2">
-                    {item.model ? <ModelTag id={item.model} size="sm" /> : "--"}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-violet-700 dark:text-violet-300">
-                    {item.reasoning_effort || t("monitor.reasoning_default")}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums">
-                    {item.request_count}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums text-sky-700 dark:text-sky-300">
-                    {item.ttfb_sample_count > 0
-                      ? `${formatFixedNumber(item.avg_ttfb_ms, { fractionDigits: 0 })} ms`
-                      : "--"}
-                    {item.ttfb_sample_count > 0 ? (
-                      <span className="ml-1 text-2xs text-slate-400 dark:text-white/35">
-                        ({formatFixedNumber(item.min_ttfb_ms, { fractionDigits: 0 })}–
-                        {formatFixedNumber(item.max_ttfb_ms, { fractionDigits: 0 })})
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono tabular-nums text-violet-700 dark:text-violet-300">
-                    {item.throughput_sample_count > 0
-                      ? `${formatFixedNumber(item.tokens_per_second, { fractionDigits: 1 })} t/s`
-                      : "--"}
-                    {item.throughput_sample_count > 0 ? (
-                      <span className="ml-1 text-2xs text-slate-400 dark:text-white/35">
-                        ({formatFixedNumber(item.min_tokens_per_second, { fractionDigits: 1 })}–
-                        {formatFixedNumber(item.max_tokens_per_second, { fractionDigits: 1 })})
-                      </span>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          <div className="grid gap-2 rounded-2xl bg-slate-900/[0.025] p-2 dark:bg-white/[0.035] lg:grid-cols-3">
+            <div>
+              <p className="px-3 pt-1 text-2xs font-semibold uppercase tracking-wide text-slate-400 dark:text-white/35">
+                {t("monitor.performance_model")}
+              </p>
+              <ChartLegend
+                className="max-h-24 justify-start gap-0.5 overflow-y-auto"
+                items={models.map((model, index) => ({
+                  key: model,
+                  label: model,
+                  colorClass: CHART_COLOR_CLASSES[index % CHART_COLOR_CLASSES.length],
+                  enabled: modelSelected[model] ?? true,
+                  onToggle: () => toggleSelected(setModelSelected, model),
+                }))}
+              />
+            </div>
+            <div>
+              <p className="px-3 pt-1 text-2xs font-semibold uppercase tracking-wide text-slate-400 dark:text-white/35">
+                {t("monitor.reasoning_effort")}
+              </p>
+              <ChartLegend
+                className="max-h-24 justify-start gap-0.5 overflow-y-auto"
+                items={efforts.map((effort) => ({
+                  key: effort || "__default__",
+                  label: effort || t("monitor.reasoning_default"),
+                  colorClass: "bg-violet-400",
+                  enabled: effortSelected[effort] ?? true,
+                  onToggle: () => toggleSelected(setEffortSelected, effort),
+                }))}
+              />
+            </div>
+            <div>
+              <p className="px-3 pt-1 text-2xs font-semibold uppercase tracking-wide text-slate-400 dark:text-white/35">
+                {t("monitor.performance_mode")}
+              </p>
+              <ChartLegend
+                className="max-h-24 justify-start gap-0.5 overflow-y-auto"
+                items={modes.map((mode) => ({
+                  key: mode,
+                  label: t(mode === "fast" ? "monitor.fast_mode" : "monitor.standard_mode"),
+                  colorClass: mode === "fast" ? "bg-amber-400" : "bg-slate-400",
+                  enabled: modeSelected[mode] ?? true,
+                  onToggle: () => toggleSelected(setModeSelected, mode),
+                }))}
+              />
+            </div>
+          </div>
+
+          {chartableCount > 0 ? (
+            <EChart option={chartOption} className="h-80 min-h-[320px]" />
+          ) : (
+            <div className="flex h-56 items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm text-slate-500 dark:border-white/10 dark:text-white/45">
+              {t("monitor.performance_no_samples")}
+            </div>
+          )}
         </div>
       </Card>
     </Reveal>

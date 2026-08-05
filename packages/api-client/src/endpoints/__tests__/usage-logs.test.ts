@@ -187,6 +187,7 @@ describe("usage logs api", () => {
         {
           model: "gpt-5.4",
           reasoning_effort: "high",
+          fast: true,
           request_count: 3,
           ttfb_sample_count: 2,
           avg_ttfb_ms: 250,
@@ -208,6 +209,7 @@ describe("usage logs api", () => {
       expect.objectContaining({
         model: "gpt-5.4",
         reasoning_effort: "high",
+        fast: true,
         request_count: 3,
       }),
     ]);

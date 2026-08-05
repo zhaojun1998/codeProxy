@@ -1,7 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
-import { MonitorDistributionSections } from "@pages/monitor/MonitorDashboardSections";
+import {
+  MonitorDistributionSections,
+  MonitorPerformanceSection,
+} from "@pages/monitor/MonitorDashboardSections";
 
 vi.mock("@code-proxy/ui", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@code-proxy/ui")>()),
@@ -64,5 +67,73 @@ describe("MonitorPage distribution legends", () => {
     await waitFor(() => {
       expect(toggleModelDistributionLegend).toHaveBeenCalledWith("gpt-4.1");
     });
+  });
+});
+
+describe("MonitorPage performance legends", () => {
+  test("filters model, reasoning effort, and fast mode independently", async () => {
+    const user = userEvent.setup();
+    const labels: Record<string, string> = {
+      "monitor.performance_by_model_effort": "Performance",
+      "monitor.performance_by_model_effort_desc": "Performance chart",
+      "monitor.performance_model": "Model",
+      "monitor.reasoning_effort": "Reasoning",
+      "monitor.performance_mode": "Mode",
+      "monitor.fast_mode": "Fast",
+      "monitor.standard_mode": "Standard",
+      "monitor.avg_ttfb": "Avg TTFB",
+      "monitor.tokens_per_second": "Tokens/sec",
+      "monitor.reasoning_default": "Default",
+    };
+
+    render(
+      <MonitorPerformanceSection
+        t={(key) => labels[key] ?? key}
+        isRefreshing={false}
+        isDark={false}
+        stats={[
+          {
+            model: "gpt-5.4",
+            reasoning_effort: "high",
+            fast: true,
+            request_count: 3,
+            ttfb_sample_count: 3,
+            avg_ttfb_ms: 200,
+            min_ttfb_ms: 150,
+            max_ttfb_ms: 250,
+            throughput_sample_count: 3,
+            tokens_per_second: 70,
+            min_tokens_per_second: 60,
+            max_tokens_per_second: 80,
+          },
+          {
+            model: "gpt-5.4",
+            reasoning_effort: "low",
+            fast: false,
+            request_count: 2,
+            ttfb_sample_count: 2,
+            avg_ttfb_ms: 260,
+            min_ttfb_ms: 220,
+            max_ttfb_ms: 300,
+            throughput_sample_count: 2,
+            tokens_per_second: 55,
+            min_tokens_per_second: 50,
+            max_tokens_per_second: 60,
+          },
+        ]}
+      />,
+    );
+
+    const model = screen.getByRole("button", { name: "gpt-5.4" });
+    const reasoning = screen.getByRole("button", { name: "high" });
+    const fast = screen.getByRole("button", { name: "Fast" });
+
+    await user.click(model);
+    await user.click(reasoning);
+    await user.click(fast);
+
+    expect(model).toHaveAttribute("aria-pressed", "false");
+    expect(reasoning).toHaveAttribute("aria-pressed", "false");
+    expect(fast).toHaveAttribute("aria-pressed", "false");
   });
 });

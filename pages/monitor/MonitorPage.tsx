@@ -629,6 +629,7 @@ export function MonitorPage() {
         t={t}
         stats={chartData?.performance_stats ?? []}
         isRefreshing={isRefreshing}
+        isDark={isDark}
       />
 
       <MonitorDistributionSections
