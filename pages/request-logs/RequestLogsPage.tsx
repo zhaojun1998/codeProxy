@@ -1,8 +1,9 @@
 import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { LoaderCircle, RefreshCw, ScrollText, Trash2 } from "lucide-react";
-import { configApi, usageApi } from "@code-proxy/api-client";
+import { configApi, promptFilterApi, usageApi } from "@code-proxy/api-client";
+import type { PromptFilterLog } from "@code-proxy/api-client/endpoints/prompt-filter";
 import type {
   ClearUsageLogsPayload,
   UsageChannelFilterOption,
@@ -24,6 +25,7 @@ import { DataTable } from "@code-proxy/ui";
 import { DataTableColumnVisibilityMenu, useDataTableColumnVisibility } from "@code-proxy/ui";
 import { ErrorDetailModal, LogContentModal } from "@features/log-content-viewer";
 import { ModelTag } from "@features/model-tags";
+import { PromptFilterLogDetailModal } from "@features/prompt-filter-log-viewer";
 import { RequestLogsFilters } from "./RequestLogsFilters";
 import type { SearchableCheckboxMultiSelectOption } from "@code-proxy/ui";
 import {
@@ -104,7 +106,6 @@ function RequestLogsRecordsCount({ count }: { count: number }) {
 export function RequestLogsPage() {
   const { t, i18n } = useTranslation();
   const { notify } = useToast();
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
   // Content modal state
@@ -148,9 +149,30 @@ export function RequestLogsPage() {
     setErrorModalOpen(true);
   }, []);
 
+  const [promptFilterDetailLog, setPromptFilterDetailLog] = useState<PromptFilterLog | null>(null);
+  const promptFilterDetailSeqRef = useRef(0);
+
   const handlePromptFilterClick = useCallback(
-    (logId: number) => navigate(`/runtime/prompt-filter?tab=logs&request_log_id=${logId}`),
-    [navigate],
+    async (logId: number) => {
+      const seq = ++promptFilterDetailSeqRef.current;
+      try {
+        const response = await promptFilterApi.listLogs({ page: 1, size: 1, request_log_id: logId });
+        if (seq !== promptFilterDetailSeqRef.current) return;
+        const detail = response.items?.[0] ?? null;
+        if (!detail) {
+          notify({ type: "error", message: t("prompt_filter.logs_empty") });
+          return;
+        }
+        setPromptFilterDetailLog(detail);
+      } catch (err: unknown) {
+        if (seq !== promptFilterDetailSeqRef.current) return;
+        notify({
+          type: "error",
+          message: err instanceof Error ? err.message : t("prompt_filter.logs_load_failed"),
+        });
+      }
+    },
+    [notify, t],
   );
 
   // Build columns with content click handler
@@ -482,6 +504,7 @@ export function RequestLogsPage() {
   useEffect(() => {
     return () => {
       requestSeqRef.current += 1;
+      promptFilterDetailSeqRef.current += 1;
       requestAbortRef.current?.abort();
     };
   }, []);
@@ -765,6 +788,10 @@ export function RequestLogsPage() {
         />
       </div>
 
+      <PromptFilterLogDetailModal
+        log={promptFilterDetailLog}
+        onClose={() => setPromptFilterDetailLog(null)}
+      />
       <LogContentModal
         open={contentModalOpen}
         logId={contentModalLogId}

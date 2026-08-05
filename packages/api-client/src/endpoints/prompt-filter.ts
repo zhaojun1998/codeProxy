@@ -127,6 +127,7 @@ export interface PromptFilterLog {
   review_error: string;
   review_output?: string;
   review_raw_response?: string;
+  review_reasoning_content?: string;
   review_attempts?: PromptFilterReviewAttempt[];
   reason: string;
 }

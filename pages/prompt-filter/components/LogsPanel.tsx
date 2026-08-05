@@ -68,7 +68,7 @@ export function LogsPanel() {
   const { t } = useTranslation();
   const { notify } = useToast();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const requestLogID = Number(searchParams.get("request_log_id"));
 
   const [items, setItems] = useState<PromptFilterLog[]>([]);
@@ -92,7 +92,12 @@ export function LogsPanel() {
   const [clearing, setClearing] = useState(false);
 
   const fetchLogs = useCallback(
-    async (page: number, size: number, override?: Partial<LogFilters>) => {
+    async (
+      page: number,
+      size: number,
+      override?: Partial<LogFilters>,
+      requestLogIDOverride?: number | null,
+    ) => {
       const filters: LogFilters = {
         action: actionFilter,
         source,
@@ -105,11 +110,18 @@ export function LogsPanel() {
         intercepted: interceptedFilter,
         ...override,
       };
+      const effectiveRequestLogID =
+        requestLogIDOverride === undefined ? requestLogID : requestLogIDOverride;
+      const resolvedRequestLogID =
+        typeof effectiveRequestLogID === "number" &&
+        Number.isSafeInteger(effectiveRequestLogID) &&
+        effectiveRequestLogID > 0
+          ? effectiveRequestLogID
+          : undefined;
       const query: PromptFilterLogQuery = {
         page,
         size,
-        request_log_id:
-          Number.isSafeInteger(requestLogID) && requestLogID > 0 ? requestLogID : undefined,
+        request_log_id: resolvedRequestLogID,
         action: filters.action || undefined,
         source: filters.source.trim() || undefined,
         endpoint: filters.endpoint.trim() || undefined,
@@ -182,8 +194,12 @@ export function LogsPanel() {
     setScoreMax(null);
     setReviewedFilter("");
     setInterceptedFilter("");
-    void fetchLogs(1, pageSize, EMPTY_FILTERS);
-  }, [fetchLogs, pageSize]);
+    setDetailLog(null);
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("request_log_id");
+    setSearchParams(nextSearchParams, { replace: true });
+    void fetchLogs(1, pageSize, EMPTY_FILTERS, null);
+  }, [fetchLogs, pageSize, searchParams, setSearchParams]);
 
   const handlePageChange = useCallback(
     (page: number) => {
@@ -218,6 +234,13 @@ export function LogsPanel() {
   }, [fetchLogs, notify, pageSize, t]);
 
   const openDetail = useCallback((log: PromptFilterLog) => setDetailLog(log), []);
+  const closeDetail = useCallback(() => {
+    setDetailLog(null);
+    if (!searchParams.has("request_log_id")) return;
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("request_log_id");
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [searchParams, setSearchParams]);
   const openRequestLog = useCallback(
     (requestLogID: number) => {
       setDetailLog(null);
@@ -258,7 +281,7 @@ export function LogsPanel() {
           if (!row.reviewed) {
             return <span className="text-slate-400 dark:text-white/30">-</span>;
           }
-          const reason = String(row.reason || "").trim();
+          const reason = String(row.review_reasoning_content || row.reason || "").trim();
           return (
             <HoverTooltip content={reason} disabled={!reason} placement="bottom">
               <span
@@ -543,7 +566,7 @@ export function LogsPanel() {
 
       <LogDetailModal
         log={detailLog}
-        onClose={() => setDetailLog(null)}
+        onClose={closeDetail}
         onOpenRequestLog={openRequestLog}
       />
 

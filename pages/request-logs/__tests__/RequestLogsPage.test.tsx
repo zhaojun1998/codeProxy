@@ -1,6 +1,6 @@
 import { render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import i18n from "@code-proxy/i18n";
@@ -126,7 +126,13 @@ const mocks = vi.hoisted(() => ({
   getLogContent: vi.fn(),
   clearUsageLogs: vi.fn(),
   getRequestLogBodyStorage: vi.fn(),
+  listPromptFilterLogs: vi.fn(),
 }));
+
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location">{`${location.pathname}${location.search}`}</span>;
+}
 
 const expectSignalOptions = () => expect.objectContaining({ signal: expect.any(AbortSignal) });
 
@@ -173,6 +179,10 @@ vi.mock("@code-proxy/api-client", async (importOriginal) => {
       ...mod.configApi,
       getRequestLogBodyStorage: mocks.getRequestLogBodyStorage,
     },
+    promptFilterApi: {
+      ...mod.promptFilterApi,
+      listLogs: mocks.listPromptFilterLogs,
+    },
   };
 });
 
@@ -192,6 +202,7 @@ describe("RequestLogsPage", () => {
     mocks.getLogContent.mockReset();
     mocks.clearUsageLogs.mockReset();
     mocks.getRequestLogBodyStorage.mockReset();
+    mocks.listPromptFilterLogs.mockReset();
   });
 
   test("renders first token latency value in the response metrics column", async () => {
@@ -339,6 +350,80 @@ describe("RequestLogsPage", () => {
     const confidence = within(table).getByText("87%");
     await user.hover(confidence);
     expect(await screen.findByRole("tooltip")).toHaveTextContent("针对他人系统攻击");
+  });
+
+  test("opens prompt-filter detail directly without leaving request logs", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const user = userEvent.setup();
+
+    mocks.getUsageLogs.mockResolvedValue(
+      responseWithRows([
+        buildUsageLogItem({
+          id: 146025,
+          prompt_filter_action: "warn",
+          prompt_filter_score: 42,
+          prompt_filter_reviewed: true,
+          prompt_filter_review_confidence: 0.87,
+          prompt_filter_review_reason: "针对他人系统攻击",
+        }),
+      ]),
+    );
+    mocks.listPromptFilterLogs.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          request_log_id: 146025,
+          created_at: "2026-08-05T08:00:00Z",
+          source: "local_filter",
+          endpoint: "POST /v1/responses",
+          model: "gpt-5.4",
+          action: "warn",
+          mode: "warn",
+          score: 42,
+          threshold: 40,
+          matched_patterns: "[]",
+          text_preview: "",
+          full_text: "",
+          api_key: "sk-t...test",
+          client_ip: "127.0.0.1",
+          error_code: "",
+          review_model: "review-model",
+          review_provider: "primary",
+          review_latency_ms: 120,
+          reviewed: true,
+          review_flagged: true,
+          review_confidence: 0.87,
+          review_error: "",
+          reason: "针对他人系统攻击",
+        },
+      ],
+      total: 1,
+      page: 1,
+      size: 1,
+    });
+
+    rtlRender(
+      <MemoryRouter initialEntries={["/runtime/request-logs"]}>
+        <ThemeProvider>
+          <ToastProvider>
+            <RequestLogsPage />
+            <LocationProbe />
+          </ToastProvider>
+        </ThemeProvider>
+      </MemoryRouter>,
+    );
+
+    const table = await screen.findByRole("table", { name: "请求日志表" });
+    await user.click(within(table).getByRole("button", { name: "42" }));
+
+    const detailDialog = await screen.findByRole("dialog", { name: "日志详情" });
+    expect(detailDialog).toHaveTextContent("针对他人系统攻击");
+    expect(mocks.listPromptFilterLogs).toHaveBeenCalledWith({
+      page: 1,
+      size: 1,
+      request_log_id: 146025,
+    });
+    expect(screen.getByTestId("location")).toHaveTextContent("/runtime/request-logs");
   });
 
   test("labels non-streaming logs without rendering a first token placeholder", async () => {
