@@ -30,7 +30,6 @@ import { AuthFilesExcludedTab } from "./components/AuthFilesExcludedTab";
 import { AuthFilesAliasTab } from "./components/AuthFilesAliasTab";
 import { AuthFilesFilesTab } from "./components/AuthFilesFilesTab";
 import { AuthFilesIdentityFingerprintTab } from "./components/AuthFilesIdentityFingerprintTab";
-import { CodexResetCreditsSection } from "./components/CodexResetCreditsSection";
 import { AuthFileTagsModal } from "./components/AuthFileTagsModal";
 import { ImportModelsModal } from "./components/ImportModelsModal";
 import { GroupOverviewModal } from "./components/GroupOverviewModal";
@@ -940,8 +939,6 @@ export function AuthFilesPage() {
 
   return (
     <div className="space-y-3">
-      <CodexResetCreditsSection files={files} loading={loading && files.length === 0} />
-
       <AuthFilesFilesTab
         fileInputRef={fileInputRef}
         handleUpload={handleUploadAndRefreshQuota}
