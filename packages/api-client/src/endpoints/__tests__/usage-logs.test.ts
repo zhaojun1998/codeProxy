@@ -186,7 +186,7 @@ describe("usage logs api", () => {
       performance_stats: [
         {
           model: "gpt-5.4",
-          reasoning_effort: "high",
+          thinking_level: "high",
           fast: true,
           request_count: 3,
           ttfb_sample_count: 2,
@@ -208,7 +208,7 @@ describe("usage logs api", () => {
     expect(result.performance_stats).toEqual([
       expect.objectContaining({
         model: "gpt-5.4",
-        reasoning_effort: "high",
+        thinking_level: "high",
         fast: true,
         request_count: 3,
       }),

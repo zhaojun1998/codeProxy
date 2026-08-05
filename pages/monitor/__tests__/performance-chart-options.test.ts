@@ -3,7 +3,7 @@ import { createPerformanceChartOption } from "@pages/monitor/performance-chart-o
 
 const baseStats = {
   model: "gpt-5.4",
-  reasoning_effort: "high",
+  thinking_level: "high",
   fast: true,
   request_count: 4,
   ttfb_sample_count: 4,
@@ -19,7 +19,7 @@ const baseStats = {
 describe("performance chart options", () => {
   test("encodes model, reasoning effort, fast mode, and request volume", () => {
     const option = createPerformanceChartOption({
-      stats: [baseStats, { ...baseStats, reasoning_effort: "low", fast: false }],
+      stats: [baseStats, { ...baseStats, thinking_level: "low", fast: false }],
       models: ["gpt-5.4"],
       efforts: ["high", "low"],
       colorsByModel: { "gpt-5.4": "#60a5fa" },

@@ -59,7 +59,7 @@ export function createPerformanceChartOption(input: {
         .filter((item) => item.model === model)
         .map((item) => ({
           value: [item.avg_ttfb_ms, item.tokens_per_second, item.request_count],
-          symbol: effortSymbols.get(item.reasoning_effort) ?? "circle",
+          symbol: effortSymbols.get(item.thinking_level) ?? "circle",
           itemStyle: {
             color: input.colorsByModel[model] ?? "#94a3b8",
             borderColor: item.fast
@@ -104,7 +104,7 @@ export function createPerformanceChartOption(input: {
       formatter: (params: { data?: PerformanceChartDatum }) => {
         const item = params.data?.performance;
         if (!item) return "";
-        const effort = item.reasoning_effort || input.labels.defaultEffort;
+        const effort = item.thinking_level || input.labels.defaultEffort;
         const mode = item.fast ? input.labels.fast : input.labels.standard;
         return [
           `<strong>${escapeHtml(item.model)}</strong>`,

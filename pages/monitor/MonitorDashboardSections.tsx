@@ -161,7 +161,7 @@ export function MonitorPerformanceSection({
   );
   const efforts = useMemo(
     () =>
-      [...new Set(stats.map((item) => item.reasoning_effort))].sort((left, right) =>
+      [...new Set(stats.map((item) => item.thinking_level))].sort((left, right) =>
         (left || t("monitor.reasoning_default")).localeCompare(
           right || t("monitor.reasoning_default"),
         ),
@@ -185,7 +185,7 @@ export function MonitorPerformanceSection({
         const mode = item.fast ? "fast" : "standard";
         return (
           (modelSelected[item.model] ?? true) &&
-          (effortSelected[item.reasoning_effort] ?? true) &&
+          (effortSelected[item.thinking_level] ?? true) &&
           (modeSelected[mode] ?? true)
         );
       }),

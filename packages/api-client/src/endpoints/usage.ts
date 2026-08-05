@@ -1,9 +1,5 @@
 import { apiClient } from "../client/client";
-import type {
-  UsageData,
-  ChartDataResponse,
-  EntityStatsResponse,
-} from "../dto/types";
+import type { UsageData, ChartDataResponse, EntityStatsResponse } from "../dto/types";
 export type { UsageLogPerformanceStats } from "../dto/types";
 
 export interface UsageExportPayload {
@@ -335,8 +331,7 @@ export const usageApi = {
       cycle_request_total: resp?.cycle_request_total ?? 0,
       cycle_cost_total: resp?.cycle_cost_total ?? 0,
       cycle_total_tokens:
-        typeof resp?.cycle_total_tokens === "number" &&
-        Number.isFinite(resp.cycle_total_tokens)
+        typeof resp?.cycle_total_tokens === "number" && Number.isFinite(resp.cycle_total_tokens)
           ? resp.cycle_total_tokens
           : null,
       weekly_quota_used_percent:
@@ -617,7 +612,7 @@ export interface UsageLogItem {
   api_key_own_name?: string;
   end_user_display_name?: string;
   model: string;
-  reasoning_effort?: string;
+  thinking_level?: string | null;
   upstream_model?: string;
   vision_fallback_model?: string;
   source: string;

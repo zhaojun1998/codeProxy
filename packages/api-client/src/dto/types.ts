@@ -107,10 +107,8 @@ export interface AuthFileCodexImageGenerationBridge {
   enabled?: boolean;
 }
 
-export type AuthFileIdentityFingerprintProvider =
-  "claude" | "codex" | "gemini" | "xai";
-export type AuthFileIdentityFingerprintSource =
-  "learned" | "preset" | "builtin_default";
+export type AuthFileIdentityFingerprintProvider = "claude" | "codex" | "gemini" | "xai";
+export type AuthFileIdentityFingerprintSource = "learned" | "preset" | "builtin_default";
 
 export interface AuthFileIdentityFingerprintSummary {
   provider: AuthFileIdentityFingerprintProvider;
@@ -272,7 +270,7 @@ export interface ChartDataResponse {
 
 export interface UsageLogPerformanceStats {
   model: string;
-  reasoning_effort: string;
+  thinking_level: string;
   fast: boolean;
   request_count: number;
   ttfb_sample_count: number;
@@ -550,8 +548,7 @@ export interface AiAccountStatusRefreshAcceptedDto {
 
 export type AiAccountStatusRefreshJobState = "running" | "completed";
 
-export type AiAccountStatusRefreshAccountState =
-  "queued" | "running" | "success" | "error";
+export type AiAccountStatusRefreshAccountState = "queued" | "running" | "success" | "error";
 
 export interface AiAccountStatusRefreshAccountResultDto {
   auth_index: string;

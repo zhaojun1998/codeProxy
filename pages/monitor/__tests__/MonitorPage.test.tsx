@@ -94,7 +94,7 @@ describe("MonitorPage performance legends", () => {
         stats={[
           {
             model: "gpt-5.4",
-            reasoning_effort: "high",
+            thinking_level: "high",
             fast: true,
             request_count: 3,
             ttfb_sample_count: 3,
@@ -108,7 +108,7 @@ describe("MonitorPage performance legends", () => {
           },
           {
             model: "gpt-5.4",
-            reasoning_effort: "low",
+            thinking_level: "low",
             fast: false,
             request_count: 2,
             ttfb_sample_count: 2,

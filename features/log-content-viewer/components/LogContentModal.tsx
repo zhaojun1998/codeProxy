@@ -766,10 +766,10 @@ function StructuredRequestCard({
     </div>
   );
 }
-
 export function LogContentModal({
   open,
   logId,
+  displayModel,
   initialTab = "input",
   onClose,
   showRequestDetails = false,
@@ -1760,7 +1760,7 @@ export function LogContentModal({
   return (
     <ContentModal
       open={open}
-      model={model}
+      model={displayModel?.trim() || model}
       onClose={onClose}
       tabs={tabBar}
       description={detailsOnly ? t("log_content.request_details") : undefined}

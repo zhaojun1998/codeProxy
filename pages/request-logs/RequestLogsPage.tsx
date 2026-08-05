@@ -110,6 +110,7 @@ export function RequestLogsPage() {
   // Content modal state
   const [contentModalOpen, setContentModalOpen] = useState(false);
   const [contentModalLogId, setContentModalLogId] = useState<number | null>(null);
+  const [contentModalModel, setContentModalModel] = useState("");
   const [contentModalTab, setContentModalTab] = useState<"input" | "output">("input");
   const [requestBodyStorageEnabled, setRequestBodyStorageEnabled] = useState(false);
 
@@ -126,11 +127,15 @@ export function RequestLogsPage() {
     };
   }, []);
 
-  const handleContentClick = useCallback((logId: number, tab: "input" | "output") => {
-    setContentModalLogId(logId);
-    setContentModalTab(tab);
-    setContentModalOpen(true);
-  }, []);
+  const handleContentClick = useCallback(
+    (logId: number, tab: "input" | "output", model: string) => {
+      setContentModalLogId(logId);
+      setContentModalModel(model);
+      setContentModalTab(tab);
+      setContentModalOpen(true);
+    },
+    [],
+  );
 
   // Error modal state
   const [errorModalOpen, setErrorModalOpen] = useState(false);
@@ -763,6 +768,7 @@ export function RequestLogsPage() {
       <LogContentModal
         open={contentModalOpen}
         logId={contentModalLogId}
+        displayModel={contentModalModel}
         initialTab={contentModalTab}
         onClose={() => setContentModalOpen(false)}
         showRequestDetails

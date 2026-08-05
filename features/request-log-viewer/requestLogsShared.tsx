@@ -47,7 +47,8 @@ export type RequestLogsRow = {
   channelAuthType?: string;
   maskedApiKey: string;
   model: string;
-  reasoningEffort: string;
+  thinkingLevel?: string;
+  displayModel?: string;
   upstreamModel: string;
   visionFallbackModel: string;
   failed: boolean;
@@ -402,31 +403,31 @@ export function RequestLogFacetFilters({
       </div>
       {!hideChannel ? (
         <div className="w-full min-[480px]:w-auto sm:w-[180px]">
-        <SearchableCheckboxMultiSelect
-          value={selectedChannels ?? []}
-          onChange={onChannelsChange}
-          options={channelOptions}
-          placeholder={t("request_logs.all_channels_placeholder")}
-          searchPlaceholder={t("request_logs.search_channels")}
-          selectFilteredLabel={t("request_logs.select_filtered")}
-          deselectFilteredLabel={t("request_logs.deselect_filtered")}
-          selectedCountLabel={(count: number) => t("request_logs.selected_count", { count })}
-          noResultsLabel={t("request_logs.no_filter_results")}
-          aria-label={t("request_logs.filter_channel")}
-          clearLabel={t("request_logs.clear_channel_filter")}
-          onClear={onChannelsClear}
-          showClearButton
-          size="sm"
-          emptyValueMeansAllSelected
-          emptyValueRepresentsAllSelected={selectedChannels === null}
-          showFilteredToggleWithoutQuery={false}
-          applyMode="manual"
-          applyLabel={t("request_logs.apply_filters")}
-          cancelLabel={t("common.cancel")}
-          selectAllLabel={t("request_logs.select_all")}
-          deselectAllLabel={t("request_logs.deselect_all")}
-          emptySelectionLabel={t("request_logs.none_selected")}
-        />
+          <SearchableCheckboxMultiSelect
+            value={selectedChannels ?? []}
+            onChange={onChannelsChange}
+            options={channelOptions}
+            placeholder={t("request_logs.all_channels_placeholder")}
+            searchPlaceholder={t("request_logs.search_channels")}
+            selectFilteredLabel={t("request_logs.select_filtered")}
+            deselectFilteredLabel={t("request_logs.deselect_filtered")}
+            selectedCountLabel={(count: number) => t("request_logs.selected_count", { count })}
+            noResultsLabel={t("request_logs.no_filter_results")}
+            aria-label={t("request_logs.filter_channel")}
+            clearLabel={t("request_logs.clear_channel_filter")}
+            onClear={onChannelsClear}
+            showClearButton
+            size="sm"
+            emptyValueMeansAllSelected
+            emptyValueRepresentsAllSelected={selectedChannels === null}
+            showFilteredToggleWithoutQuery={false}
+            applyMode="manual"
+            applyLabel={t("request_logs.apply_filters")}
+            cancelLabel={t("common.cancel")}
+            selectAllLabel={t("request_logs.select_all")}
+            deselectAllLabel={t("request_logs.deselect_all")}
+            emptySelectionLabel={t("request_logs.none_selected")}
+          />
         </div>
       ) : null}
       <div className="w-full min-[480px]:w-auto sm:w-[150px]">
@@ -525,7 +526,6 @@ export const formatRequestLogLatencyMs = (value: number): string => {
   const trimmed = fixed.endsWith(".0") ? fixed.slice(0, -2) : fixed;
   return `${trimmed}s`;
 };
-
 export const formatOptionalRequestLogLatencyMs = (value: number): string => {
   if (!Number.isFinite(value) || value <= 0) return "--";
   return formatRequestLogLatencyMs(value);
@@ -534,6 +534,7 @@ export const formatOptionalRequestLogLatencyMs = (value: number): string => {
 export const toRequestLogsRow = (item: UsageLogItem): RequestLogsRow => {
   const isSystemCall = isSystemRequestLogKey(item.api_key, item.api_key_name);
   const channelAuthType = normalizeChannelAuthType(item.auth_type);
+  const thinkingLevel = String(item.thinking_level ?? "").trim();
   return {
     id: String(item.id),
     sessionId: String(item.session_id ?? "").trim(),
@@ -551,7 +552,8 @@ export const toRequestLogsRow = (item: UsageLogItem): RequestLogsRow => {
     channelAuthType: channelAuthType || undefined,
     maskedApiKey: item.api_key_masked || maskRequestLogApiKey(item.api_key),
     model: item.model,
-    reasoningEffort: String(item.reasoning_effort ?? "").trim(),
+    thinkingLevel,
+    displayModel: thinkingLevel ? `${item.model}(${thinkingLevel})` : item.model,
     upstreamModel: item.upstream_model || "",
     visionFallbackModel: item.vision_fallback_model || "",
     failed: item.failed,
@@ -568,7 +570,6 @@ export const toRequestLogsRow = (item: UsageLogItem): RequestLogsRow => {
     promptFilterScore: item.prompt_filter_score ?? 0,
   };
 };
-
 export const isSystemRequestLogKey = (apiKey: string, apiKeyName?: string): boolean => {
   if (String(apiKeyName || "").trim()) return false;
   const trimmed = String(apiKey || "").trim();
@@ -650,13 +651,12 @@ export function RequestLogsTimeRangeSelector({
     </Tabs>
   );
 }
-
 // DataTable maps header text-center to flex justify-center on the label row.
 const CENTERED_REQUEST_LOG_HEADER_CLASS = "text-center";
 
 export function buildRequestLogsColumns(
   t: (key: string) => string,
-  onContentClick?: (logId: number, tab: "input" | "output") => void,
+  onContentClick?: (logId: number, tab: "input" | "output", model: string) => void,
   onErrorClick?: (logId: number, model: string) => void,
   onPromptFilterClickOrOptions?:
     | ((logId: number) => void)
@@ -780,7 +780,7 @@ export function buildRequestLogsColumns(
         row.failed ? (
           <button
             type="button"
-            onClick={() => onErrorClick?.(Number(row.id), row.model)}
+            onClick={() => onErrorClick?.(Number(row.id), row.displayModel || row.model)}
             className="inline-flex min-w-[52px] cursor-pointer justify-center rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600 transition hover:bg-rose-100 hover:shadow-sm dark:bg-rose-500/15 dark:text-rose-300 dark:hover:bg-rose-500/25"
             title={t("request_logs.view_error")}
           >
@@ -879,7 +879,7 @@ export function buildRequestLogsColumns(
         row.hasContent && onContentClick ? (
           <button
             type="button"
-            onClick={() => onContentClick(Number(row.id), "input")}
+            onClick={() => onContentClick(Number(row.id), "input", row.displayModel || row.model)}
             className="inline-block ml-auto cursor-pointer rounded px-1.5 py-0.5 transition hover:bg-sky-50 dark:hover:bg-sky-950/30"
             title={t("request_logs.view_input")}
           >
@@ -920,7 +920,7 @@ export function buildRequestLogsColumns(
         row.hasContent && onContentClick ? (
           <button
             type="button"
-            onClick={() => onContentClick(Number(row.id), "output")}
+            onClick={() => onContentClick(Number(row.id), "output", row.displayModel || row.model)}
             className="inline-block ml-auto cursor-pointer rounded px-1.5 py-0.5 transition hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
             title={t("request_logs.view_output")}
           >
@@ -1010,8 +1010,8 @@ export function buildRequestLogsColumns(
       render: (row) =>
         row.model ? (
           <span className="inline-flex max-w-full items-center justify-center gap-1 align-middle">
-            <OverflowTooltip content={row.model} className="min-w-0">
-              <ModelTag id={row.model} size="sm" className="align-middle" />
+            <OverflowTooltip content={row.displayModel || row.model} className="min-w-0">
+              <ModelTag id={row.displayModel || row.model} size="sm" className="align-middle" />
             </OverflowTooltip>
             {row.upstreamModel && row.upstreamModel !== row.model ? (
               <HoverTooltip
@@ -1034,11 +1034,6 @@ export function buildRequestLogsColumns(
                   aria-label={t("request_logs.vision_fallback_model_id")}
                 />
               </HoverTooltip>
-            ) : null}
-            {row.reasoningEffort ? (
-              <span className="shrink-0 rounded-full bg-violet-50 px-1.5 py-0.5 font-mono text-2xs font-semibold text-violet-700 dark:bg-violet-500/15 dark:text-violet-200">
-                {row.reasoningEffort}
-              </span>
             ) : null}
           </span>
         ) : (
