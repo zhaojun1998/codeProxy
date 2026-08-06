@@ -17,6 +17,8 @@ export {
   TABLE_ROW_ACTIONS_STICKY_END_COLUMN,
 } from "./data-table/TableRowActions";
 export type { TableRowAction } from "./data-table/TableRowActions";
+export { COLUMN_WIDTH } from "./data-table/columnWidths";
+export type { ColumnWidthToken } from "./data-table/columnWidths";
 export type {
   DataTableColumn,
   DataTableColumnSort,
