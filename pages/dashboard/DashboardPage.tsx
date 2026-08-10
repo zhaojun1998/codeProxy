@@ -41,6 +41,7 @@ import { useSystemStats } from "./useSystemStats";
 import { AnimatedNumber } from "@code-proxy/ui";
 import { Button } from "@code-proxy/ui";
 import { Card } from "@code-proxy/ui";
+import { surface } from "@code-proxy/ui";
 import { EmptyState } from "@code-proxy/ui";
 import { HoverTooltip } from "@code-proxy/ui";
 import { Tabs, TabsList, TabsTrigger } from "@code-proxy/ui";
@@ -134,8 +135,7 @@ const formatThroughputValue = (value: number) =>
 const formatRate = (rate: number) => `${rate.toFixed(2)}%`;
 const formatTtfb = (value: number) => `${formatFixedNumber(value, { fractionDigits: 0 })} ms`;
 const formatTokensPerSecond = (value: number) => formatFixedNumber(value, { fractionDigits: 1 });
-const PANEL_SURFACE =
-  "rounded-2xl bg-white shadow-[0_10px_26px_rgba(15,23,42,0.05)] dark:bg-neutral-950/85 dark:shadow-[0_10px_26px_rgba(0,0,0,0.28)]";
+const PANEL_SURFACE = surface({ tone: "panel", radius: "2xl" });
 
 const formatThroughputTooltip = (params: any) => {
   const items = Array.isArray(params) ? params : [params];
@@ -603,7 +603,9 @@ export function DashboardPage() {
             >
               <TabsList>
                 {([1, 7, 30] as DashboardRange[]).map((val) => (
-                  <TabsTrigger key={val} value={String(val)}>{t(RANGE_KEYS[val])}</TabsTrigger>
+                  <TabsTrigger key={val} value={String(val)}>
+                    {t(RANGE_KEYS[val])}
+                  </TabsTrigger>
                 ))}
                 <TabsTrigger value="custom">{t("monitor.time.custom")}</TabsTrigger>
               </TabsList>
@@ -758,7 +760,9 @@ export function DashboardPage() {
         />
         <DashboardKpiCard
           title={t("dashboard.tokens_per_second")}
-          value={<AnimatedNumber value={kpi?.tokens_per_second ?? 0} format={formatTokensPerSecond} />}
+          value={
+            <AnimatedNumber value={kpi?.tokens_per_second ?? 0} format={formatTokensPerSecond} />
+          }
           hint={t("dashboard.tps_hint", {
             min: formatTokensPerSecond(kpi?.min_tokens_per_second ?? 0),
             max: formatTokensPerSecond(kpi?.max_tokens_per_second ?? 0),

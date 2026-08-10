@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   CalendarClock,
-  Clock,
   Download,
   Eye,
   Gauge,
@@ -48,15 +47,13 @@ import {
 } from "@code-proxy/domain";
 import { resolveQuotaProvider, type QuotaProvider } from "@features/quota-preview/quota-fetch";
 import { useStickyDisplayPlans } from "./useStickyDisplayPlans";
-import { QuotaMetricChips, resolveQuotaVisualTone } from "../components/QuotaMetricChips";
+import { QuotaMetricChips } from "../components/QuotaMetricChips";
+import { renderQuotaBarNode } from "./quotaBar";
 import {
   filterAntigravityQuotaItems,
   type QuotaItem,
   type QuotaState,
 } from "@features/quota-preview/quota-helpers";
-
-const formatCurrency = (value: number): string =>
-  `$${(Number.isFinite(value) ? value : 0).toFixed(4)}`;
 
 const KNOWN_QUOTA_TEXT_KEYS = new Set([
   "missing_auth_index",
@@ -400,6 +397,23 @@ export function useAuthFilesFilesPresentation({
     [nowMs, t],
   );
 
+  // Age of an observation, coarsest unit only ("6天" / "3小时"): the exact age of
+  // a value we already know is stale adds noise, the order of magnitude is what
+  // tells the user whether to trust it.
+  const formatQuotaAgeCompact = useCallback(
+    (observedAtMs?: number) => {
+      if (typeof observedAtMs !== "number" || !Number.isFinite(observedAtMs)) return null;
+      const diffMs = Math.max(0, nowMs - observedAtMs);
+      const minutes = Math.floor(diffMs / 60_000);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      if (days >= 1) return t("m_quota.duration_day_compact", { count: days });
+      if (hours >= 1) return t("m_quota.duration_hour_compact", { count: hours });
+      return t("m_quota.duration_minute_compact", { count: Math.max(1, minutes) });
+    },
+    [nowMs, t],
+  );
+
   // Chips keep only the two largest units ("2d19h") so the countdown never
   // squeezes the percent out of a half-width chip.
   const formatQuotaResetTextChip = useCallback(
@@ -525,146 +539,16 @@ export function useAuthFilesFilesPresentation({
     [resolveQuotaErrorBadgeLabel, t, translateQuotaText],
   );
 
-  const renderQuotaBar = useCallback(
-    (label: string, item: QuotaItem | null, windowCost?: number, compact = false): ReactNode => {
-      const tone = resolveQuotaVisualTone(item?.percent);
-      const normalized = tone.normalized;
-      const translatedLabel = translateQuotaText(label);
-      const percentText =
-        (item?.value ? translateQuotaText(item.value) : undefined) ??
-        (normalized === null ? "--" : `${Math.round(normalized)}%`);
-      // Keep a fixed-height meta row so bars stay evenly spaced; hide "--" when empty.
-      const detailText = formatQuotaItemDetailText(item);
-      const usedPercent =
-        typeof item?.percent === "number" && Number.isFinite(item.percent)
-          ? 100 - item.percent
-          : null;
-      const cost =
-        typeof windowCost === "number" && Number.isFinite(windowCost) && windowCost > 0
-          ? windowCost
-          : null;
-      const costText =
-        cost === null
-          ? null
-          : usedPercent !== null && usedPercent >= 3
-            ? t("m_quota.used_with_estimate", {
-                used: formatCurrency(cost),
-                total: formatCurrency(cost / (usedPercent / 100)),
-              })
-            : t("m_quota.used_cost", { value: formatCurrency(cost) });
-      const prediction = (() => {
-        if (usedPercent === null || usedPercent < 3 || usedPercent >= 100) return null;
-        const resetAtMs = item?.resetAtMs;
-        const windowSeconds = item?.windowSeconds;
-        if (typeof resetAtMs !== "number" || !Number.isFinite(resetAtMs)) return null;
-        if (
-          typeof windowSeconds !== "number" ||
-          !Number.isFinite(windowSeconds) ||
-          windowSeconds <= 0
-        ) {
-          return null;
-        }
-        const windowMs = windowSeconds * 1000;
-        const periodStart = resetAtMs - windowMs;
-        const elapsed = nowMs - periodStart;
-        if (elapsed <= 0) return null;
-        const projected = usedPercent * (windowMs / elapsed);
-        const runOutAt = periodStart + elapsed * (100 / usedPercent);
-        return {
-          overuse: projected > 100,
-          percent: Math.round(projected),
-          durationText: formatQuotaResetTextCompact(runOutAt) ?? "",
-          slack: Math.max(0, Math.round(100 - projected)),
-        };
-      })();
-
-      const tooltipParts = [translatedLabel, percentText];
-      if (detailText) tooltipParts.push(detailText);
-      if (costText) tooltipParts.push(costText);
-      const bar = (
-        <div className={compact ? "space-y-1" : "space-y-1.5"}>
-          <div className="flex items-center justify-between gap-2">
-            <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-white/70">
-              <Clock size={12} className="shrink-0 text-slate-400 dark:text-white/40" aria-hidden />
-              <span className="min-w-0 truncate">{translateQuotaText(label)}</span>
-            </span>
-            <span
-              className={[
-                "shrink-0 font-semibold tabular-nums",
-                compact ? "text-2xs" : "text-xs",
-                tone.percentClass,
-              ].join(" ")}
-            >
-              {percentText}
-            </span>
-          </div>
-          <div
-            className={[
-              "w-full overflow-hidden rounded-full bg-slate-100 dark:bg-white/10",
-              compact ? "h-1.5" : "h-2",
-            ].join(" ")}
-          >
-            <div
-              className={["h-full rounded-full", tone.fillClass].join(" ")}
-              style={{ width: `${normalized ?? 0}%` }}
-              aria-hidden="true"
-            />
-          </div>
-          {compact ? null : (
-            <div className="min-h-[14px] truncate text-right text-2xs tabular-nums text-slate-400 dark:text-white/40">
-              {detailText ?? "\u00A0"}
-            </div>
-          )}
-          {costText ? (
-            <div className="truncate text-2xs tabular-nums text-slate-500 dark:text-white/55">
-              {costText}
-            </div>
-          ) : null}
-          {prediction ? (
-            <div
-              className={[
-                "truncate text-2xs tabular-nums",
-                prediction.overuse
-                  ? "text-rose-600 dark:text-rose-300"
-                  : "text-emerald-600 dark:text-emerald-300",
-              ].join(" ")}
-            >
-              {t(
-                prediction.overuse
-                  ? "m_quota.run_out_overuse"
-                  : "m_quota.run_out_underuse",
-                {
-                  percent: prediction.percent,
-                  duration: prediction.durationText,
-                  slack: prediction.slack,
-                },
-              )}
-            </div>
-          ) : null}
-        </div>
-      );
-      if (!compact) {
-        return <div key={label}>{bar}</div>;
-      }
-      return (
-        <HoverTooltip
-          key={label}
-          content={tooltipParts.join(" · ")}
-          placement="top"
-          className="w-full max-w-full"
-        >
-          <div className="w-full min-w-0">{bar}</div>
-        </HoverTooltip>
-      );
-    },
-    [
-      formatQuotaItemDetailText,
-      formatQuotaResetTextCompact,
-      nowMs,
+  const renderQuotaBar = (label: string, item: QuotaItem | null, windowCost?: number, compact = false): ReactNode =>
+    renderQuotaBarNode(label, item, compact, {
       t,
+      nowMs,
       translateQuotaText,
-    ],
-  );
+      formatQuotaItemDetailText,
+      formatQuotaAgeCompact,
+      formatQuotaResetTextCompact,
+      windowCost,
+    });
 
   const fileColumns = useMemo<DataTableColumn<AuthFileItem>[]>(() => {
     return [

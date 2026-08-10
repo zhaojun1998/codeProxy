@@ -19,6 +19,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { LogImage } from "./types";
+import { surface } from "@code-proxy/ui";
 
 const LARGE_TEXT_CHAR_THRESHOLD = 50_000;
 const LARGE_TEXT_LINE_THRESHOLD = 400;
@@ -63,10 +64,7 @@ function MessageImages({
             </div>
           );
         }
-        if (
-          typeof image.approxBytes === "number" &&
-          image.approxBytes > INLINE_IMAGE_MAX_BYTES
-        ) {
+        if (typeof image.approxBytes === "number" && image.approxBytes > INLINE_IMAGE_MAX_BYTES) {
           return (
             <button
               key={index}
@@ -428,7 +426,12 @@ export function PlainPre({ text }: { text: string }) {
   }
 
   return (
-    <pre className="whitespace-pre-wrap break-words rounded-xl border border-slate-900/8 bg-slate-50 p-4 text-xs leading-relaxed font-mono dark:border-white/8 dark:bg-neutral-900 dark:text-slate-200">
+    <pre
+      className={[
+        surface({ tone: "inset", radius: "xl" }),
+        "whitespace-pre-wrap break-words p-4 text-xs leading-relaxed font-mono dark:text-slate-200",
+      ].join(" ")}
+    >
       {text}
     </pre>
   );
@@ -466,7 +469,10 @@ function VirtualPlainPre({ rows }: { rows: string[] }) {
   return (
     <div
       ref={parentRef}
-      className="h-[min(58vh,620px)] overflow-y-auto overscroll-contain rounded-xl border border-slate-900/8 bg-slate-50 text-xs leading-relaxed font-mono [contain:layout_paint] dark:border-white/8 dark:bg-neutral-900 dark:text-slate-200"
+      className={[
+        surface({ tone: "inset", radius: "xl" }),
+        "h-[min(58vh,620px)] overflow-y-auto overscroll-contain text-xs leading-relaxed font-mono [contain:layout_paint] dark:text-slate-200",
+      ].join(" ")}
     >
       <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
         {virtualRows.map((virtualRow) => (
@@ -560,8 +566,7 @@ function VirtualMessageList({
   useEffect(() => {
     if (highlightedMessageIndex === null || highlightedMessageIndex === undefined) return;
     const index = messages.findIndex(
-      (message, messageIndex) =>
-        (message.messageIndex ?? messageIndex) === highlightedMessageIndex,
+      (message, messageIndex) => (message.messageIndex ?? messageIndex) === highlightedMessageIndex,
     );
     if (index >= 0) virtualizer.scrollToIndex(index, { align: "center" });
   }, [highlightedMessageIndex, messages, virtualizer]);
@@ -651,7 +656,10 @@ export function ContentModal({
           <motion.div
             role="dialog"
             aria-modal="true"
-            className="relative z-10 flex h-[min(82dvh,760px)] w-[min(calc(100vw-2rem),1040px)] max-w-none flex-col overflow-hidden rounded-2xl border border-slate-900/8 bg-white shadow-xl dark:border-white/8 dark:bg-neutral-950"
+            className={[
+              surface({ tone: "plain", radius: "2xl" }),
+              "relative z-10 flex h-[min(82dvh,760px)] w-[min(calc(100vw-2rem),1040px)] max-w-none flex-col overflow-hidden shadow-xl",
+            ].join(" ")}
             variants={{
               hidden: { opacity: 0, y: 18, scale: 0.96, filter: "blur(2px)" },
               show: { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" },

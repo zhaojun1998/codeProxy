@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -23,18 +16,10 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { usageApi, type UsageLogEgressResponse } from "@code-proxy/api-client";
-import {
-  buildInputRenderedView,
-  buildOutputRenderedView,
-} from "../log-content/parsers";
-import {
-  ContentModal,
-  MessageBlock,
-  MessageList,
-  PlainPre,
-} from "../log-content/rendering";
+import { buildInputRenderedView, buildOutputRenderedView } from "../log-content/parsers";
+import { ContentModal, MessageBlock, MessageList, PlainPre } from "../log-content/rendering";
 import { scheduleIdle, type CancelFn } from "../log-content/scheduler";
-import { Tabs, TabsList, TabsTrigger, TextInput } from "@code-proxy/ui";
+import { Tabs, TabsList, TabsTrigger, TextInput, surface } from "@code-proxy/ui";
 import { ImagePreviewOverlay } from "@code-proxy/ui";
 import type {
   AsyncParsedState,
@@ -82,8 +67,7 @@ function parseJsonObject(raw: string): JsonObject | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-      return null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     return parsed as JsonObject;
   } catch {
     return null;
@@ -92,8 +76,7 @@ function parseJsonObject(raw: string): JsonObject | null {
 
 function stringifyFieldValue(value: unknown): string {
   if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean")
-    return String(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (value === null || value === undefined) return "";
   return JSON.stringify(value, null, 2);
 }
@@ -110,8 +93,7 @@ function formatDetailValue(value: unknown): string {
   if (value === null) return "null";
   if (value === undefined) return "";
   if (typeof value === "string") return value.trim();
-  if (typeof value === "number" || typeof value === "boolean")
-    return String(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (Array.isArray(value)) {
     return value
       .map((item) => formatDetailValue(item))
@@ -126,18 +108,10 @@ function formatDetailValue(value: unknown): string {
 }
 
 function hasDetailValue(value: string): boolean {
-  return (
-    value.trim() !== "" &&
-    value.trim() !== "<empty>" &&
-    value.trim() !== "<none>"
-  );
+  return value.trim() !== "" && value.trim() !== "<empty>" && value.trim() !== "<none>";
 }
 
-function pushDetailRow(
-  rows: RequestDetailRow[],
-  label: string,
-  value: unknown,
-) {
+function pushDetailRow(rows: RequestDetailRow[], label: string, value: unknown) {
   const text = formatDetailValue(value);
   if (hasDetailValue(text)) rows.push({ label, value: text });
 }
@@ -182,9 +156,7 @@ function parseExchangeLog(
 
   for (const rawLine of lines) {
     const line = rawLine.trimEnd();
-    const sectionMatch = line.match(
-      /^=== API (REQUEST|RESPONSE)\s*(\d+)? ===$/,
-    );
+    const sectionMatch = line.match(/^=== API (REQUEST|RESPONSE)\s*(\d+)? ===$/);
     if (sectionMatch) {
       flushGroup();
       const attemptNumber = sectionMatch[2];
@@ -247,9 +219,7 @@ function parseExchangeLog(
   }
 
   flushGroup();
-  return attempts.filter(
-    (attempt) => attempt.rows.length > 0 || attempt.groups.length > 0,
-  );
+  return attempts.filter((attempt) => attempt.rows.length > 0 || attempt.groups.length > 0);
 }
 
 const BODY_DETAIL_KEYS = new Set([
@@ -275,33 +245,24 @@ function isBodyDetailKey(key: string): boolean {
   return BODY_DETAIL_KEYS.has(key.trim().toLowerCase());
 }
 
-function buildGenericRows(
-  record: unknown,
-  skipKeys: Iterable<string> = [],
-): RequestDetailRow[] {
+function buildGenericRows(record: unknown, skipKeys: Iterable<string> = []): RequestDetailRow[] {
   if (!isRecord(record)) return [];
   const skip = new Set([...BODY_DETAIL_KEYS, ...skipKeys]);
-  return Object.entries(record).reduce<RequestDetailRow[]>(
-    (rows, [key, value]) => {
-      const normalizedKey = key.trim().toLowerCase();
-      if (
-        skip.has(normalizedKey) ||
-        normalizedKey === "headers" ||
-        normalizedKey === "fingerprint_headers"
-      ) {
-        return rows;
-      }
-      pushDetailRow(rows, key, value);
+  return Object.entries(record).reduce<RequestDetailRow[]>((rows, [key, value]) => {
+    const normalizedKey = key.trim().toLowerCase();
+    if (
+      skip.has(normalizedKey) ||
+      normalizedKey === "headers" ||
+      normalizedKey === "fingerprint_headers"
+    ) {
       return rows;
-    },
-    [],
-  );
+    }
+    pushDetailRow(rows, key, value);
+    return rows;
+  }, []);
 }
 
-function buildClientAttempt(
-  client: unknown,
-  labels: RequestDetailLabels,
-): RequestDetailAttempt {
+function buildClientAttempt(client: unknown, labels: RequestDetailLabels): RequestDetailAttempt {
   const record = isRecord(client) ? client : {};
   const preferredKeys = [
     "ip",
@@ -390,16 +351,11 @@ function filterDetailAttempts(
         .filter((group) => group.rows.length > 0),
     }))
     .filter(
-      (attempt) =>
-        attempt.rows.length > 0 ||
-        attempt.groups.some((group) => group.rows.length > 0),
+      (attempt) => attempt.rows.length > 0 || attempt.groups.some((group) => group.rows.length > 0),
     );
 }
 
-function countDetailMatches(
-  attempts: RequestDetailAttempt[],
-  searchTerm: string,
-) {
+function countDetailMatches(attempts: RequestDetailAttempt[], searchTerm: string) {
   if (!searchTerm) return 0;
   return attempts.reduce(
     (total, attempt) =>
@@ -407,8 +363,7 @@ function countDetailMatches(
       attempt.rows.filter((row) => detailRowMatches(row, searchTerm)).length +
       attempt.groups.reduce(
         (groupTotal, group) =>
-          groupTotal +
-          group.rows.filter((row) => detailRowMatches(row, searchTerm)).length,
+          groupTotal + group.rows.filter((row) => detailRowMatches(row, searchTerm)).length,
         0,
       ),
     0,
@@ -502,22 +457,14 @@ function RequestDetailAttemptView({
       ) : null}
       <RequestDetailRows rows={attempt.rows} searchTerm={searchTerm} />
       {attempt.groups.map((group) => (
-        <RequestDetailGroupView
-          key={group.title}
-          group={group}
-          searchTerm={searchTerm}
-        />
+        <RequestDetailGroupView key={group.title} group={group} searchTerm={searchTerm} />
       ))}
     </div>
   );
 }
 
 function RequestDetailEmpty() {
-  return (
-    <span className="px-3 py-3 text-sm text-slate-400 dark:text-white/35">
-      --
-    </span>
-  );
+  return <span className="px-3 py-3 text-sm text-slate-400 dark:text-white/35">--</span>;
 }
 
 function RequestDetailSection({
@@ -538,16 +485,14 @@ function RequestDetailSection({
   const [open, setOpen] = useState(defaultOpen);
   const contentId = testId ? `${testId}-content` : undefined;
   const visibleAttempts = attempts.filter(
-    (attempt) =>
-      attempt.rows.length > 0 ||
-      attempt.groups.some((group) => group.rows.length > 0),
+    (attempt) => attempt.rows.length > 0 || attempt.groups.some((group) => group.rows.length > 0),
   );
   const showAttemptTitle = visibleAttempts.length > 1;
 
   return (
     <section
       data-testid={testId}
-      className="overflow-hidden rounded-lg border border-slate-900/8 bg-white dark:border-white/8 dark:bg-neutral-950"
+      className={[surface({ tone: "plain", radius: "lg" }), "overflow-hidden"].join(" ")}
     >
       <button
         type="button"
@@ -561,9 +506,7 @@ function RequestDetailSection({
             {title}
           </h3>
           {headerExtras ? (
-            <div className="flex flex-wrap items-center gap-1">
-              {headerExtras}
-            </div>
+            <div className="flex flex-wrap items-center gap-1">{headerExtras}</div>
           ) : null}
         </div>
         <ChevronDown
@@ -608,11 +551,7 @@ function buildExtraDetailSections(details: RequestDetailRecord): Array<{
   attempts: RequestDetailAttempt[];
 }> {
   return Object.entries(details)
-    .filter(
-      ([key]) =>
-        !["client", "upstream", "response"].includes(key) &&
-        !isBodyDetailKey(key),
-    )
+    .filter(([key]) => !["client", "upstream", "response"].includes(key) && !isBodyDetailKey(key))
     .map(([key, value]) => {
       if (isRecord(value)) {
         const rows = buildGenericRows(value);
@@ -622,8 +561,7 @@ function buildExtraDetailSections(details: RequestDetailRecord): Array<{
           attempts: [
             {
               rows,
-              groups:
-                headers.length > 0 ? [{ title: "Headers", rows: headers }] : [],
+              groups: headers.length > 0 ? [{ title: "Headers", rows: headers }] : [],
             },
           ],
         };
@@ -631,23 +569,18 @@ function buildExtraDetailSections(details: RequestDetailRecord): Array<{
       const text = formatDetailValue(value);
       return {
         key,
-        attempts: hasDetailValue(text)
-          ? [{ rows: [{ label: key, value: text }], groups: [] }]
-          : [],
+        attempts: hasDetailValue(text) ? [{ rows: [{ label: key, value: text }], groups: [] }] : [],
       };
     })
     .filter((section) =>
       section.attempts.some(
         (attempt) =>
-          attempt.rows.length > 0 ||
-          attempt.groups.some((group) => group.rows.length > 0),
+          attempt.rows.length > 0 || attempt.groups.some((group) => group.rows.length > 0),
       ),
     );
 }
 
-function parseImageGenerationInput(
-  raw: string,
-): ImageGenerationInputView | null {
+function parseImageGenerationInput(raw: string): ImageGenerationInputView | null {
   const parsed = parseJsonObject(raw);
   if (!parsed) return null;
   const model = typeof parsed.model === "string" ? parsed.model : "";
@@ -666,9 +599,7 @@ function parseImageGenerationInput(
   };
 }
 
-function parseImageGenerationOutput(
-  raw: string,
-): ImageGenerationOutputView | null {
+function parseImageGenerationOutput(raw: string): ImageGenerationOutputView | null {
   const parsed = parseJsonObject(raw);
   if (!parsed || !Array.isArray(parsed.data)) return null;
 
@@ -676,13 +607,11 @@ function parseImageGenerationOutput(
     .map((item) => {
       if (!item || typeof item !== "object") return null;
       const record = item as JsonObject;
-      const b64Json =
-        typeof record.b64_json === "string" ? record.b64_json.trim() : "";
+      const b64Json = typeof record.b64_json === "string" ? record.b64_json.trim() : "";
       if (!b64Json) return null;
       const src = `data:image/png;base64,${b64Json}`;
       const revisedPrompt =
-        typeof record.revised_prompt === "string" &&
-        record.revised_prompt.trim()
+        typeof record.revised_prompt === "string" && record.revised_prompt.trim()
           ? record.revised_prompt.trim()
           : "";
       return revisedPrompt ? { src, revisedPrompt } : { src };
@@ -749,11 +678,9 @@ function StructuredRequestCard({
               {parameters.map((item) => (
                 <div
                   key={item.key}
-                  className="rounded-2xl border border-slate-900/8 bg-white px-3 py-3 dark:border-white/8 dark:bg-neutral-950"
+                  className={[surface({ tone: "plain", radius: "2xl" }), "px-3 py-3"].join(" ")}
                 >
-                  <p className="font-mono text-xs text-slate-500 dark:text-white/40">
-                    {item.key}
-                  </p>
+                  <p className="font-mono text-xs text-slate-500 dark:text-white/40">{item.key}</p>
                   <pre className="mt-1 whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-900 dark:text-white">
                     {item.value}
                   </pre>
@@ -790,11 +717,8 @@ export function LogContentModal({
     [t],
   );
   const detailsOnly = showRequestDetails && !showBodyContent;
-  const resolvedInitialTab: LogContentPart = detailsOnly
-    ? "details"
-    : initialTab;
-  const [activeTab, setActiveTab] =
-    useState<LogContentPart>(resolvedInitialTab);
+  const resolvedInitialTab: LogContentPart = detailsOnly ? "details" : initialTab;
+  const [activeTab, setActiveTab] = useState<LogContentPart>(resolvedInitialTab);
   const [viewMode, setViewMode] = useState<"rendered" | "raw">("rendered");
   const [userMessagesOnly, setUserMessagesOnly] = useState(false);
   const [inputParsed, setInputParsed] = useState<AsyncParsedState>({
@@ -815,13 +739,9 @@ export function LogContentModal({
     images: PreviewLogImage[];
     index: number;
   } | null>(null);
-  const [highlightedMessageIndex, setHighlightedMessageIndex] = useState<
-    number | null
-  >(null);
+  const [highlightedMessageIndex, setHighlightedMessageIndex] = useState<number | null>(null);
   const [detailSearch, setDetailSearch] = useState("");
-  const [egressInfo, setEgressInfo] = useState<UsageLogEgressResponse | null>(
-    null,
-  );
+  const [egressInfo, setEgressInfo] = useState<UsageLogEgressResponse | null>(null);
   const [egressLoading, setEgressLoading] = useState(false);
   const [egressLoaded, setEgressLoaded] = useState(false);
   const [egressError, setEgressError] = useState<string | null>(null);
@@ -869,9 +789,7 @@ export function LogContentModal({
         setEgressInfo(next);
       } catch (err) {
         if (controller.signal.aborted) return;
-        setEgressError(
-          err instanceof Error ? err.message : t("error_detail.load_failed"),
-        );
+        setEgressError(err instanceof Error ? err.message : t("error_detail.load_failed"));
       } finally {
         if (!controller.signal.aborted) {
           setEgressLoaded(true);
@@ -935,11 +853,7 @@ export function LogContentModal({
           ? outputLoading
           : detailsLoading;
     const loaded =
-      activeTab === "input"
-        ? inputLoaded
-        : activeTab === "output"
-          ? outputLoaded
-          : detailsLoaded;
+      activeTab === "input" ? inputLoaded : activeTab === "output" ? outputLoaded : detailsLoaded;
     if (content || loading || loaded) return;
     void fetchPart(logId, activeTab);
   }, [
@@ -965,15 +879,7 @@ export function LogContentModal({
     if (activeTab !== "details") return;
     if (egressLoaded || egressLoading) return;
     void fetchEgress(logId);
-  }, [
-    activeTab,
-    dataOpen,
-    egressLoaded,
-    egressLoading,
-    fetchEgress,
-    logId,
-    showRequestDetails,
-  ]);
+  }, [activeTab, dataOpen, egressLoaded, egressLoading, fetchEgress, logId, showRequestDetails]);
 
   useEffect(() => {
     setInputParsed({ status: inputContent ? "parsing" : "idle", view: null });
@@ -1027,8 +933,7 @@ export function LogContentModal({
     if (total <= 0) return;
 
     const batchSize = 6;
-    const setCount =
-      activeTab === "input" ? setInputRevealCount : setOutputRevealCount;
+    const setCount = activeTab === "input" ? setInputRevealCount : setOutputRevealCount;
 
     if (total > VIRTUAL_MESSAGE_REVEAL_THRESHOLD) {
       setCount(total);
@@ -1085,12 +990,7 @@ export function LogContentModal({
 
   const renderRaw = (content: string) => {
     if (!content) {
-      const Icon =
-        activeTab === "input"
-          ? FileInput
-          : activeTab === "output"
-            ? FileOutput
-            : Info;
+      const Icon = activeTab === "input" ? FileInput : activeTab === "output" ? FileOutput : Info;
       return (
         <div className="flex flex-col items-center justify-center py-16 text-slate-400 dark:text-white/25">
           <Icon size={40} className="mb-3 opacity-40" />
@@ -1108,33 +1008,19 @@ export function LogContentModal({
   };
 
   const currentContent =
-    activeTab === "input"
-      ? inputContent
-      : activeTab === "output"
-        ? outputContent
-        : detailsContent;
+    activeTab === "input" ? inputContent : activeTab === "output" ? outputContent : detailsContent;
   const activeLoading =
-    activeTab === "input"
-      ? inputLoading
-      : activeTab === "output"
-        ? outputLoading
-        : detailsLoading;
+    activeTab === "input" ? inputLoading : activeTab === "output" ? outputLoading : detailsLoading;
   const activeError =
-    activeTab === "input"
-      ? inputError
-      : activeTab === "output"
-        ? outputError
-        : detailsError;
+    activeTab === "input" ? inputError : activeTab === "output" ? outputError : detailsError;
   const activeParsed = activeTab === "input" ? inputParsed : outputParsed;
   const isImageGenerationLog = model === "gpt-image-2";
   const imageGenerationInput = useMemo(
-    () =>
-      isImageGenerationLog ? parseImageGenerationInput(inputContent) : null,
+    () => (isImageGenerationLog ? parseImageGenerationInput(inputContent) : null),
     [inputContent, isImageGenerationLog],
   );
   const imageGenerationOutput = useMemo(
-    () =>
-      isImageGenerationLog ? parseImageGenerationOutput(outputContent) : null,
+    () => (isImageGenerationLog ? parseImageGenerationOutput(outputContent) : null),
     [outputContent, isImageGenerationLog],
   );
   const outputImagePreviewSrc =
@@ -1163,9 +1049,7 @@ export function LogContentModal({
     (messages: IndexedMsg[], messageIndex: number, imageIndex: number) => {
       const images = collectPreviewImages(messages);
       const index = images.findIndex(
-        (image) =>
-          image.messageIndex === messageIndex &&
-          image.imageIndex === imageIndex,
+        (image) => image.messageIndex === messageIndex && image.imageIndex === imageIndex,
       );
       if (images.length > 0) {
         setMessageImagePreview({ images, index: Math.max(index, 0) });
@@ -1179,35 +1063,25 @@ export function LogContentModal({
   );
   const locateMessageImage = useCallback(
     (previewIndex: number) => {
-      const messageIndex =
-        messageImagePreview?.images[previewIndex]?.messageIndex;
+      const messageIndex = messageImagePreview?.images[previewIndex]?.messageIndex;
       if (messageIndex === undefined) return;
       setMessageImagePreview(null);
       setInputRevealCount(inputMessages.length);
       setHighlightedMessageIndex(messageIndex);
       window.setTimeout(() => {
-        const element = document.querySelector(
-          `[data-log-message-index="${messageIndex}"]`,
-        );
+        const element = document.querySelector(`[data-log-message-index="${messageIndex}"]`);
         if (element && typeof element.scrollIntoView === "function") {
           element.scrollIntoView({ block: "center", behavior: "smooth" });
         }
       });
       window.setTimeout(() => {
-        setHighlightedMessageIndex((current) =>
-          current === messageIndex ? null : current,
-        );
+        setHighlightedMessageIndex((current) => (current === messageIndex ? null : current));
       }, 2200);
     },
     [inputMessages.length, messageImagePreview],
   );
   const activeDownloadName = useMemo(() => {
-    const suffix =
-      activeTab === "input"
-        ? "input"
-        : activeTab === "output"
-          ? "output"
-          : "details";
+    const suffix = activeTab === "input" ? "input" : activeTab === "output" ? "output" : "details";
     return `${model || "request-log"}-${suffix}.png`;
   }, [activeTab, model]);
   const waitingForRenderedContent =
@@ -1216,9 +1090,7 @@ export function LogContentModal({
     viewMode === "rendered" &&
     (activeParsed.status !== "ready" || !activeParsed.view);
   const contentPhase =
-    !contentLoadReady ||
-    (activeLoading && !currentContent) ||
-    waitingForRenderedContent
+    !contentLoadReady || (activeLoading && !currentContent) || waitingForRenderedContent
       ? "loading"
       : activeError && !currentContent
         ? "error"
@@ -1246,10 +1118,7 @@ export function LogContentModal({
 
   const renderCenteredLoading = () => (
     <div className="flex min-h-0 flex-1 items-center justify-center">
-      <Loader2
-        size={24}
-        className="animate-spin text-slate-400 dark:text-white/40"
-      />
+      <Loader2 size={24} className="animate-spin text-slate-400 dark:text-white/40" />
       <span className="ml-3 text-sm text-slate-500 dark:text-white/50">
         {t("common.loading_ellipsis")}
       </span>
@@ -1258,10 +1127,7 @@ export function LogContentModal({
 
   const tabBar = detailsOnly ? null : (
     <div className="flex items-center gap-3">
-      <Tabs
-        value={activeTab}
-        onValueChange={(next) => setActiveTab(next as typeof activeTab)}
-      >
+      <Tabs value={activeTab} onValueChange={(next) => setActiveTab(next as typeof activeTab)}>
         <TabsList>
           <TabsTrigger value="input">
             <FileInput size={15} />
@@ -1281,10 +1147,7 @@ export function LogContentModal({
       </Tabs>
       <div className="flex items-center gap-1">
         {activeTab === "details" ? null : (
-          <Tabs
-            value={viewMode}
-            onValueChange={(next) => setViewMode(next as typeof viewMode)}
-          >
+          <Tabs value={viewMode} onValueChange={(next) => setViewMode(next as typeof viewMode)}>
             <TabsList>
               <TabsTrigger value="rendered" title={t("log_content.rendered")}>
                 <Eye size={14} />
@@ -1295,9 +1158,7 @@ export function LogContentModal({
             </TabsList>
           </Tabs>
         )}
-        {enableUserMessageFilter &&
-        activeTab === "input" &&
-        viewMode === "rendered" ? (
+        {enableUserMessageFilter && activeTab === "input" && viewMode === "rendered" ? (
           <button
             type="button"
             onClick={() => setUserMessagesOnly((current) => !current)}
@@ -1319,9 +1180,7 @@ export function LogContentModal({
         sessionImages.length > 0 ? (
           <button
             type="button"
-            onClick={() =>
-              setMessageImagePreview({ images: sessionImages, index: 0 })
-            }
+            onClick={() => setMessageImagePreview({ images: sessionImages, index: 0 })}
             title={t("log_content.view_session_images", {
               count: sessionImages.length,
             })}
@@ -1369,15 +1228,12 @@ export function LogContentModal({
         />
       );
     }
-    if (inputParsed.status !== "ready" || !inputParsed.view)
-      return renderCenteredLoading();
+    if (inputParsed.status !== "ready" || !inputParsed.view) return renderCenteredLoading();
 
     const view = inputParsed.view;
     if (view.kind === "messages") {
       const filteredMessages = userMessagesOnly
-        ? inputMessages.filter(
-            (message) => message.role.trim().toLowerCase() === "user",
-          )
+        ? inputMessages.filter((message) => message.role.trim().toLowerCase() === "user")
         : inputMessages;
       if (userMessagesOnly && filteredMessages.length === 0) {
         return (
@@ -1387,10 +1243,7 @@ export function LogContentModal({
           </div>
         );
       }
-      const count =
-        inputRevealCount > 0
-          ? inputRevealCount
-          : Math.min(filteredMessages.length, 6);
+      const count = inputRevealCount > 0 ? inputRevealCount : Math.min(filteredMessages.length, 6);
       const visibleMessages = filteredMessages.slice(0, count);
       return (
         <MessageList
@@ -1422,7 +1275,7 @@ export function LogContentModal({
           {imageGenerationOutput.images.map((image, index) => (
             <div
               key={`${image.src.slice(0, 48)}-${index}`}
-              className="rounded-2xl border border-slate-900/8 bg-slate-50 p-3 dark:border-white/8 dark:bg-neutral-900"
+              className={[surface({ tone: "inset", radius: "2xl" }), "p-3"].join(" ")}
             >
               <div className="relative min-h-[160px] overflow-hidden rounded-xl bg-slate-100 dark:bg-black">
                 <img
@@ -1460,12 +1313,11 @@ export function LogContentModal({
         </div>
       );
     }
-    if (outputParsed.status !== "ready" || !outputParsed.view)
-      return renderCenteredLoading();
+    if (outputParsed.status !== "ready" || !outputParsed.view) return renderCenteredLoading();
 
     const view = outputParsed.view;
     const imagePreviewCard = outputImagePreviewSrc ? (
-      <div className="mb-4 rounded-2xl border border-slate-900/8 bg-slate-50 p-3 dark:border-white/8 dark:bg-neutral-900">
+      <div className={[surface({ tone: "inset", radius: "2xl" }), "mb-4 p-3"].join(" ")}>
         <div className="relative min-h-[160px] overflow-hidden rounded-xl bg-slate-100 dark:bg-black">
           <img
             src={outputImagePreviewSrc}
@@ -1484,10 +1336,7 @@ export function LogContentModal({
       </div>
     ) : null;
     if (view.kind === "messages") {
-      const count =
-        outputRevealCount > 0
-          ? outputRevealCount
-          : Math.min(view.messages.length, 6);
+      const count = outputRevealCount > 0 ? outputRevealCount : Math.min(view.messages.length, 6);
       return (
         <div>
           {imagePreviewCard}
@@ -1531,18 +1380,9 @@ export function LogContentModal({
 
     const details = parseRequestDetails(detailsContent);
     if (!details) return renderRaw(detailsContent);
-    const clientAttempt = buildClientAttempt(
-      details.client,
-      requestDetailLabels,
-    );
-    const upstreamAttempts = buildUpstreamAttempts(
-      details.upstream,
-      requestDetailLabels,
-    );
-    const responseAttempts = buildResponseAttempts(
-      details.response,
-      requestDetailLabels,
-    );
+    const clientAttempt = buildClientAttempt(details.client, requestDetailLabels);
+    const upstreamAttempts = buildUpstreamAttempts(details.upstream, requestDetailLabels);
+    const responseAttempts = buildResponseAttempts(details.response, requestDetailLabels);
     const extraSections = buildExtraDetailSections(details);
     const egressRows: RequestDetailRow[] = [];
     const egressBadges: ReactNode[] = [];
@@ -1551,16 +1391,8 @@ export function LogContentModal({
       ? t("log_content.egress_route_proxy")
       : t("log_content.egress_route_direct");
     if (egressInfo) {
-      pushDetailRow(
-        egressRows,
-        t("log_content.egress_upstream_ip"),
-        egressInfo.effective_ip,
-      );
-      pushDetailRow(
-        egressRows,
-        t("log_content.egress_server_ip"),
-        egressInfo.server_ip,
-      );
+      pushDetailRow(egressRows, t("log_content.egress_upstream_ip"), egressInfo.effective_ip);
+      pushDetailRow(egressRows, t("log_content.egress_server_ip"), egressInfo.server_ip);
       pushDetailRow(egressRows, t("log_content.egress_route"), routeLabel);
       pushDetailRow(
         egressRows,
@@ -1577,21 +1409,9 @@ export function LogContentModal({
                   ? t("log_content.egress_source_proxy_url")
                   : egressInfo.proxy_source,
       );
-      pushDetailRow(
-        egressRows,
-        t("log_content.egress_proxy_id"),
-        egressInfo.proxy_id,
-      );
-      pushDetailRow(
-        egressRows,
-        t("log_content.egress_proxy_name"),
-        egressInfo.proxy_name,
-      );
-      pushDetailRow(
-        egressRows,
-        t("log_content.egress_proxy_host"),
-        egressInfo.proxy_url_host,
-      );
+      pushDetailRow(egressRows, t("log_content.egress_proxy_id"), egressInfo.proxy_id);
+      pushDetailRow(egressRows, t("log_content.egress_proxy_name"), egressInfo.proxy_name);
+      pushDetailRow(egressRows, t("log_content.egress_proxy_host"), egressInfo.proxy_url_host);
       if (typeof egressInfo.matches_server_ip === "boolean") {
         pushDetailRow(
           egressRows,
@@ -1601,17 +1421,9 @@ export function LogContentModal({
             : t("log_content.egress_compare_different"),
         );
       }
-      pushDetailRow(
-        egressRows,
-        t("log_content.egress_error"),
-        egressInfo.error,
-      );
+      pushDetailRow(egressRows, t("log_content.egress_error"), egressInfo.error);
     } else if (egressLoading) {
-      pushDetailRow(
-        egressRows,
-        t("log_content.egress_status"),
-        t("common.loading"),
-      );
+      pushDetailRow(egressRows, t("log_content.egress_status"), t("common.loading"));
     } else if (egressError) {
       pushDetailRow(egressRows, t("log_content.egress_error"), egressError);
     }
@@ -1676,8 +1488,7 @@ export function LogContentModal({
     const sections = [
       {
         key: "egress",
-        attempts:
-          egressRows.length > 0 ? [{ rows: egressRows, groups: [] }] : [],
+        attempts: egressRows.length > 0 ? [{ rows: egressRows, groups: [] }] : [],
       },
       { key: "client", attempts: [clientAttempt] },
       { key: "upstream", attempts: upstreamAttempts },
@@ -1685,8 +1496,7 @@ export function LogContentModal({
       ...extraSections,
     ];
     const matchCount = sections.reduce(
-      (total, section) =>
-        total + countDetailMatches(section.attempts, searchTerm),
+      (total, section) => total + countDetailMatches(section.attempts, searchTerm),
       0,
     );
 
@@ -1787,9 +1597,7 @@ export function LogContentModal({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
             >
-              <p className="text-sm text-red-500 dark:text-red-400">
-                {activeError}
-              </p>
+              <p className="text-sm text-red-500 dark:text-red-400">{activeError}</p>
             </motion.div>
           ) : (
             <motion.div
@@ -1816,11 +1624,7 @@ export function LogContentModal({
         open={imagePreviewOpen && Boolean(outputImagePreviewSrc)}
         imageSrc={outputImagePreviewSrc}
         imageAlt={t("log_content.output")}
-        title={
-          model
-            ? `${t("log_content.output")} · ${model}`
-            : t("log_content.output")
-        }
+        title={model ? `${t("log_content.output")} · ${model}` : t("log_content.output")}
         downloadName={activeDownloadName}
         images={imageGenerationOutput?.images.map((image, index) => ({
           src: image.src,
@@ -1833,9 +1637,7 @@ export function LogContentModal({
       />
       <ImagePreviewOverlay
         open={Boolean(messageImagePreview)}
-        imageSrc={
-          messageImagePreview?.images[messageImagePreview.index]?.src ?? null
-        }
+        imageSrc={messageImagePreview?.images[messageImagePreview.index]?.src ?? null}
         imageAlt={t("log_content.input_messages")}
         title={t("log_content.input_messages")}
         images={messageImagePreview?.images.map((image, index) => ({
@@ -1845,9 +1647,7 @@ export function LogContentModal({
         }))}
         activeIndex={messageImagePreview?.index ?? 0}
         onActiveIndexChange={(index) =>
-          setMessageImagePreview((current) =>
-            current ? { ...current, index } : current,
-          )
+          setMessageImagePreview((current) => (current ? { ...current, index } : current))
         }
         onLocateActiveImage={locateMessageImage}
         onClose={() => setMessageImagePreview(null)}

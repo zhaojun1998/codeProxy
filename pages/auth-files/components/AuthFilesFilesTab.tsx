@@ -10,9 +10,7 @@ import {
 } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import {
-  BarChart3,
   CircleOff,
-  ClipboardPaste,
   Columns3,
   Download,
   Ellipsis,
@@ -20,18 +18,16 @@ import {
   Gauge,
   ListChecks,
   Loader2,
-  Plus,
   Power,
   RefreshCw,
   Search,
   Settings2,
   SlidersHorizontal,
   Tags,
-  Upload,
 } from "lucide-react";
 import type { AuthFileItem } from "@code-proxy/api-client";
 import { VendorIcon } from "@code-proxy/assets";
-import { Button, DropdownMenu, buttonClassName } from "@code-proxy/ui";
+import { Button, DropdownMenu, buttonClassName, surface } from "@code-proxy/ui";
 import { Card } from "@code-proxy/ui";
 import { EmptyState } from "@code-proxy/ui";
 import { TextInput } from "@code-proxy/ui";
@@ -81,13 +77,20 @@ import {
   type QuotaState,
 } from "@features/quota-preview/quota-helpers";
 import type { QuotaProvider } from "@features/quota-preview/quota-fetch";
+import { AuthFilesToolbarActions } from "./AuthFilesToolbarActions";
 
 const MAX_FILENAME_PART_LENGTH = 72;
 const FILTER_LABEL_CLASS =
   "truncate text-xs font-semibold uppercase tracking-[0.02em] text-slate-600 dark:text-white/65";
 const FILTER_FIELD_CLASS = "min-w-0 space-y-2";
-const FILTER_GRID_CLASS =
-  "grid min-w-0 grid-cols-1 items-end gap-x-5 gap-y-3 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(0,1fr))_minmax(320px,1.8fr)]";
+// Column count has to track the number of fields actually rendered. A fixed
+// five-column track left an empty trailing cell whenever the tag filter was
+// absent, so the filter row stopped short while the action row below still ran
+// to the right edge — the two never lined up. Search keeps the last track in
+// both shapes so the row always ends flush.
+const FILTER_GRID_BASE = "grid min-w-0 grid-cols-1 items-end gap-x-5 gap-y-3 sm:grid-cols-2";
+const FILTER_GRID_WITH_TAGS = "xl:grid-cols-[repeat(4,minmax(0,1fr))_minmax(18rem,1.5fr)]";
+const FILTER_GRID_WITHOUT_TAGS = "xl:grid-cols-[repeat(3,minmax(0,1fr))_minmax(18rem,1.5fr)]";
 // Tailwind must see full class strings — keep the map static.
 const CARD_GRID_COLUMN_CLASS: Record<AuthFilesCardColumns, string> = {
   2: "xl:grid-cols-[repeat(2,minmax(0,1fr))]",
@@ -138,10 +141,7 @@ const formatResetCreditExpiry = (value: string): string => {
   }).format(date);
 };
 
-const readStringField = (
-  record: Record<string, unknown>,
-  keys: string[],
-): string => {
+const readStringField = (record: Record<string, unknown>, keys: string[]): string => {
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "string" && value.trim()) {
@@ -178,9 +178,7 @@ const codexFilenamePlanSuffixes = new Set([
   "enterprise",
 ]);
 
-const parseCodexFilenameIdentity = (
-  fileName: string,
-): { accountId?: string; email?: string } => {
+const parseCodexFilenameIdentity = (fileName: string): { accountId?: string; email?: string } => {
   const normalized = String(fileName ?? "")
     .trim()
     .toLowerCase();
@@ -210,77 +208,41 @@ const parseCodexFilenameIdentity = (
 };
 
 const collectAuthIdentityKeys = (record: Record<string, unknown>): string[] => {
-  const credentials = isPlainObject(record.credentials)
-    ? record.credentials
-    : undefined;
+  const credentials = isPlainObject(record.credentials) ? record.credentials : undefined;
   const metadata = isPlainObject(record.metadata) ? record.metadata : undefined;
-  const attributes = isPlainObject(record.attributes)
-    ? record.attributes
-    : undefined;
+  const attributes = isPlainObject(record.attributes) ? record.attributes : undefined;
   const provider =
     normalizeProviderKey(
-      readNestedStringField(
-        [credentials, metadata, attributes, record],
-        ["type", "provider"],
-      ),
+      readNestedStringField([credentials, metadata, attributes, record], ["type", "provider"]),
     ) || "auth";
   const idTokenCandidate =
-    credentials?.id_token ??
-    metadata?.id_token ??
-    attributes?.id_token ??
-    record.id_token;
+    credentials?.id_token ?? metadata?.id_token ?? attributes?.id_token ?? record.id_token;
   const parsedIdToken = parseIdTokenPayload(idTokenCandidate);
-  const nestedIdToken = isPlainObject(
-    parsedIdToken?.["https://api.openai.com/auth"],
-  )
-    ? (parsedIdToken?.["https://api.openai.com/auth"] as Record<
-        string,
-        unknown
-      >)
+  const nestedIdToken = isPlainObject(parsedIdToken?.["https://api.openai.com/auth"])
+    ? (parsedIdToken?.["https://api.openai.com/auth"] as Record<string, unknown>)
     : undefined;
 
   const accountId = readNestedStringField(
-    [
-      credentials,
-      metadata,
-      attributes,
-      nestedIdToken,
-      parsedIdToken ?? undefined,
-      record,
-    ],
+    [credentials, metadata, attributes, nestedIdToken, parsedIdToken ?? undefined, record],
     ["chatgpt_account_id", "chatgptAccountId", "account_id", "accountId"],
   );
-  const email = readNestedStringField(
-    [credentials, metadata, attributes, record],
-    ["email"],
-  );
-  const label = readNestedStringField(
-    [credentials, metadata, attributes, record],
-    ["label"],
-  );
+  const email = readNestedStringField([credentials, metadata, attributes, record], ["email"]);
+  const label = readNestedStringField([credentials, metadata, attributes, record], ["label"]);
   const fileName = readNestedStringField([record], ["name"]);
   const filenameIdentity =
-    provider === "codex" && fileName
-      ? parseCodexFilenameIdentity(fileName)
-      : {};
+    provider === "codex" && fileName ? parseCodexFilenameIdentity(fileName) : {};
 
   return [
-    ...(accountId
-      ? [`${provider}:account:${normalizeDedupKeyPart(accountId)}`]
-      : []),
+    ...(accountId ? [`${provider}:account:${normalizeDedupKeyPart(accountId)}`] : []),
     ...(email ? [`${provider}:email:${normalizeDedupKeyPart(email)}`] : []),
     ...(label ? [`${provider}:label:${normalizeDedupKeyPart(label)}`] : []),
     ...(filenameIdentity.accountId
-      ? [
-          `${provider}:account:${normalizeDedupKeyPart(filenameIdentity.accountId)}`,
-        ]
+      ? [`${provider}:account:${normalizeDedupKeyPart(filenameIdentity.accountId)}`]
       : []),
     ...(filenameIdentity.email
       ? [`${provider}:email:${normalizeDedupKeyPart(filenameIdentity.email)}`]
       : []),
-    ...(fileName
-      ? [`${provider}:file:${normalizeDedupKeyPart(fileName)}`]
-      : []),
+    ...(fileName ? [`${provider}:file:${normalizeDedupKeyPart(fileName)}`] : []),
   ];
 };
 
@@ -334,10 +296,7 @@ const parsePastedJsonValues = (input: string): unknown[] => {
   let index = 0;
 
   while (index < input.length) {
-    while (
-      index < input.length &&
-      (/[\s,]/u.test(input[index]) || input[index] === "\uFEFF")
-    ) {
+    while (index < input.length && (/[\s,]/u.test(input[index]) || input[index] === "\uFEFF")) {
       index += 1;
     }
     if (index >= input.length) break;
@@ -356,17 +315,14 @@ const parsePastedJsonValues = (input: string): unknown[] => {
   return values;
 };
 
-const parsePastedAuthJsonRecords = (
-  input: string,
-): Record<string, unknown>[] => {
+const parsePastedAuthJsonRecords = (input: string): Record<string, unknown>[] => {
   const values = parsePastedJsonValues(input);
   const records: Record<string, unknown>[] = [];
 
   values.forEach((value) => {
     if (Array.isArray(value)) {
       value.forEach((item) => {
-        if (!isPlainObject(item))
-          throw new Error("json array item is not object");
+        if (!isPlainObject(item)) throw new Error("json array item is not object");
         records.push(item);
       });
       return;
@@ -386,10 +342,7 @@ const normalizeCodexPlanType = (value: unknown): string =>
 const encodeBase64UrlJson = (value: unknown): string => {
   const raw = JSON.stringify(value);
   if (typeof btoa === "function") {
-    return btoa(raw)
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/u, "");
+    return btoa(raw).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
   }
   const buffer = (
     globalThis as {
@@ -400,11 +353,7 @@ const encodeBase64UrlJson = (value: unknown): string => {
     const bytes = buffer.from(raw, "utf-8") as {
       toString: (encoding: string) => string;
     };
-    return bytes
-      .toString("base64")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/u, "");
+    return bytes.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
   }
   throw new Error("base64url encoder is unavailable");
 };
@@ -436,39 +385,19 @@ const buildSyntheticCodexAuthRecord = (
   account: Record<string, unknown>,
   issuedAt: Date,
 ): Record<string, unknown> | null => {
-  const credentials = isPlainObject(account.credentials)
-    ? account.credentials
-    : undefined;
-  const email = readNestedStringField(
-    [credentials, account],
-    ["email", "name"],
-  );
+  const credentials = isPlainObject(account.credentials) ? account.credentials : undefined;
+  const email = readNestedStringField([credentials, account], ["email", "name"]);
   const accountId = readNestedStringField(
     [credentials, account],
     ["chatgpt_account_id", "account_id"],
   );
-  const userId = readNestedStringField(
-    [credentials, account],
-    ["chatgpt_user_id", "user_id"],
-  );
+  const userId = readNestedStringField([credentials, account], ["chatgpt_user_id", "user_id"]);
   const planType = normalizeCodexPlanType(
-    readNestedStringField(
-      [credentials, account],
-      ["plan_type", "chatgpt_plan_type"],
-    ),
+    readNestedStringField([credentials, account], ["plan_type", "chatgpt_plan_type"]),
   );
-  const accessToken = readNestedStringField(
-    [credentials, account],
-    ["access_token"],
-  );
-  const refreshToken = readNestedStringField(
-    [credentials, account],
-    ["refresh_token"],
-  );
-  const expired = readNestedStringField(
-    [credentials, account],
-    ["expires_at", "expired"],
-  );
+  const accessToken = readNestedStringField([credentials, account], ["access_token"]);
+  const refreshToken = readNestedStringField([credentials, account], ["refresh_token"]);
+  const expired = readNestedStringField([credentials, account], ["expires_at", "expired"]);
   if (!email || !accountId || !accessToken || !expired || !userId) {
     return null;
   }
@@ -514,9 +443,7 @@ const buildPastedAuthBundleRecords = (
     }
     const synthesized = buildSyntheticCodexAuthRecord(account, issuedAt);
     if (!synthesized) {
-      throw new Error(
-        `bundle account ${accountIndex + 1} is not a supported Codex export`,
-      );
+      throw new Error(`bundle account ${accountIndex + 1} is not a supported Codex export`);
     }
     return synthesized;
   });
@@ -527,9 +454,7 @@ const buildPastedAuthFileName = (
   index: number,
   usedNames: Set<string>,
 ): string => {
-  const provider =
-    sanitizeFilenamePart(readStringField(record, ["type", "provider"])) ||
-    "auth";
+  const provider = sanitizeFilenamePart(readStringField(record, ["type", "provider"])) || "auth";
   const email = readStringField(record, ["email", "name"]);
   const planType = normalizeCodexPlanType(
     readStringField(record, ["plan_type", "chatgpt_plan_type"]),
@@ -549,8 +474,7 @@ const buildPastedAuthFileName = (
   const base =
     provider === "codex" && email
       ? identifier
-      : `${provider}-${identifier}`.replace(/^-+|-+$/g, "") ||
-        `auth-import-${index + 1}`;
+      : `${provider}-${identifier}`.replace(/^-+|-+$/g, "") || `auth-import-${index + 1}`;
   let name = `${base}.json`;
   let suffix = 2;
   while (usedNames.has(name)) {
@@ -561,10 +485,7 @@ const buildPastedAuthFileName = (
   return name;
 };
 
-const buildPastedAuthFiles = (
-  input: string,
-  existingFiles: AuthFileItem[] = [],
-): File[] => {
+const buildPastedAuthFiles = (input: string, existingFiles: AuthFileItem[] = []): File[] => {
   const records = parsePastedAuthJsonRecords(input);
   if (records.length === 0) return [];
   const issuedAt = new Date();
@@ -646,9 +567,7 @@ interface AuthFilesFilesTabProps {
   selectFilteredFiles: (checked: boolean) => void;
   allFilteredSelected: boolean;
   setSelectedFileNames: (value: string[]) => void;
-  setConfirm: (
-    value: null | { type: "deleteSelection"; names: string[] },
-  ) => void;
+  setConfirm: (value: null | { type: "deleteSelection"; names: string[] }) => void;
   selectedFileNames: string[];
   deletingAll: boolean;
   batchStatusUpdating: boolean;
@@ -845,9 +764,7 @@ export function AuthFilesFilesTab({
     if (!firstRects || firstRects.length === 0) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
 
-    const grid = cardGridHostRef.current?.querySelector<HTMLElement>(
-      "[data-scroll-area-content]",
-    );
+    const grid = cardGridHostRef.current?.querySelector<HTMLElement>("[data-scroll-area-content]");
     if (!grid) return;
 
     const animations: Animation[] = [];
@@ -941,8 +858,7 @@ export function AuthFilesFilesTab({
   const normalizedTagFilter = normalizeTagValue(tagFilter);
   const canSetModelOwnerGroup = normalizedFilter !== "all";
   const defaultDraftModelOwner =
-    normalizedFilter === "codex" &&
-    modelOwnerGroups.some((group) => group.value === "codex")
+    normalizedFilter === "codex" && modelOwnerGroups.some((group) => group.value === "codex")
       ? "codex"
       : "";
   const currentDraftModelOwner = selectedModelOwner || defaultDraftModelOwner;
@@ -953,18 +869,18 @@ export function AuthFilesFilesTab({
     search.trim() !== "",
     canSetModelOwnerGroup && selectedModelOwner.trim() !== "",
   ].filter(Boolean).length;
+  // Drives the filter grid track count as well as the field itself, so the two
+  // can never disagree about how many columns the row has.
+  const showTagFilter = customTagOptions.length > 0 || normalizedTagFilter !== "";
   const draftModelOwnerGroup =
     !draftModelOwnerEnabled || draftModelOwner === ""
       ? null
-      : (modelOwnerGroups.find((group) => group.value === draftModelOwner) ??
-        null);
+      : (modelOwnerGroups.find((group) => group.value === draftModelOwner) ?? null);
   const selectedModelOwnerGroup =
     selectedModelOwner === ""
       ? null
-      : (modelOwnerGroups.find((group) => group.value === selectedModelOwner) ??
-        null);
-  const showSelectionActions =
-    selectableFilteredFiles.length > 0 || selectedCount > 0;
+      : (modelOwnerGroups.find((group) => group.value === selectedModelOwner) ?? null);
+  const showSelectionActions = selectableFilteredFiles.length > 0 || selectedCount > 0;
   const modelOwnerOptions = useMemo<SearchableSelectOption[]>(
     () => [
       {
@@ -1003,9 +919,7 @@ export function AuthFilesFilesTab({
       filterChips.map((key) => {
         const normalizedKey = normalizeProviderKey(key);
         const count =
-          key === "all"
-            ? filterCounts.total
-            : (filterCounts.counts[normalizedKey] ?? 0);
+          key === "all" ? filterCounts.total : (filterCounts.counts[normalizedKey] ?? 0);
         const label = key === "all" ? t("auth_files.all") : key;
         const countPill = (
           <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-slate-100 px-1 text-2xs font-semibold tabular-nums text-slate-700 dark:bg-white/10 dark:text-white/70">
@@ -1015,16 +929,11 @@ export function AuthFilesFilesTab({
         return {
           value: key,
           label,
-          icon:
-            key === "all" ? undefined : (
-              <VendorIcon modelId={normalizedKey || key} size={14} />
-            ),
+          icon: key === "all" ? undefined : <VendorIcon modelId={normalizedKey || key} size={14} />,
           trailing: countPill,
           triggerLabel: (
             <span className="inline-flex min-w-0 items-center gap-2">
-              {key === "all" ? null : (
-                <VendorIcon modelId={normalizedKey || key} size={14} />
-              )}
+              {key === "all" ? null : <VendorIcon modelId={normalizedKey || key} size={14} />}
               <span className="min-w-0 truncate">{label}</span>
               {countPill}
             </span>
@@ -1209,12 +1118,7 @@ export function AuthFilesFilesTab({
         <span className="min-w-0 truncate px-1 font-medium text-slate-600 dark:text-white/65">
           {t("auth_files.batch_selected", { count: selectedCount })}
         </span>
-        <Button
-          variant="ghost"
-          size="xs"
-          className="px-2"
-          onClick={() => setSelectedFileNames([])}
-        >
+        <Button variant="ghost" size="xs" className="px-2" onClick={() => setSelectedFileNames([])}>
           {t("auth_files.batch_clear")}
         </Button>
         <Button
@@ -1280,10 +1184,7 @@ export function AuthFilesFilesTab({
             (selectedModelOwner || t("auth_files.auth_file_models_option"))}
         </span>
         {selectedModelOwner ? (
-          <span
-            aria-hidden="true"
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500"
-          />
+          <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
         ) : null}
       </Button>
     </HoverTooltip>
@@ -1321,7 +1222,7 @@ export function AuthFilesFilesTab({
   return (
     <Card
       padding="none"
-      className="md:flex md:h-[calc(100dvh-113px)] md:min-h-0 md:flex-col md:overflow-hidden"
+      className="md:flex md:min-h-0 md:flex-1 md:flex-col md:overflow-hidden"
       bodyClassName="md:flex md:min-h-0 md:flex-1 md:flex-col"
     >
       <input
@@ -1360,25 +1261,23 @@ export function AuthFilesFilesTab({
           <div
             id="auth-files-mobile-filter-panel"
             data-testid="auth-files-mobile-filter-panel"
-            className={[
-              mobileFiltersOpen ? "grid" : "hidden",
-              "gap-4 md:grid",
-            ].join(" ")}
+            className={[mobileFiltersOpen ? "grid" : "hidden", "gap-4 md:grid"].join(" ")}
           >
             <div className="flex flex-col gap-4">
-              <div className={FILTER_GRID_CLASS}>
+              <div
+                className={[
+                  FILTER_GRID_BASE,
+                  showTagFilter ? FILTER_GRID_WITH_TAGS : FILTER_GRID_WITHOUT_TAGS,
+                ].join(" ")}
+              >
                 <div className="w-full">
                   <div className={FILTER_FIELD_CLASS}>
-                    <p className={FILTER_LABEL_CLASS}>
-                      {t("auth_files_page.provider_filter")}
-                    </p>
+                    <p className={FILTER_LABEL_CLASS}>{t("auth_files_page.provider_filter")}</p>
                     <SearchableSelect
                       value={filter}
                       onChange={setFilter}
                       options={providerFilterOptions}
-                      searchPlaceholder={t(
-                        "auth_files_page.provider_filter_search",
-                      )}
+                      searchPlaceholder={t("auth_files_page.provider_filter_search")}
                       aria-label={t("auth_files_page.provider_filter")}
                       className="w-full"
                       size="default"
@@ -1386,20 +1285,16 @@ export function AuthFilesFilesTab({
                   </div>
                 </div>
 
-                {customTagOptions.length > 0 || normalizedTagFilter ? (
+                {showTagFilter ? (
                   <div className="w-full">
                     <div className={FILTER_FIELD_CLASS}>
-                      <p className={FILTER_LABEL_CLASS}>
-                        {t("auth_files.tag_filter")}
-                      </p>
+                      <p className={FILTER_LABEL_CLASS}>{t("auth_files.tag_filter")}</p>
                       <SearchableSelect
                         value={tagFilter}
                         onChange={setTagFilter}
                         options={customTagSelectOptions}
                         placeholder={t("auth_files.all_tags")}
-                        searchPlaceholder={t(
-                          "auth_files.tag_filter_search_placeholder",
-                        )}
+                        searchPlaceholder={t("auth_files.tag_filter_search_placeholder")}
                         aria-label={t("auth_files.tag_filter")}
                         className="w-full"
                         size="default"
@@ -1410,21 +1305,14 @@ export function AuthFilesFilesTab({
 
                 <div className="w-full">
                   <div className={FILTER_FIELD_CLASS}>
-                    <p className={FILTER_LABEL_CLASS}>
-                      {t("auth_files.status_filter")}
-                    </p>
+                    <p className={FILTER_LABEL_CLASS}>{t("auth_files.status_filter")}</p>
                     <Select
                       value={statusFilter}
-                      onChange={(value) =>
-                        setStatusFilter(value as AuthFileStatusFilter)
-                      }
+                      onChange={(value) => setStatusFilter(value as AuthFileStatusFilter)}
                       options={statusFilterOptions}
                       placeholder={t("auth_files.status_filter")}
                       aria-label={t("auth_files.status_filter")}
-                      disabled={
-                        statusFilterOptions.length <= 1 &&
-                        statusFilter === "all"
-                      }
+                      disabled={statusFilterOptions.length <= 1 && statusFilter === "all"}
                       className="w-full"
                       size="default"
                     />
@@ -1433,22 +1321,16 @@ export function AuthFilesFilesTab({
 
                 <div className="w-full">
                   <div className={FILTER_FIELD_CLASS}>
-                    <p className={FILTER_LABEL_CLASS}>
-                      {t("auth_files.quota_auto_refresh")}
-                    </p>
+                    <p className={FILTER_LABEL_CLASS}>{t("auth_files.quota_auto_refresh")}</p>
                     <div
                       className={
-                        loading && filesLength === 0
-                          ? "pointer-events-none opacity-60"
-                          : ""
+                        loading && filesLength === 0 ? "pointer-events-none opacity-60" : ""
                       }
                     >
                       <Select
                         value={String(quotaAutoRefreshMs)}
                         onChange={(value) =>
-                          setQuotaAutoRefreshMsRaw(
-                            normalizeQuotaAutoRefreshMs(value),
-                          )
+                          setQuotaAutoRefreshMsRaw(normalizeQuotaAutoRefreshMs(value))
                         }
                         options={[
                           {
@@ -1468,157 +1350,69 @@ export function AuthFilesFilesTab({
 
                 <div className="w-full">
                   <div className={FILTER_FIELD_CLASS}>
-                    <p className={FILTER_LABEL_CLASS}>
-                      {t("auth_files.search")}
-                    </p>
+                    <p className={FILTER_LABEL_CLASS}>{t("auth_files.search")}</p>
                     <TextInput
                       value={search}
                       onChange={(e) => setSearch(e.currentTarget.value)}
                       placeholder={t("auth_files_page.filename_hint")}
                       aria-label={t("auth_files.search")}
-                      endAdornment={
-                        <Search size={16} className="text-slate-400" />
-                      }
+                      endAdornment={<Search size={16} className="text-slate-400" />}
                       size="default"
                     />
                   </div>
                 </div>
               </div>
 
+              {/* Action row. The batch bar lives here rather than in a row of its
+                  own: selecting files used to append a third row and push the
+                  grid down, so the toolbar changed height as you worked. */}
               <div className="flex min-h-9 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <div
-                    className={
-                      loading && filesLength === 0
-                        ? "pointer-events-none opacity-60"
-                        : ""
-                    }
+                    className={loading && filesLength === 0 ? "pointer-events-none opacity-60" : ""}
                   >
                     {renderFilesViewModeTabs}
                   </div>
                   {modelOwnerToolbarButton}
-                  {selectedCount === 0 ? selectionActionsMenu : null}
+                  {selectionToolbar}
                 </div>
 
-                <div className="flex shrink-0 flex-wrap items-center gap-2">
-                  <HoverTooltip content={t("auth_files.group_overview_button")}>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={openGroupOverview}
-                      disabled={groupOverviewLoading}
-                      aria-label={t("auth_files.group_overview_button")}
-                      title={t("auth_files.group_overview_button")}
-                    >
-                      {groupOverviewLoading ? (
-                        <Loader2 size={15} className="animate-spin" />
-                      ) : (
-                        <BarChart3 size={15} />
-                      )}
-                    </Button>
-                  </HoverTooltip>
-                  <HoverTooltip content={t("auth_files.refresh")}>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => void refreshFilesAndQuota()}
-                      disabled={loading || usageLoading || refreshingAll}
-                      aria-label={t("auth_files.refresh")}
-                      title={t("auth_files.refresh")}
-                    >
-                      <RefreshCw
-                        size={15}
-                        className={
-                          loading || usageLoading || refreshingAll || statusUsageLoading
-                            ? "animate-spin"
-                            : ""
-                        }
-                      />
-                    </Button>
-                  </HoverTooltip>
-                  <HoverTooltip content={t("auth_files.upload")}>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading}
-                      aria-label={t("auth_files.upload")}
-                      title={t("auth_files.upload")}
-                    >
-                      {uploading ? (
-                        <Loader2 size={15} className="animate-spin" />
-                      ) : (
-                        <Upload size={15} />
-                      )}
-                    </Button>
-                  </HoverTooltip>
-                  <HoverTooltip content={t("auth_files.paste_json")}>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setJsonImportError("");
-                        setJsonImportOpen(true);
-                      }}
-                      disabled={uploading}
-                      aria-label={t("auth_files.paste_json")}
-                      title={t("auth_files.paste_json")}
-                    >
-                      {uploading ? (
-                        <Loader2 size={15} className="animate-spin" />
-                      ) : (
-                        <ClipboardPaste size={15} />
-                      )}
-                    </Button>
-                  </HoverTooltip>
-                  <HoverTooltip content={t("auth_files_page.add_oauth")}>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        const normalized = normalizeProviderKey(filter);
-                        const oauthTab =
-                          normalized === "codex" ||
-                          normalized === "anthropic" ||
-                          normalized === "antigravity" ||
-                          normalized === "gemini-cli" ||
-                          normalized === "kimi" ||
-                          normalized === "qwen"
-                            ? (normalized as OAuthDialogTab)
-                            : "codex";
-                        setOauthDialogDefaultTab(oauthTab);
-                        setOauthDialogOpen(true);
-                      }}
-                      aria-label={t("auth_files_page.add_oauth")}
-                      title={t("auth_files_page.add_oauth")}
-                    >
-                      <Plus size={15} />
-                    </Button>
-                  </HoverTooltip>
-                  {configActionsMenu}
-                  {filesViewMode === "cards" ? (
-                    <div
-                      className="hidden xl:block"
-                      data-testid="auth-files-card-columns"
-                    >
-                      <Select
-                        value={String(cardColumns)}
-                        onChange={handleCardColumnsChange}
-                        options={cardColumnOptions}
-                        aria-label={t("auth_files.card_columns")}
-                        variant="chip"
-                        size="sm"
-                        className="min-w-[6.25rem]"
-                      />
-                    </div>
-                  ) : null}
-                </div>
+                <AuthFilesToolbarActions
+                  t={t}
+                  onGroupOverview={openGroupOverview}
+                  groupOverviewLoading={groupOverviewLoading}
+                  onRefresh={() => void refreshFilesAndQuota()}
+                  refreshDisabled={loading || usageLoading || refreshingAll}
+                  refreshSpinning={loading || usageLoading || refreshingAll || statusUsageLoading}
+                  onUpload={() => fileInputRef.current?.click()}
+                  onPasteJson={() => {
+                    setJsonImportError("");
+                    setJsonImportOpen(true);
+                  }}
+                  onAddOAuth={() => {
+                    const normalized = normalizeProviderKey(filter);
+                    const oauthTab =
+                      normalized === "codex" ||
+                      normalized === "anthropic" ||
+                      normalized === "antigravity" ||
+                      normalized === "gemini-cli" ||
+                      normalized === "kimi" ||
+                      normalized === "qwen"
+                        ? (normalized as OAuthDialogTab)
+                        : "codex";
+                    setOauthDialogDefaultTab(oauthTab);
+                    setOauthDialogOpen(true);
+                  }}
+                  uploading={uploading}
+                  configActionsMenu={configActionsMenu}
+                  showCardColumns={filesViewMode === "cards"}
+                  cardColumns={cardColumns}
+                  cardColumnOptions={cardColumnOptions}
+                  onCardColumnsChange={handleCardColumnsChange}
+                />
               </div>
             </div>
           </div>
-          {selectedCount > 0 ? (
-            <div className="min-w-0 overflow-x-auto">{selectionToolbar}</div>
-          ) : null}
         </div>
       </div>
 
@@ -1716,10 +1510,8 @@ export function AuthFilesFilesTab({
                   const fileDisabled = Boolean(file.disabled);
                   const fileSelected = selectedFileNameSet.has(file.name);
                   const typeKey = resolveFileType(file);
-                  const badgeClass =
-                    TYPE_BADGE_CLASSES[typeKey] ?? TYPE_BADGE_CLASSES.unknown;
-                  const displayTitle =
-                    resolveAuthFileDisplayName(file) || String(file.name || "");
+                  const badgeClass = TYPE_BADGE_CLASSES[typeKey] ?? TYPE_BADGE_CLASSES.unknown;
+                  const displayTitle = resolveAuthFileDisplayName(file) || String(file.name || "");
                   const provider = resolveQuotaProvider(file);
                   const state = quotaByFileName[file.name] ?? {
                     status: "idle",
@@ -1732,32 +1524,19 @@ export function AuthFilesFilesTab({
                   const planType = resolveStickyDisplayPlanType(
                     file,
                     state,
-                    authIndexForPlan
-                      ? cycleBudgetByAuthIndex[authIndexForPlan]
-                      : null,
+                    authIndexForPlan ? cycleBudgetByAuthIndex[authIndexForPlan] : null,
                   );
-                  const displayTags = resolveAuthFileSupplementalTags(
-                    file,
-                    state,
-                  );
-                  const showTypeBadge = shouldShowAuthFileDisplayTag(
-                    file,
-                    typeKey,
-                  );
-                  const showPlanBadge = shouldShowAuthFilePlanBadge(
-                    file,
-                    basePlanType,
-                  );
+                  const displayTags = resolveAuthFileSupplementalTags(file, state);
+                  const showTypeBadge = shouldShowAuthFileDisplayTag(file, typeKey);
+                  const showPlanBadge = shouldShowAuthFilePlanBadge(file, basePlanType);
                   const subscriptionBadge = renderSubscriptionBadge(file);
                   const restrictionBadges = renderRestrictionBadges(file);
-                  const claudeOAuthHealthBadges =
-                    renderClaudeOAuthHealthBadges(file);
+                  const claudeOAuthHealthBadges = renderClaudeOAuthHealthBadges(file);
                   const quotaErrorBadge =
                     provider && (state.status === "error" || state.error)
                       ? renderQuotaErrorBadge(state.error ?? t("common.error"))
                       : null;
-                  const cardErrorBadges: Array<{ key: string; node: ReactNode }> =
-                    [];
+                  const cardErrorBadges: Array<{ key: string; node: ReactNode }> = [];
                   if (restrictionBadges) {
                     cardErrorBadges.push({
                       key: "restriction",
@@ -1778,19 +1557,13 @@ export function AuthFilesFilesTab({
                   }
                   const stats = resolveAuthFileStats(file, usageIndex);
                   const usageTotalCalls = stats.success + stats.failure;
-                  const authIndex = normalizeAuthIndexValue(
-                    file.auth_index ?? file.authIndex,
-                  );
-                  const cycleCalls = authIndex
-                    ? cycleCallsByAuthIndex[authIndex]
-                    : undefined;
+                  const authIndex = normalizeAuthIndexValue(file.auth_index ?? file.authIndex);
+                  const cycleCalls = authIndex ? cycleCallsByAuthIndex[authIndex] : undefined;
                   const cycleTotalTokens = authIndex
                     ? cycleTotalTokensByAuthIndex[authIndex]
                     : null;
                   const successRate =
-                    usageTotalCalls > 0
-                      ? (stats.success / usageTotalCalls) * 100
-                      : null;
+                    usageTotalCalls > 0 ? (stats.success / usageTotalCalls) * 100 : null;
                   const successRateClass =
                     successRate === null
                       ? "text-slate-500 dark:text-white/45"
@@ -1800,24 +1573,18 @@ export function AuthFilesFilesTab({
                           ? "text-amber-700 dark:text-amber-200"
                           : "text-rose-700 dark:text-rose-200";
 
-                  const items = Array.isArray(state.items)
-                    ? (state.items as QuotaItem[])
-                    : [];
-                  const slots = provider
-                    ? resolveQuotaCardSlots(provider, items)
-                    : [];
+                  const items = Array.isArray(state.items) ? (state.items as QuotaItem[]) : [];
+                  const slots = provider ? resolveQuotaCardSlots(provider, items) : [];
 
                   const quotaRefreshing = provider
                     ? quotaByFileName[file.name]?.status === "loading"
                     : false;
                   const resetCreditCount =
-                    provider === "codex" &&
-                    typeof state.resetCreditCount === "number"
+                    provider === "codex" && typeof state.resetCreditCount === "number"
                       ? state.resetCreditCount
                       : 0;
                   const resetCreditExpirations =
-                    provider === "codex" &&
-                    Array.isArray(state.resetCreditExpirations)
+                    provider === "codex" && Array.isArray(state.resetCreditExpirations)
                       ? state.resetCreditExpirations
                       : [];
                   const resetCreditBadgeTitle =
@@ -1825,9 +1592,7 @@ export function AuthFilesFilesTab({
                       ? t("auth_files.reset_credit_no_credits")
                       : resetCreditExpirations.length > 0
                         ? t("auth_files.reset_credit_expirations", {
-                            times: resetCreditExpirations
-                              .map(formatResetCreditExpiry)
-                              .join("\n"),
+                            times: resetCreditExpirations.map(formatResetCreditExpiry).join("\n"),
                           })
                         : t("auth_files.reset_credits_query");
                   const resetCreditBusy = resettingCreditFileName === file.name;
@@ -1869,12 +1634,8 @@ export function AuthFilesFilesTab({
                     />
                   );
                   const successRateLabel = `${(successRate ?? 0).toFixed(1)}%`;
-                  const visibleTags = denseCards
-                    ? displayTags.slice(0, 1)
-                    : displayTags;
-                  const hiddenTagCount = denseCards
-                    ? Math.max(0, displayTags.length - 1)
-                    : 0;
+                  const visibleTags = denseCards ? displayTags.slice(0, 1) : displayTags;
+                  const hiddenTagCount = denseCards ? Math.max(0, displayTags.length - 1) : 0;
 
                   return (
                     <Card
@@ -1893,31 +1654,20 @@ export function AuthFilesFilesTab({
                         .filter(Boolean)
                         .join(" ")}
                     >
+                      {/* Fixed three-row header: identity, plan + cycle metrics,
+                          status badges. Each row wraps within itself, so a narrow
+                          card never pulls a badge up into the row above. */}
                       <div className={denseCards ? "space-y-2" : "space-y-2.5"}>
                         <div className="flex items-center justify-between gap-2">
-                          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                            <OverflowTooltip
-                              content={displayTitle}
-                              className={[
-                                "min-w-0 flex-1 truncate leading-5 font-semibold tracking-tight text-slate-900 dark:text-white",
-                                denseCards ? "text-xs" : "text-sm",
-                              ].join(" ")}
-                            >
-                              {displayTitle}
-                            </OverflowTooltip>
-                            {showPlanBadge && planType ? (
-                              <span
-                                data-testid="auth-file-plan-badge"
-                                className={[
-                                  "inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-2xs font-bold leading-none tracking-wide",
-                                  resolvePlanBadgeClass(planType),
-                                ].join(" ")}
-                              >
-                                {formatPlanTypeLabel(planType) ||
-                                  formatPlanBadgeLabel(planType)}
-                              </span>
-                            ) : null}
-                          </div>
+                          <OverflowTooltip
+                            content={displayTitle}
+                            className={[
+                              "min-w-0 flex-1 truncate leading-5 font-semibold tracking-tight text-slate-900 dark:text-white",
+                              denseCards ? "text-xs" : "text-sm",
+                            ].join(" ")}
+                          >
+                            {displayTitle}
+                          </OverflowTooltip>
 
                           <div className="flex h-6 shrink-0 items-center gap-1.5">
                             {runtimeOnly ? null : (
@@ -1936,10 +1686,7 @@ export function AuthFilesFilesTab({
                                   })}
                                   checked={fileSelected}
                                   onChange={(e) =>
-                                    toggleFileSelection(
-                                      file.name,
-                                      e.currentTarget.checked,
-                                    )
+                                    toggleFileSelection(file.name, e.currentTarget.checked)
                                   }
                                   className="h-4 w-4 rounded border-slate-300 text-slate-900 accent-slate-900 focus-visible:ring-2 focus-visible:ring-slate-400/35 dark:border-neutral-700 dark:bg-neutral-950 dark:text-white dark:accent-white dark:focus-visible:ring-white/15"
                                 />
@@ -1958,18 +1705,14 @@ export function AuthFilesFilesTab({
                                     fileDisabled
                                       ? "bg-slate-100 text-slate-400 hover:bg-slate-200 dark:bg-white/10 dark:text-white/45"
                                       : "bg-emerald-50 text-emerald-600 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300",
-                                    statusUpdating[file.name]
-                                      ? "cursor-wait opacity-70"
-                                      : "",
+                                    statusUpdating[file.name] ? "cursor-wait opacity-70" : "",
                                   ]
                                     .filter(Boolean)
                                     .join(" ")}
                                   aria-label={t("auth_files.enable_disable")}
                                   aria-pressed={!fileDisabled}
                                   disabled={Boolean(statusUpdating[file.name])}
-                                  onClick={() =>
-                                    void setFileEnabled(file, fileDisabled)
-                                  }
+                                  onClick={() => void setFileEnabled(file, fileDisabled)}
                                 >
                                   <Power size={13} />
                                 </button>
@@ -1984,9 +1727,7 @@ export function AuthFilesFilesTab({
                                 <ToggleSwitch
                                   ariaLabel={t("auth_files.enable_disable")}
                                   checked={!fileDisabled}
-                                  onCheckedChange={(enabled) =>
-                                    void setFileEnabled(file, enabled)
-                                  }
+                                  onCheckedChange={(enabled) => void setFileEnabled(file, enabled)}
                                   disabled={Boolean(statusUpdating[file.name])}
                                 />
                               </div>
@@ -1995,6 +1736,17 @@ export function AuthFilesFilesTab({
                         </div>
 
                         <div className="min-w-0 flex flex-wrap items-center gap-1">
+                          {showPlanBadge && planType ? (
+                            <span
+                              data-testid="auth-file-plan-badge"
+                              className={[
+                                "inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-2xs font-bold leading-none tracking-wide",
+                                resolvePlanBadgeClass(planType),
+                              ].join(" ")}
+                            >
+                              {formatPlanTypeLabel(planType) || formatPlanBadgeLabel(planType)}
+                            </span>
+                          ) : null}
                           {showTypeBadge ? (
                             denseCards ? (
                               <HoverTooltip content={typeKey} className="shrink-0">
@@ -2022,10 +1774,7 @@ export function AuthFilesFilesTab({
                             )
                           ) : null}
                           {provider === "codex" ? (
-                            <HoverTooltip
-                              content={resetCreditBadgeTitle}
-                              className="shrink-0"
-                            >
+                            <HoverTooltip content={resetCreditBadgeTitle} className="shrink-0">
                               <button
                                 type="button"
                                 className={[
@@ -2033,16 +1782,12 @@ export function AuthFilesFilesTab({
                                   denseCards ? "h-5 px-1.5" : "px-2 py-0.5",
                                 ].join(" ")}
                                 disabled={quotaRefreshing}
-                                onClick={() =>
-                                  void refreshQuota(file, provider)
-                                }
+                                onClick={() => void refreshQuota(file, provider)}
                                 aria-label={t("auth_files.reset_credits_query")}
                               >
                                 <RefreshCw
                                   size={10}
-                                  className={
-                                    quotaRefreshing ? "animate-spin" : ""
-                                  }
+                                  className={quotaRefreshing ? "animate-spin" : ""}
                                 />
                                 <span className="tabular-nums">
                                   {denseCards
@@ -2055,10 +1800,7 @@ export function AuthFilesFilesTab({
                             </HoverTooltip>
                           ) : null}
                           {typeof cycleCalls === "number" ? (
-                            <HoverTooltip
-                              content={cycleCallsLabel}
-                              className="shrink-0"
-                            >
+                            <HoverTooltip content={cycleCallsLabel} className="shrink-0">
                               <span
                                 className={[
                                   "inline-flex shrink-0 items-center rounded-md bg-slate-100 text-2xs font-semibold tabular-nums text-slate-700 dark:bg-white/10 dark:text-white/70",
@@ -2092,26 +1834,52 @@ export function AuthFilesFilesTab({
                                   denseCards ? "h-5 gap-0 px-1.5" : "gap-1 px-2 py-0.5",
                                 ].join(" ")}
                               >
-                                {denseCards ? null : (
-                                  <span>{t("common.success_rate")}</span>
-                                )}
-                                <span
-                                  className={`tabular-nums ${successRateClass}`}
-                                >
+                                {denseCards ? null : <span>{t("common.success_rate")}</span>}
+                                <span className={`tabular-nums ${successRateClass}`}>
                                   {successRateLabel}
                                 </span>
                               </span>
                             </HoverTooltip>
                           ) : null}
-                          {subscriptionBadge}
                           {runtimeOnly ? (
                             <span className="inline-flex shrink-0 items-center rounded-md bg-slate-900 px-2 py-0.5 text-2xs font-semibold text-white dark:bg-white dark:text-neutral-950">
                               {t("auth_files.virtual_auth_file")}
                             </span>
                           ) : null}
                         </div>
-                        {displayTags.length > 0 ? (
-                          <div className="min-w-0 flex flex-wrap gap-1">
+
+                        {/* Row 3: standing rather than usage — subscription, faults
+                            and tags together, so a card with an error does not gain
+                            an extra row the others lack. */}
+                        {subscriptionBadge ||
+                        cardErrorBadges.length > 0 ||
+                        displayTags.length > 0 ? (
+                          <div
+                            className="min-w-0 flex flex-wrap items-center gap-1"
+                            data-testid="auth-file-card-status-badges"
+                          >
+                            {subscriptionBadge}
+                            {cardErrorBadges.map((item) => (
+                              <div key={item.key} className="min-w-0">
+                                {item.node}
+                              </div>
+                            ))}
+                            {restrictionBadges ? (
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                disabled={clearStatusDisabled}
+                                onClick={() => void clearAuthFileStatus(file)}
+                                title={t("auth_files.clear_status")}
+                                aria-label={t("auth_files.clear_status")}
+                              >
+                                {clearStatusBusy ? (
+                                  <Loader2 size={13} className="animate-spin" />
+                                ) : (
+                                  <CircleOff size={13} />
+                                )}
+                              </Button>
+                            ) : null}
                             {visibleTags.map((tag) => (
                               <span
                                 key={tag}
@@ -2121,10 +1889,7 @@ export function AuthFilesFilesTab({
                               </span>
                             ))}
                             {hiddenTagCount > 0 ? (
-                              <HoverTooltip
-                                content={displayTags.join("\n")}
-                                className="shrink-0"
-                              >
+                              <HoverTooltip content={displayTags.join("\n")} className="shrink-0">
                                 <span className="inline-flex items-center rounded-md bg-sky-50 px-1.5 py-0.5 text-2xs font-semibold text-sky-700 dark:bg-sky-500/15 dark:text-sky-200">
                                   +{hiddenTagCount}
                                 </span>
@@ -2133,39 +1898,6 @@ export function AuthFilesFilesTab({
                           </div>
                         ) : null}
                       </div>
-
-                      {cardErrorBadges.length > 0 ? (
-                        <div
-                          className={[
-                            "min-w-0 flex flex-wrap items-center gap-1.5",
-                            denseCards ? "mt-2" : "mt-3",
-                          ].join(" ")}
-                          data-testid="auth-file-card-error-badges"
-                        >
-                          {cardErrorBadges.map((item) => (
-                            <div key={item.key} className="min-w-0">
-                              {item.node}
-                            </div>
-                          ))}
-                          {restrictionBadges ? (
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              disabled={clearStatusDisabled}
-                              onClick={() => void clearAuthFileStatus(file)}
-                              title={t("auth_files.clear_status")}
-                              aria-label={t("auth_files.clear_status")}
-                            >
-                              {clearStatusBusy ? (
-                                <Loader2 size={13} className="animate-spin" />
-                              ) : (
-                                <CircleOff size={13} />
-                              )}
-                              <span>{t("auth_files.clear_status")}</span>
-                            </Button>
-                          ) : null}
-                        </div>
-                      ) : null}
 
                       <div
                         className={[
@@ -2230,17 +1962,13 @@ export function AuthFilesFilesTab({
                               <Button
                                 variant="ghost"
                                 size={actionSize}
-                                onClick={() =>
-                                  void refreshQuota(file, provider)
-                                }
+                                onClick={() => void refreshQuota(file, provider)}
                                 title={t("common.refresh")}
                                 aria-label={t("common.refresh")}
                               >
                                 <RefreshCw
                                   size={actionIconSize}
-                                  className={
-                                    quotaRefreshing ? "animate-spin" : ""
-                                  }
+                                  className={quotaRefreshing ? "animate-spin" : ""}
                                 />
                               </Button>
                             </HoverTooltip>
@@ -2254,15 +1982,10 @@ export function AuthFilesFilesTab({
                                 disabled={resetCreditDisabled}
                                 onClick={() => requestResetCredit(file)}
                                 title={resetCreditTitle}
-                                aria-label={t(
-                                  "auth_files.reset_credit_consume",
-                                )}
+                                aria-label={t("auth_files.reset_credit_consume")}
                               >
                                 {resetCreditBusy ? (
-                                  <Loader2
-                                    size={actionIconSize}
-                                    className="animate-spin"
-                                  />
+                                  <Loader2 size={actionIconSize} className="animate-spin" />
                                 ) : (
                                   <Gauge size={actionIconSize} />
                                 )}
@@ -2299,36 +2022,23 @@ export function AuthFilesFilesTab({
                               </button>
                             </DropdownMenu.Trigger>
                             <DropdownMenu.Portal>
-                              <DropdownMenu.Content
-                                align="end"
-                                sideOffset={8}
-                                className="min-w-44"
-                              >
-                                <DropdownMenu.Item
-                                  onSelect={() => openTagsEditor(file)}
-                                >
+                              <DropdownMenu.Content align="end" sideOffset={8} className="min-w-44">
+                                <DropdownMenu.Item onSelect={() => openTagsEditor(file)}>
                                   <Tags size={15} />
                                   <span>{t("auth_files.edit_tags")}</span>
                                 </DropdownMenu.Item>
                                 <DropdownMenu.Item
                                   disabled={clearStatusDisabled}
-                                  onSelect={() =>
-                                    void clearAuthFileStatus(file)
-                                  }
+                                  onSelect={() => void clearAuthFileStatus(file)}
                                 >
                                   {clearStatusBusy ? (
-                                    <Loader2
-                                      size={15}
-                                      className="animate-spin"
-                                    />
+                                    <Loader2 size={15} className="animate-spin" />
                                   ) : (
                                     <CircleOff size={15} />
                                   )}
                                   <span>{t("auth_files.clear_status")}</span>
                                 </DropdownMenu.Item>
-                                <DropdownMenu.Item
-                                  onSelect={() => void downloadAuthFile(file)}
-                                >
+                                <DropdownMenu.Item onSelect={() => void downloadAuthFile(file)}>
                                   <Download size={15} />
                                   <span>{t("auth_files.download")}</span>
                                 </DropdownMenu.Item>
@@ -2363,11 +2073,7 @@ export function AuthFilesFilesTab({
         bodyClassName="px-5 pt-3 pb-5"
         onClose={() => setUploadProgressDismissed(true)}
       >
-        <div
-          className="space-y-4"
-          data-testid="auth-files-upload-progress"
-          aria-live="polite"
-        >
+        <div className="space-y-4" data-testid="auth-files-upload-progress" aria-live="polite">
           <div className="overflow-hidden rounded-3xl border border-slate-900/8 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.95),_rgba(241,245,249,0.95))] p-4 shadow-[0_20px_50px_rgb(15_23_42_/_0.08)] dark:border-white/10 dark:bg-[radial-gradient(circle_at_top_left,_rgba(39,39,42,0.98),_rgba(9,9,11,0.98))] dark:shadow-[0_24px_60px_rgb(0_0_0_/_0.28)]">
             <div className="flex items-start gap-3">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg shadow-slate-900/15 dark:bg-white dark:text-neutral-950 dark:shadow-black/25">
@@ -2456,12 +2162,7 @@ export function AuthFilesFilesTab({
         onClose={closeJsonImport}
         footer={
           <>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={closeJsonImport}
-              disabled={uploading}
-            >
+            <Button variant="secondary" size="sm" onClick={closeJsonImport} disabled={uploading}>
               {t("auth_files.cancel")}
             </Button>
             <Button
@@ -2470,9 +2171,7 @@ export function AuthFilesFilesTab({
               onClick={() => void submitJsonImport()}
               disabled={uploading || jsonImportText.trim().length === 0}
             >
-              {uploading
-                ? uploadCompactLabel
-                : t("auth_files.paste_json_upload")}
+              {uploading ? uploadCompactLabel : t("auth_files.paste_json_upload")}
             </Button>
           </>
         }
@@ -2533,10 +2232,7 @@ export function AuthFilesFilesTab({
         onClose={() => setModelOwnerDialogOpen(false)}
         footer={
           <>
-            <Button
-              variant="secondary"
-              onClick={() => setModelOwnerDialogOpen(false)}
-            >
+            <Button variant="secondary" onClick={() => setModelOwnerDialogOpen(false)}>
               {t("common.cancel")}
             </Button>
             <Button
@@ -2544,9 +2240,7 @@ export function AuthFilesFilesTab({
               onClick={async () => {
                 setModelOwnerDialogSaving(true);
                 try {
-                  await setSelectedModelOwner(
-                    draftModelOwnerEnabled ? draftModelOwner : "",
-                  );
+                  await setSelectedModelOwner(draftModelOwnerEnabled ? draftModelOwner : "");
                   setModelOwnerDialogOpen(false);
                 } catch {
                   // Save failures are surfaced via toast by the parent hook.
@@ -2554,10 +2248,7 @@ export function AuthFilesFilesTab({
                   setModelOwnerDialogSaving(false);
                 }
               }}
-              disabled={
-                modelOwnerDialogSaving ||
-                (draftModelOwnerEnabled && !draftModelOwner)
-              }
+              disabled={modelOwnerDialogSaving || (draftModelOwnerEnabled && !draftModelOwner)}
             >
               {t("common.save")}
             </Button>
@@ -2585,9 +2276,7 @@ export function AuthFilesFilesTab({
                 onChange={setDraftModelOwner}
                 options={modelOwnerOptions}
                 placeholder={t("auth_files.auth_file_models_option")}
-                searchPlaceholder={t(
-                  "auth_files.model_owner_group_search_placeholder",
-                )}
+                searchPlaceholder={t("auth_files.model_owner_group_search_placeholder")}
                 aria-label={t("auth_files.model_owner_group")}
                 disabled={!draftModelOwnerEnabled || modelOwnerDialogSaving}
               />
@@ -2605,7 +2294,7 @@ export function AuthFilesFilesTab({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-900/8 bg-white/70 p-4 shadow-sm dark:border-white/8 dark:bg-neutral-950/60">
+          <div className={[surface({ tone: "raised", radius: "2xl" }), "p-4"].join(" ")}>
             <div className="mb-3 flex items-center justify-between gap-3">
               <p className="text-sm font-semibold text-slate-900 dark:text-white">
                 {t("auth_files.detail_tab_models")}
@@ -2633,9 +2322,7 @@ export function AuthFilesFilesTab({
                 <div className="max-h-[340px] space-y-2 overflow-y-auto pr-1">
                   {draftModelOwnerGroup.models.map((model) => {
                     const modelMeta = [
-                      model.display_name
-                        ? `display_name: ${model.display_name}`
-                        : "",
+                      model.display_name ? `display_name: ${model.display_name}` : "",
                       model.owned_by ? `owned_by: ${model.owned_by}` : "",
                     ].filter(Boolean);
                     return (
