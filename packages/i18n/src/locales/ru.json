@@ -2065,6 +2065,8 @@
     "models_load_failed": "Failed to load model list",
     "all_models": "All",
     "channel_priority_label": "Channel priority",
+    "default_priority_overrides_label": "Default group channel priority overrides",
+    "default_priority_overrides_hint": "The system default group automatically includes every channel. Set a priority only for channels that need custom scheduling; leave it empty for the default value, or use 0 to exclude it from weighted scheduling.",
     "priority_short": "P{{value}}",
     "remove_channel": "Remove channel",
     "routes_count": "{{count}} path routes",

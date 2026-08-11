@@ -22,7 +22,12 @@ import { Select } from "@code-proxy/ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@code-proxy/ui";
 import { useToast } from "@code-proxy/ui";
 import { HoverTooltip, OverflowTooltip } from "@code-proxy/ui";
-import { DataTable, TABLE_ROW_ACTIONS_COLUMN, TABLE_ROW_ACTIONS_STICKY_END_COLUMN, type DataTableColumn } from "@code-proxy/ui";
+import {
+  DataTable,
+  TABLE_ROW_ACTIONS_COLUMN,
+  TABLE_ROW_ACTIONS_STICKY_END_COLUMN,
+  type DataTableColumn,
+} from "@code-proxy/ui";
 import { VendorIcon } from "@code-proxy/assets";
 import {
   emptyModelPricing,
@@ -530,10 +535,41 @@ export function RoutingConfigEditor({
     [groupDraft.channels],
   );
   const selectedTagValues = useMemo(() => syncDraftTags(groupDraft.tags), [groupDraft.tags]);
+  const editingSystemDefaultGroup =
+    groupEditorId === SYSTEM_DEFAULT_GROUP_ID ||
+    (groupEditorId !== null && groupDraft.name.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME);
   const resolvedDraftChannels = useMemo(
     () => resolveGroupChannels(groupDraft),
     [groupDraft, resolveGroupChannels],
   );
+  const systemDefaultPriorityChannels = useMemo(() => {
+    const configuredByName = new Map(
+      groupDraft.channels.map((channel) => [normalizeChannelName(channel.name), channel]),
+    );
+    const seen = new Set<string>();
+    const rows: RoutingChannelGroupMemberEntry[] = [];
+
+    availableChannels.forEach((channelName) => {
+      const normalized = normalizeChannelName(channelName);
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      const configured = configuredByName.get(normalized);
+      rows.push({
+        id: configured?.id ?? `system-default-channel-${normalized}`,
+        name: configured?.name ?? channelName,
+        priority: configured?.priority ?? "",
+      });
+    });
+
+    groupDraft.channels.forEach((channel) => {
+      const normalized = normalizeChannelName(channel.name);
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      rows.push(channel);
+    });
+
+    return rows;
+  }, [availableChannels, groupDraft.channels]);
   const resolvedDraftChannelValues = useMemo(
     () => resolvedDraftChannels.map((channel) => channel.name.trim()).filter(Boolean),
     [resolvedDraftChannels],
@@ -542,10 +578,6 @@ export function RoutingConfigEditor({
     () => resolvedDraftChannelValues.join("\n"),
     [resolvedDraftChannelValues],
   );
-
-  const editingSystemDefaultGroup =
-    groupEditorId === SYSTEM_DEFAULT_GROUP_ID ||
-    (groupEditorId !== null && groupDraft.name.trim().toLowerCase() === SYSTEM_DEFAULT_GROUP_NAME);
 
   const selectedModelSet = useMemo(() => {
     const effectiveSelectAll = !modelsSelectionTouched && groupDraft.allowedModels.length === 0;
@@ -746,8 +778,34 @@ export function RoutingConfigEditor({
     (target: RoutingChannelGroupMemberEntry, priority: string) => {
       setGroupDraft((current) => ({
         ...current,
-        channels:
-          current.matchMode === "tags"
+        channels: editingSystemDefaultGroup
+          ? (() => {
+              const targetName = target.name.trim();
+              const normalizedTarget = normalizeChannelName(targetName);
+              if (!normalizedTarget) return current.channels;
+              if (!priority.trim()) {
+                return current.channels.filter(
+                  (channel) => normalizeChannelName(channel.name) !== normalizedTarget,
+                );
+              }
+              const existingIndex = current.channels.findIndex(
+                (channel) => normalizeChannelName(channel.name) === normalizedTarget,
+              );
+              if (existingIndex >= 0) {
+                return current.channels.map((channel, index) =>
+                  index === existingIndex ? { ...channel, name: targetName, priority } : channel,
+                );
+              }
+              return [
+                ...current.channels,
+                {
+                  id: target.id || makeClientId(),
+                  name: targetName,
+                  priority,
+                },
+              ];
+            })()
+          : current.matchMode === "tags"
             ? (() => {
                 const targetName = target.name.trim();
                 const normalizedTarget = normalizeChannelName(targetName);
@@ -774,7 +832,7 @@ export function RoutingConfigEditor({
               ),
       }));
     },
-    [],
+    [editingSystemDefaultGroup],
   );
 
   const removeDraftChannel = useCallback((channelId: string) => {
@@ -864,7 +922,13 @@ export function RoutingConfigEditor({
         strategy: normalizeRoutingStrategy(groupDraft.strategy),
         excludeFromDefault: false,
         matchMode: "channels",
-        channels: existingDefault ? cloneMembers(existingDefault.channels) : [],
+        channels: groupDraft.channels
+          .filter((channel) => channel.name.trim() && channel.priority.trim())
+          .map((channel) => ({
+            ...channel,
+            name: channel.name.trim(),
+            priority: channel.priority.trim(),
+          })),
         tags: [],
         allowedModels,
       };
@@ -1328,7 +1392,7 @@ export function RoutingConfigEditor({
           />
         ),
       },
-      ...(groupDraft.matchMode === "tags"
+      ...(groupDraft.matchMode === "tags" || editingSystemDefaultGroup
         ? []
         : [
             {
@@ -1356,6 +1420,7 @@ export function RoutingConfigEditor({
     [
       disabled,
       draftStaleChannelIds,
+      editingSystemDefaultGroup,
       getChannelDetail,
       groupDraft.name,
       groupDraft.matchMode,
@@ -1789,7 +1854,38 @@ export function RoutingConfigEditor({
                       />
                     </Field>
 
-                    {!editingSystemDefaultGroup ? (
+                    {editingSystemDefaultGroup ? (
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold text-slate-900 dark:text-white">
+                            {t("channel_groups_page.default_priority_overrides_label")}
+                          </div>
+                          <div className="text-xs leading-5 text-slate-500 dark:text-white/55">
+                            {t("channel_groups_page.default_priority_overrides_hint")}
+                          </div>
+                        </div>
+
+                        <DataTable<RoutingChannelGroupMemberEntry>
+                          tableId="system-default-channel-priorities"
+                          rows={systemDefaultPriorityChannels}
+                          columns={groupMemberColumns}
+                          rowKey={(channel) => channel.id}
+                          virtualize={false}
+                          rowHeight={52}
+                          height="h-auto"
+                          minHeight="min-h-0"
+                          minWidth="min-w-[520px]"
+                          caption={t("channel_groups_page.default_priority_overrides_label")}
+                          emptyText={t("channel_groups_page.no_search_results")}
+                          rowClassName={(channel) =>
+                            draftStaleChannelIds.has(channel.id)
+                              ? "bg-rose-50/70 dark:bg-rose-500/10"
+                              : ""
+                          }
+                          naturalFlow
+                        />
+                      </div>
+                    ) : (
                       <>
                         <label className="flex items-start gap-3 rounded-lg border border-slate-900/8 bg-slate-50 px-3 py-3 text-sm dark:border-white/8 dark:bg-neutral-900/60">
                           <Checkbox
@@ -1969,7 +2065,7 @@ export function RoutingConfigEditor({
                           naturalFlow
                         />
                       </>
-                    ) : null}
+                    )}
                   </ScrollArea>
                 </TabsContent>
 

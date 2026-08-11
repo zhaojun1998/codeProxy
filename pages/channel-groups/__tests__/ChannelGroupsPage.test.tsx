@@ -78,8 +78,7 @@ vi.mock("@code-proxy/api-client", () => ({
         payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
       return {
         models: Array.isArray(record.models) ? record.models : [],
-        source:
-          typeof record.source === "string" ? String(record.source) : "registry",
+        source: typeof record.source === "string" ? String(record.source) : "registry",
       };
     },
     getModelDefinitions: async (channel: string) => {
@@ -984,8 +983,18 @@ describe("ChannelGroupsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    const row = await screen.findByRole("row", { name: /系统默认/ });
-    await user.click(within(row).getByRole("button", { name: "编辑分组" }));
+    await screen.findByRole("row", { name: /系统默认/ });
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("row", { name: /系统默认/ })).getByRole("button", {
+          name: "编辑分组",
+        }),
+      ).toBeEnabled(),
+    );
+    const editButton = within(screen.getByRole("row", { name: /系统默认/ })).getByRole("button", {
+      name: "编辑分组",
+    });
+    await user.click(editButton);
     await user.click(screen.getByRole("combobox", { name: "分组内调度策略" }));
     await user.click(await screen.findByRole("option", { name: "会话粘性" }));
     await user.click(screen.getByRole("button", { name: "保存" }));
@@ -1004,7 +1013,98 @@ describe("ChannelGroupsPage", () => {
     );
   });
 
+  test("shows and saves system default channel priority overrides", async () => {
+    mockedApiGet.mockImplementation((path: string) => {
+      if (path === "/routing-config") {
+        return Promise.resolve({
+          strategy: "round-robin",
+          "include-default-group": true,
+          "channel-groups": [
+            {
+              name: "default",
+              strategy: "session-sticky",
+              match: {},
+              "channel-priorities": { "Main Codex": 100 },
+            },
+          ],
+          "path-routes": [],
+        });
+      }
+      if (path === "/channel-groups") {
+        return Promise.resolve({
+          items: [
+            {
+              name: "default",
+              channels: ["Main Codex", "Backup Codex"],
+              "channel-details": [
+                { name: "Main Codex", source: "codex" },
+                { name: "Backup Codex", source: "codex" },
+              ],
+            },
+          ],
+        });
+      }
+      if (path === "/auth-group-model-owner-mappings") {
+        return Promise.resolve({ items: [] });
+      }
+      if (path.startsWith("/models?")) {
+        return Promise.resolve({ data: [] });
+      }
+      if (
+        path === "/auth-files" ||
+        path === "/model-configs?scope=library" ||
+        path === "/gemini-api-key" ||
+        path === "/claude-api-key" ||
+        path === "/codex-api-key" ||
+        path === "/opencode-go-api-key" ||
+        path === "/vertex-api-key" ||
+        path === "/openai-compatibility"
+      ) {
+        return Promise.resolve({ files: [], data: [] });
+      }
+      return Promise.resolve({});
+    });
 
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByRole("row", { name: /系统默认/ });
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("row", { name: /系统默认/ })).getByRole("button", {
+          name: "编辑分组",
+        }),
+      ).toBeEnabled(),
+    );
+    const editButton = within(screen.getByRole("row", { name: /系统默认/ })).getByRole("button", {
+      name: "编辑分组",
+    });
+    await user.click(editButton);
+
+    const table = await screen.findByRole("table", { name: "默认组渠道优先级覆盖" });
+    const mainRow = within(table).getByRole("row", { name: /Main Codex/ });
+    const mainPriority = within(mainRow).getByRole("textbox");
+    expect(mainPriority).toHaveValue("100");
+
+    await user.clear(mainPriority);
+    const refreshedMainRow = within(table).getByRole("row", { name: /Main Codex/ });
+    await user.type(within(refreshedMainRow).getByRole("textbox"), "80");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(mockedApiPut).toHaveBeenCalled());
+    expect(mockedApiPut).toHaveBeenCalledWith(
+      "/routing-config",
+      expect.objectContaining({
+        "channel-groups": [
+          expect.objectContaining({
+            name: "default",
+            strategy: "session-sticky",
+            "channel-priorities": { "Main Codex": 80 },
+          }),
+        ],
+      }),
+    );
+  });
 
   test("shows save button loading while routing-config update is in flight", async () => {
     const user = userEvent.setup();

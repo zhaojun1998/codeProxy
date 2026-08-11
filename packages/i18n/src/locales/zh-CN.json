@@ -3551,6 +3551,8 @@
     "models_load_failed": "加载模型列表失败",
     "all_models": "全部",
     "channel_priority_label": "渠道优先级",
+    "default_priority_overrides_label": "默认组渠道优先级覆盖",
+    "default_priority_overrides_hint": "系统默认组会自动包含全部渠道。只需为需要特殊调度的渠道填写优先级；留空使用默认值，0 表示不参与加权调度。",
     "priority_short": "P{{value}}",
     "remove_channel": "移除渠道",
     "routes_count": "路径规则 {{count}} 条",

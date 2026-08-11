@@ -255,7 +255,6 @@ describe("RoutingConfigEditor", () => {
     expect(actionsCell).toHaveStyle({ zIndex: "30" });
   });
 
-
   test("defaults model tab selections to every channel-scoped model", async () => {
     await i18n.changeLanguage("zh-CN");
     const user = userEvent.setup();
@@ -315,10 +314,7 @@ describe("RoutingConfigEditor", () => {
     await user.click(screen.getByRole("tab", { name: "模型列表" }));
 
     expect(await screen.findByLabelText("gpt-5.6")).toBeInTheDocument();
-    expect(loadModelsForChannels).toHaveBeenCalledWith(
-      ["Main Codex"],
-      "deepseekv4flash+chatgpt",
-    );
+    expect(loadModelsForChannels).toHaveBeenCalledWith(["Main Codex"], "deepseekv4flash+chatgpt");
   });
 
   test("renders channel-scoped models as a checkbox table with descriptions and prices", async () => {
@@ -566,10 +562,7 @@ describe("RoutingConfigEditor", () => {
     const row = screen.getByRole("row", { name: /系统默认/ });
     await user.click(within(row).getByRole("button", { name: "编辑分组" }));
 
-    expect(screen.getByRole("tab", { name: "基础配置" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(screen.getByRole("tab", { name: "基础配置" })).toHaveAttribute("aria-selected", "true");
     await user.click(screen.getByRole("combobox", { name: "分组内调度策略" }));
     await user.click(screen.getByRole("option", { name: "会话粘性" }));
     await user.click(screen.getByRole("button", { name: "保存" }));
@@ -577,6 +570,59 @@ describe("RoutingConfigEditor", () => {
     expect(screen.getByTestId("group-name")).toHaveTextContent("default");
     expect(screen.getByTestId("group-strategy")).toHaveTextContent("session-sticky");
     expect(screen.getByRole("row", { name: /系统默认/ })).toHaveTextContent("会话粘性");
+  });
+
+  test("edits channel priority overrides for the system default group", async () => {
+    await i18n.changeLanguage("zh-CN");
+    const user = userEvent.setup();
+    let savedPatch: Partial<VisualConfigValues> | undefined;
+
+    render(
+      <Harness
+        initialValues={{
+          ...DEFAULT_VISUAL_VALUES,
+          routingChannelGroups: [
+            {
+              id: "system-default-configured",
+              name: "default",
+              description: "",
+              strategy: "session-sticky",
+              excludeFromDefault: false,
+              matchMode: "channels",
+              channels: [{ id: "channel-main", name: "Main Codex", priority: "100" }],
+              tags: [],
+              allowedModels: [],
+            },
+          ],
+          routingPathRoutes: [],
+        }}
+        onChange={(patch, apply) => {
+          savedPatch = patch;
+          apply(patch);
+        }}
+      />,
+    );
+
+    const row = screen.getByRole("row", { name: /系统默认/ });
+    await user.click(within(row).getByRole("button", { name: "编辑分组" }));
+
+    const table = screen.getByRole("table", { name: "默认组渠道优先级覆盖" });
+    const mainRow = within(table).getByRole("row", { name: /Main Codex/ });
+    const backupRow = within(table).getByRole("row", { name: /Backup Claude/ });
+    const mainPriority = within(mainRow).getByRole("textbox");
+    const backupPriority = within(backupRow).getByRole("textbox");
+
+    expect(mainPriority).toHaveValue("100");
+    expect(backupPriority).toHaveValue("");
+
+    await user.clear(mainPriority);
+    await user.type(backupPriority, "20");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    const groups = savedPatch?.routingChannelGroups ?? [];
+    expect(groups[0]?.channels).toEqual([
+      expect.objectContaining({ name: "Backup Claude", priority: "20" }),
+    ]);
   });
 
   test("shows save button loading until async onChange resolves, then closes", async () => {
@@ -660,9 +706,7 @@ describe("RoutingConfigEditor", () => {
 
     await user.click(screen.getByRole("button", { name: "新增分组" }));
     await user.hover(screen.getByLabelText(/开启后，这个分组只会在请求命中自己的分组路径/));
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      "API Key 显式允许该分组时被使用",
-    );
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("API Key 显式允许该分组时被使用");
   });
 
   test("updates model permissions for the system root route", async () => {
