@@ -49,6 +49,7 @@ const mocks = vi.hoisted(() => ({
   getOauthModelAlias: vi.fn(async () => ({ codex: [{ name: "existing", alias: "existing" }] })),
   downloadText: vi.fn(async () => "{}"),
   upload: vi.fn(async (_file: File) => ({})),
+  patchFields: vi.fn(async () => ({})),
   getModelDefinitions: vi.fn(async () => [
     { id: "existing", display_name: "Existing" },
     { id: "new-model", display_name: "New Model" },
@@ -65,6 +66,7 @@ vi.mock("@code-proxy/api-client", async (importOriginal) => {
       getOauthModelAlias: mocks.getOauthModelAlias,
       downloadText: mocks.downloadText,
       upload: mocks.upload,
+      patchFields: mocks.patchFields,
       getModelDefinitions: mocks.getModelDefinitions,
     },
   };
@@ -86,6 +88,7 @@ describe("Auth Files helper coverage", () => {
     mocks.getOauthModelAlias.mockReset();
     mocks.downloadText.mockReset();
     mocks.upload.mockReset();
+    mocks.patchFields.mockReset();
     mocks.getModelDefinitions.mockReset();
     mocks.getOauthExcludedModels.mockImplementation(async () => ({}));
     mocks.getOauthModelAlias.mockImplementation(async () => ({
@@ -93,6 +96,7 @@ describe("Auth Files helper coverage", () => {
     }));
     mocks.downloadText.mockImplementation(async () => "{}");
     mocks.upload.mockImplementation(async () => ({}));
+    mocks.patchFields.mockImplementation(async () => ({}));
     mocks.getModelDefinitions.mockImplementation(async () => [
       { id: "existing", display_name: "Existing" },
       { id: "new-model", display_name: "New Model" },
@@ -1510,7 +1514,6 @@ test("shows auth-level quota recovery records as 429 restriction badges", () => 
   });
 
   test("edits auth file proxy_id together with prefix and proxy_url", async () => {
-    let uploadedText = "";
     mocks.downloadText.mockImplementation(async () =>
       JSON.stringify({
         prefix: "codex-main",
@@ -1518,11 +1521,6 @@ test("shows auth-level quota recovery records as 429 restriction badges", () => 
         proxy_id: "hk",
       }),
     );
-    mocks.upload.mockImplementation(async (file: File) => {
-      uploadedText = await file.text();
-      return {};
-    });
-
     const loadAll = vi.fn(async (): Promise<AuthFileItem[]> => []);
     const { result } = renderHook(() => useAuthFilesDetailEditors(loadAll), { wrapper });
 
@@ -1549,12 +1547,14 @@ test("shows auth-level quota recovery records as 429 restriction badges", () => 
       await result.current.savePrefixProxy();
     });
 
-    expect(mocks.upload).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(uploadedText)).toEqual({
+    expect(mocks.patchFields).toHaveBeenCalledWith({
+      name: "codex.json",
       prefix: "codex-main",
       proxy_url: "http://fallback.example:7890",
       proxy_id: "jp",
+      subscription_started_at: "",
     });
+    expect(mocks.upload).not.toHaveBeenCalled();
     expect(loadAll).toHaveBeenCalledTimes(1);
   });
 });

@@ -3391,13 +3391,17 @@ describe("AuthFilesPage files table", () => {
     fireEvent.click(await screen.findByRole("option", { name: "Yearly" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(1));
-    const uploadCalls = mocks.upload.mock.calls as unknown as [[File]];
-    const uploaded = uploadCalls[0][0];
-    const uploadedJson = JSON.parse(await uploaded.text()) as Record<string, unknown>;
-    expect(uploadedJson.subscription_started_at).toBe(new Date("2027-01-03T04:05").toISOString());
-    expect(uploadedJson.subscription_period).toBe("yearly");
-    expect(uploadedJson.subscription_expires_at).toBeUndefined();
+    await waitFor(() =>
+      expect(mocks.patchFields).toHaveBeenCalledWith({
+        name: "codex-subscription.json",
+        prefix: "",
+        proxy_url: "",
+        proxy_id: "",
+        subscription_started_at: new Date("2027-01-03T04:05").toISOString(),
+        subscription_period: "yearly",
+      }),
+    );
+    expect(mocks.upload).not.toHaveBeenCalled();
   });
 
   test("shows card subscription badge from shared provider subscription", async () => {

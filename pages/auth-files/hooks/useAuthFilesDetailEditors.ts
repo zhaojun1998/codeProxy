@@ -15,8 +15,6 @@ import { useToast } from "@code-proxy/ui";
 import {
   dateLikeToDateTimeLocalInput,
   dateTimeLocalInputToIso,
-  formatFileSize,
-  MAX_AUTH_FILE_SIZE,
   canRenameAuthFileChannel,
   normalizeAuthIndexValue,
   normalizeProviderKey,
@@ -1178,24 +1176,26 @@ export function useAuthFilesDetailEditors(
       return;
     }
 
-    const payload = prefixProxyUpdatedText;
-    const fileSize = new Blob([payload]).size;
-    if (fileSize > MAX_AUTH_FILE_SIZE) {
-      notify({
-        type: "error",
-        message: t("auth_files.save_too_large", {
-          size: formatFileSize(fileSize),
-        }),
-      });
-      return;
-    }
-
     const name = prefixProxyEditor.fileName;
+    const payload = prefixProxyUpdatedText;
+    const parsedPayload = JSON.parse(payload) as Record<string, unknown>;
+    const subscriptionStartedAt = prefixProxyEditor.subscriptionStartedAt.trim();
+    const subscriptionStartedAtIso = subscriptionStartedAt
+      ? dateTimeLocalInputToIso(subscriptionStartedAt)
+      : "";
+    const fieldPatch: Parameters<typeof authFilesApi.patchFields>[0] = {
+      name,
+      prefix: prefixProxyEditor.prefix.trim(),
+      proxy_url: prefixProxyEditor.proxyUrl.trim(),
+      proxy_id: prefixProxyEditor.proxyId.trim(),
+      subscription_started_at: subscriptionStartedAtIso ?? "",
+    };
+    if (subscriptionStartedAtIso) {
+      fieldPatch.subscription_period = prefixProxyEditor.subscriptionPeriod;
+    }
     setPrefixProxyEditor((prev) => ({ ...prev, saving: true }));
     try {
-      const file = new File([payload], name, { type: "application/json" });
-      await authFilesApi.upload(file);
-      const parsedPayload = JSON.parse(payload) as Record<string, unknown>;
+      await authFilesApi.patchFields(fieldPatch);
       applySavedAuthFilePatch(name, parsedPayload);
       notify({ type: "success", message: t("auth_files.saved") });
       setPrefixProxyEditor((prev) => ({
@@ -1227,6 +1227,10 @@ export function useAuthFilesDetailEditors(
     prefixProxyDirty,
     prefixProxyEditor.fileName,
     prefixProxyEditor.json,
+    prefixProxyEditor.prefix,
+    prefixProxyEditor.proxyId,
+    prefixProxyEditor.proxyUrl,
+    prefixProxyEditor.subscriptionPeriod,
     prefixProxyEditor.subscriptionStartedAt,
     prefixProxyUpdatedText,
     t,
