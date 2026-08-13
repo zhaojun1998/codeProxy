@@ -108,6 +108,8 @@ export { identityFingerprintApi } from "./endpoints/identity-fingerprint";
 export type * from "./endpoints/identity-fingerprint";
 export { promptFilterApi } from "./endpoints/prompt-filter";
 export type * from "./endpoints/prompt-filter";
+export { ipAccessApi } from "./endpoints/ip-access";
+export type * from "./endpoints/ip-access";
 export { updateApi } from "./endpoints/update";
 export type * from "./endpoints/update";
 export { imageGenerationApi } from "./endpoints/image-generation";
